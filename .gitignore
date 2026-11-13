@@ -19,4 +19,4 @@ tools/essais-clips/work/
 .env.*
 !.env.example
 # Moteur vidéo (FFmpeg, 132 Mo) : téléchargé et vérifié par scripts/fetch-ffmpeg.mjs, jamais dans git
-vendor/
+/vendor/
