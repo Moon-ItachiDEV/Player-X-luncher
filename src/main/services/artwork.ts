@@ -21,6 +21,8 @@ interface Art {
   logo?: string | null
   /** Les chemins d'images ont été demandés à Steam (même si aucune image n'existe). */
   assetsFetched?: boolean
+  /** Tags Steam du jeu (identifiants, les plus votés d'abord), pour le style de l'accueil. Absent : pas encore demandé. */
+  tagIds?: number[]
   at: number
 }
 
@@ -44,16 +46,25 @@ async function findSteamAppId(name: string): Promise<string | null> {
 interface StoreItem {
   appid: number
   assets?: Record<string, string> & { asset_url_format?: string }
+  tagids?: number[]
+  tags?: { tagid: number; weight?: number }[]
+}
+
+interface Assets {
+  cover?: string
+  hero?: string
+  logo?: string
+  tagIds?: number[]
 }
 
 /** Chemins exacts des images pour une liste d'appids (par lots de 50). */
-export async function fetchAssets(appIds: string[]): Promise<Map<string, { cover?: string; hero?: string; logo?: string }>> {
-  const out = new Map<string, { cover?: string; hero?: string; logo?: string }>()
+export async function fetchAssets(appIds: string[]): Promise<Map<string, Assets>> {
+  const out = new Map<string, Assets>()
   for (let i = 0; i < appIds.length; i += 50) {
     const input = {
       ids: appIds.slice(i, i + 50).map((id) => ({ appid: Number(id) })),
       context: { language: 'french', country_code: 'FR' },
-      data_request: { include_assets: true }
+      data_request: { include_assets: true, include_tag_count: 12 }
     }
     const res = await fetch(`https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json=${encodeURIComponent(JSON.stringify(input))}`, {
       // Sans limite, une réponse qui ne vient jamais bloquait les jaquettes jusqu'au redémarrage
@@ -63,12 +74,18 @@ export async function fetchAssets(appIds: string[]): Promise<Map<string, { cover
     const items = ((await res.json()) as { response?: { store_items?: StoreItem[] } }).response?.store_items ?? []
     for (const item of items) {
       const a = item.assets
-      if (!a?.asset_url_format) continue
+      // Les tags, triés du plus voté au moins voté : ils servent au style de l'accueil, même sans images
+      const tagIds = (item.tags?.length ? [...item.tags].sort((x, y) => (y.weight ?? 0) - (x.weight ?? 0)).map((t) => t.tagid) : (item.tagids ?? [])).filter((t) => Number.isInteger(t))
+      if (!a?.asset_url_format) {
+        out.set(String(item.appid), { tagIds })
+        continue
+      }
       const url = (file?: string): string | undefined => (file ? CDN + a.asset_url_format!.replace('${FILENAME}', file).replace(/\?.*$/, '') : undefined)
       out.set(String(item.appid), {
         cover: url(a.library_capsule_2x ?? a.library_capsule),
         hero: url(a.library_hero ?? a.library_hero_2x ?? a.page_background ?? a.header),
-        logo: url(a.library_logo_2x ?? a.library_logo)
+        logo: url(a.library_logo_2x ?? a.library_logo),
+        tagIds
       })
     }
   }
@@ -107,8 +124,9 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
   const toFetch = new Map<string, string[]>() // appid -> ids de jeux
   for (const g of games) {
     const appId = g.store === 'steam' ? g.storeId : cache[g.id]?.appId
-    // Un cache d'avant les logos (logo absent) est redemandé une fois.
-    if (!appId || (fresh(g)?.assetsFetched && fresh(g)?.logo !== undefined)) continue
+    // Un cache d'avant les logos ou les tags (absents) est redemandé une fois.
+    const f = fresh(g)
+    if (!appId || (f?.assetsFetched && f.logo !== undefined && f.tagIds !== undefined)) continue
     toFetch.set(appId, [...(toFetch.get(appId) ?? []), g.id])
   }
   if (toFetch.size) {
@@ -116,7 +134,7 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
       const assets = await fetchAssets([...toFetch.keys()])
       for (const [appId, ids] of toFetch) {
         const a = assets.get(appId)
-        for (const id of ids) cache[id] = found[id] = { appId, cover: a?.cover, hero: a?.hero, logo: a?.logo ?? null, assetsFetched: true, at: now }
+        for (const id of ids) cache[id] = found[id] = { appId, cover: a?.cover, hero: a?.hero, logo: a?.logo ?? null, tagIds: a?.tagIds ?? [], assetsFetched: true, at: now }
       }
       changed = true
     } catch (e) {
@@ -125,7 +143,51 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
   }
 
   if (changed) setKv('artwork', { ...getKv<ArtCache>('artwork', {}), ...found })
+  // Les noms des tags : une liste commune à tous les jeux, gardée un mois
+  if (Object.values(cache).some((a) => a.tagIds?.length) && (await updateTagNames())) changed = true
   return changed
+}
+
+// ---------- Noms des tags Steam ----------
+// IStoreService/GetTagList : la liste publique des tags (identifiant → nom anglais), sans clé.
+
+const TAG_MAX_AGE = 30 * 24 * 3600_000
+interface TagNames {
+  at: number
+  names: Record<string, string>
+}
+
+/** Va chercher la liste des tags si elle manque ou date de plus d'un mois. Renvoie true si elle a changé. */
+async function updateTagNames(): Promise<boolean> {
+  const cur = getKv<TagNames | null>('steamTagNames', null)
+  if (cur && Date.now() - cur.at < TAG_MAX_AGE) return false
+  try {
+    const res = await fetch('https://api.steampowered.com/IStoreService/GetTagList/v1/?language=english', { signal: AbortSignal.timeout(20_000) })
+    if (!res.ok) throw new Error(`GetTagList ${res.status}`)
+    const tags = ((await res.json()) as { response?: { tags?: { tagid: number; name: string }[] } }).response?.tags ?? []
+    if (!tags.length) return false
+    const names: Record<string, string> = {}
+    for (const t of tags) if (Number.isInteger(t.tagid) && typeof t.name === 'string') names[t.tagid] = t.name
+    setKv('steamTagNames', { at: Date.now(), names })
+    return true
+  } catch (e) {
+    // Hors ligne : l'accueil garde le style lu dans la jaquette seule
+    console.warn('[artwork] tags', e)
+    return false
+  }
+}
+
+let tagMemo: { stamp: number; names: Record<string, string> } | null = null
+function tagNames(): Record<string, string> {
+  const stamp = kvStamp('steamTagNames')
+  if (!tagMemo || tagMemo.stamp !== stamp) tagMemo = { stamp, names: getKv<TagNames | null>('steamTagNames', null)?.names ?? {} }
+  return tagMemo.names
+}
+const tagsOf = (a: Art | undefined): string[] | undefined => {
+  if (!a?.tagIds?.length) return undefined
+  const names = tagNames()
+  const out = a.tagIds.map((id) => names[id]).filter((n): n is string => !!n)
+  return out.length ? out : undefined
 }
 
 /** Le cache des jaquettes, relu seulement quand il a changé (il était relu trois fois par affichage de la bibliothèque). Lecture seule. */
@@ -156,12 +218,13 @@ function logoOf(g: Game, a: Art | undefined): string | undefined {
   return g.store === 'steam' && /^\d{1,10}$/.test(g.storeId) ? `${LEGACY_CDN}${g.storeId}/logo.png` : undefined
 }
 
-/** Ajoute le logo connu (cache local) à chaque jeu, sans réseau : il n'est pas gardé dans la table des jeux. */
+/** Ajoute le logo et les tags connus (cache local) à chaque jeu, sans réseau : ils ne sont pas gardés dans la table des jeux. */
 export function withLogos(games: Game[]): Game[] {
   const cache = artCache()
   return games.map((g) => {
     const logoUrl = logoOf(g, cache[g.id])
-    return logoUrl ? { ...g, logoUrl } : g
+    const tags = tagsOf(cache[g.id])
+    return logoUrl || tags ? { ...g, ...(logoUrl ? { logoUrl } : {}), ...(tags ? { tags } : {}) } : g
   })
 }
 
@@ -173,8 +236,10 @@ export function applyArtwork(games: Game[]): Game[] {
     const appId = g.store === 'steam' ? g.storeId : a?.appId
     if (!appId) return g
     const logoUrl = logoOf(g, a)
+    const tags = tagsOf(a)
     return {
       ...g,
+      ...(tags ? { tags } : {}),
       // Ancienne URL en secours : marche encore pour la plupart des jeux sortis avant 2024.
       coverUrl: a?.cover ?? `${LEGACY_CDN}${appId}/library_600x900.jpg`,
       heroUrl: a?.hero ?? `${LEGACY_CDN}${appId}/library_hero.jpg`,

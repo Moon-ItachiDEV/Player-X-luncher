@@ -16,9 +16,13 @@ b64 = lambda p: base64.b64encode(open(p, 'rb').read()).decode()
 css = f"""@font-face{{font-family:'Archivo';src:url(data:font/woff2;base64,{b64(U + '/fonts/archivo.woff2')}) format('woff2');font-weight:100 900;font-stretch:62% 125%;font-display:swap}}
 @font-face{{font-family:'Sora';src:url(data:font/woff2;base64,{b64(U + '/fonts/sora.woff2')}) format('woff2');font-weight:100 800;font-display:swap}}
 """
+# Boutons caméléon (style.css) : une police par style, sous licence libre (OFL, Apache pour Special Elite ; textes dans fonts/licences)
+for fam, f, w, it in [('PX Neon', 'chakra-petch-700', 700, 0), ('PX Stade', 'barlow-condensed-800i', 800, 1), ('PX Epique', 'cinzel-700', 700, 0), ('PX Pop', 'baloo2-800', 800, 0),
+                      ('PX Vitesse', 'racing-sans-one', 400, 0), ('PX Frisson', 'special-elite', 400, 0), ('PX Tactique', 'share-tech-mono', 400, 0)]:
+    css += f"@font-face{{font-family:'{fam}';src:url(data:font/woff2;base64,{b64(U + '/fonts/' + f + '.woff2')}) format('woff2');font-weight:{w};font-style:{'italic' if it else 'normal'};font-display:swap}}\n"
 for f in sorted(glob.glob(S + '/*.css')):
     css += open(f, encoding='utf8').read() + '\n'
-ORDER = ['data.js', 'core.js', 'real.js', 'real-friends.js', 'fluid.js', 'pxtype.js', 'play.js', 'bar.js', 'live.js', 'clips.js', 'edit.js', 'pages.js', 'board.js', 'stats.js', 'atelier.js', 'news.js', 'settings.js', 'flows.js', 'moments.js', 'main.js']
+ORDER = ['data.js', 'core.js', 'real.js', 'real-friends.js', 'fluid.js', 'pxtype.js', 'style.js', 'play.js', 'bar.js', 'live.js', 'clips.js', 'edit.js', 'pages.js', 'board.js', 'stats.js', 'atelier.js', 'news.js', 'settings.js', 'flows.js', 'moments.js', 'main.js']
 js = open(U + '/constants.js', encoding='utf8').read() + '\n' + open(U + '/.shared.js', encoding='utf8').read() + '\n'
 # Un fichier de ORDER absent, ou un fichier de src/ hors de ORDER, arrête le build : rien ne disparaît en silence
 manque = [f for f in ORDER if not os.path.exists(f'{S}/{f}')]

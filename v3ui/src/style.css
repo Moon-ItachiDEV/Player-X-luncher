@@ -1,0 +1,113 @@
+/* Boutons caméléon : l'accueil prend le style du jeu affiché (style.js).
+   Sans style (jeu neutre, réglage coupé, « Toute ta bibliothèque ») : rien ne change, l'îlot rose habituel.
+   Chaque style ne lit que --gs-acc (l'accent tiré de la jaquette) et --gs-on (le texte posé dessus). */
+.pb-chev{display:none}
+.v-play[data-gs] .ht-acts{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;padding:0;gap:10px}
+.v-play[data-gs] .ht-acts .play-btn::after{background:var(--gs-acc)}
+.v-play[data-gs] .rail-t.on i{background:var(--gs-acc)}
+.v-play[data-gs] .play-btn,.v-play[data-gs] .ht-acts .dk-b{transition:background-color .35s,color .35s,box-shadow .35s,translate .2s,scale .12s}
+.ht-acts.gs-in{animation:gsIn .32s var(--e-out) both}
+@keyframes gsIn{from{opacity:.2;filter:blur(4px);translate:0 4px}to{opacity:1;filter:none;translate:0 0}}
+.v-play[data-gs] .ht-title{text-wrap:balance}
+.v-play[data-gs] .ht-title.is-in{animation-name:htF}
+
+/* Néon : coins coupés, lettres mono, trame de scanlines, décalage RVB au survol */
+.v-play[data-gs=neon] .ht-title{font-family:'PX Neon',var(--f-ui,sans-serif);font-weight:700;text-transform:uppercase;letter-spacing:.03em;font-stretch:normal;text-shadow:2px 0 0 color-mix(in srgb,var(--gs-acc) 70%,transparent),-2px 0 0 rgba(0,240,255,.45)}
+.v-play[data-gs=neon] .ht-acts :is(.play-btn,.dk-b){height:52px;border-radius:0;font-family:'PX Neon',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.14em;font-size:14px;clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+.v-play[data-gs=neon] .ht-acts .play-btn{background:var(--gs-acc);color:var(--gs-on);box-shadow:none;min-width:200px}
+.v-play[data-gs=neon] .ht-acts .play-btn .pb-in::before{content:"";position:absolute;inset:-20px -40px;background:repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 1px,transparent 1px 3px);pointer-events:none}
+.v-play[data-gs=neon] .ht-acts .dk-b{color:var(--gs-acc);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--gs-acc) 70%,transparent);padding:0 20px}
+.v-play[data-gs=neon] .ht-acts .dk-i{width:52px;padding:0}
+@media(hover:hover){
+  .v-play[data-gs=neon] .ht-acts .play-btn:hover{background:var(--gs-acc);animation:gsGlitch .35s steps(2) 1;text-shadow:2px 0 #00f0ff,-2px 0 #ff2bd6}
+  .v-play[data-gs=neon] .ht-acts .dk-b:hover{background:color-mix(in srgb,var(--gs-acc) 14%,transparent);color:var(--gs-acc)}
+}
+@keyframes gsGlitch{0%{translate:0}25%{translate:2px -1px}50%{translate:-2px 1px}75%{translate:1px 1px}100%{translate:0}}
+
+/* Stade : parallélogramme penché, italique serré, ombre blanche franche, éclat qui balaie */
+.v-play[data-gs=stade] .ht-title{font-family:'PX Stade',var(--f-ui,sans-serif);font-style:italic;font-weight:800;text-transform:uppercase;letter-spacing:0;font-stretch:normal;font-size:clamp(60px,7.4cqw,116px);line-height:.98}
+.v-play[data-gs=stade] .ht-acts :is(.play-btn,.dk-b){height:54px;border-radius:4px;transform:skewX(-14deg);font-family:'PX Stade',sans-serif;font-style:italic;font-weight:800;text-transform:uppercase;font-size:21px;letter-spacing:.02em}
+.v-play[data-gs=stade] .ht-acts :is(.play-btn .pb-in,.dk-b>*){transform:skewX(14deg)}
+.v-play[data-gs=stade] .ht-acts .play-btn{overflow:hidden;background:var(--gs-acc);color:var(--gs-on);box-shadow:6px 6px 0 rgba(255,255,255,.92);min-width:200px;margin-right:6px}
+.v-play[data-gs=stade] .ht-acts .play-btn .pb-in::after{content:"";position:absolute;inset:-20px -60px;background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.45) 48%,transparent 60%);translate:-120% 0;transition:translate .5s;pointer-events:none}
+.v-play[data-gs=stade] .ht-acts .dk-b{background:#fff;color:#111;padding:0 20px}
+.v-play[data-gs=stade] .ht-acts .dk-i{width:54px;padding:0}
+@media(hover:hover){
+  .v-play[data-gs=stade] .ht-acts .play-btn:hover{background:var(--gs-acc);box-shadow:8px 8px 0 rgba(255,255,255,.92)}
+  .v-play[data-gs=stade] .ht-acts .play-btn:hover .pb-in::after{translate:120% 0}
+  .v-play[data-gs=stade] .ht-acts .dk-b:hover{background:#e9e9e9;color:#111}
+}
+
+/* Épique : capitales gravées, double filet, losanges aux coins, éclat de l'accent */
+.v-play[data-gs=epique] .ht-title{font-family:'PX Epique',Georgia,serif;font-weight:700;letter-spacing:.05em;font-stretch:normal;font-size:clamp(46px,5.6cqw,88px);background:linear-gradient(180deg,#fff 0%,color-mix(in srgb,var(--gs-acc) 80%,#fff) 60%,color-mix(in srgb,var(--gs-acc) 70%,#000) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.v-play[data-gs=epique] .ht-acts :is(.play-btn,.dk-b){height:56px;border-radius:2px;font-family:'PX Epique',Georgia,serif;font-weight:700;letter-spacing:.12em;font-size:15px}
+.v-play[data-gs=epique] .ht-acts .play-btn{overflow:visible;isolation:auto;color:var(--gs-acc);background:radial-gradient(120% 140% at 50% 0%,color-mix(in srgb,var(--gs-acc) 30%,transparent),rgba(0,0,0,.55));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--gs-acc) 80%,transparent),inset 0 0 0 4px rgba(0,0,0,.6),inset 0 0 0 5px color-mix(in srgb,var(--gs-acc) 40%,transparent);min-width:210px;margin:0 6px}
+/* Les losanges aux deux bouts : ::before et ::after du bouton (la lueur floue n'est pas de ce style) */
+.v-play[data-gs=epique] .ht-acts .play-btn::before,.v-play[data-gs=epique] .ht-acts .play-btn::after{content:"";position:absolute;inset:auto;top:calc(50% - 5px);width:10px;height:10px;border-radius:0;background:var(--gs-acc);rotate:45deg;filter:none;opacity:1;scale:1;z-index:1}
+.v-play[data-gs=epique] .ht-acts .play-btn::before{left:-5px}.v-play[data-gs=epique] .ht-acts .play-btn::after{right:-5px}
+.v-play[data-gs=epique] .ht-acts .dk-b{color:var(--t2);font-size:13px}
+.v-play[data-gs=epique] .ht-acts .dk-i{width:48px;padding:0}
+@media(hover:hover){
+  .v-play[data-gs=epique] .ht-acts .play-btn:hover{background:radial-gradient(120% 140% at 50% 0%,color-mix(in srgb,var(--gs-acc) 42%,transparent),rgba(0,0,0,.5));box-shadow:inset 0 0 0 1px var(--gs-acc),inset 0 0 0 4px rgba(0,0,0,.6),inset 0 0 0 5px color-mix(in srgb,var(--gs-acc) 70%,transparent),0 0 30px -6px var(--gs-acc)}
+  .v-play[data-gs=epique] .ht-acts .dk-b:hover{background:none;color:var(--bone)}
+}
+
+/* Pop : autocollant épais, contour blanc, ombre franche, rebond */
+.v-play[data-gs=pop] .ht-title{font-family:'PX Pop',var(--f-ui,sans-serif);font-weight:800;letter-spacing:0;font-stretch:normal;line-height:.98;color:#fff;text-shadow:3px 3px 0 var(--gs-acc),6px 6px 0 rgba(0,0,0,.35)}
+.v-play[data-gs=pop] .ht-acts :is(.play-btn,.dk-b){height:54px;border-radius:999px;font-family:'PX Pop',sans-serif;font-weight:800;font-size:19px;box-shadow:0 0 0 3px #fff,0 6px 0 3px rgba(0,0,0,.55);transition:translate .18s cubic-bezier(.3,1.6,.5,1),box-shadow .18s,background-color .35s}
+.v-play[data-gs=pop] .ht-acts .play-btn{background:var(--gs-acc);color:var(--gs-on);min-width:190px;margin:0 4px}
+.v-play[data-gs=pop] .ht-acts .dk-b{background:#fff;color:#1b1420;padding:0 22px}
+.v-play[data-gs=pop] .ht-acts .dk-i{width:54px;padding:0}
+.v-play[data-gs=pop] .ht-acts :is(.play-btn,.dk-b):not(:disabled):active{scale:1;translate:0 3px;box-shadow:0 0 0 3px #fff,0 2px 0 3px rgba(0,0,0,.55)}
+@media(hover:hover){
+  .v-play[data-gs=pop] .ht-acts .play-btn:hover{background:var(--gs-acc)}
+  .v-play[data-gs=pop] .ht-acts .dk-b:hover{background:#fff;color:#1b1420}
+  .v-play[data-gs=pop] .ht-acts :is(.play-btn,.dk-b):hover{translate:0 -3px;box-shadow:0 0 0 3px #fff,0 9px 0 3px rgba(0,0,0,.55)}
+}
+
+/* Vitesse : italique large, angle coupé, chevrons qui filent */
+.v-play[data-gs=vitesse] .ht-title{font-family:'PX Vitesse',var(--f-ui,sans-serif);font-style:italic;text-transform:uppercase;letter-spacing:.01em;font-stretch:normal;font-weight:400}
+.v-play[data-gs=vitesse] .ht-acts :is(.play-btn,.dk-b){height:52px;border-radius:3px 18px 3px 18px;font-family:'Archivo',sans-serif;font-stretch:120%;font-style:italic;font-weight:800;text-transform:uppercase;letter-spacing:.04em;font-size:15px}
+.v-play[data-gs=vitesse] .ht-acts .play-btn{background:linear-gradient(100deg,var(--gs-acc) 0 72%,color-mix(in srgb,var(--gs-acc) 70%,#000) 72%);color:var(--gs-on);box-shadow:none;min-width:210px}
+.v-play[data-gs=vitesse] .pb-chev{display:inline-flex;letter-spacing:-.25em;font-style:normal;transition:translate .3s var(--e-out)}
+.v-play[data-gs=vitesse] .pb-chev b{opacity:.35;transition:opacity .2s}
+.v-play[data-gs=vitesse] .ht-acts .dk-b{background:rgba(255,255,255,.08);box-shadow:inset 3px 0 0 var(--gs-acc);color:var(--bone);padding:0 18px}
+.v-play[data-gs=vitesse] .ht-acts .dk-i{width:52px;padding:0}
+@media(hover:hover){
+  .v-play[data-gs=vitesse] .ht-acts .play-btn:hover{background:linear-gradient(100deg,var(--gs-acc) 0 72%,color-mix(in srgb,var(--gs-acc) 70%,#000) 72%)}
+  .v-play[data-gs=vitesse] .ht-acts .play-btn:hover .pb-chev{translate:6px 0}
+  .v-play[data-gs=vitesse] .ht-acts .play-btn:hover .pb-chev b{opacity:1}
+  .v-play[data-gs=vitesse] .ht-acts .dk-b:hover{background:rgba(255,255,255,.14)}
+}
+
+/* Frisson : machine à écrire, un seul trait de couleur, lumière qui vacille au survol */
+.v-play[data-gs=frisson] .ht-title{font-family:'PX Frisson',ui-monospace,monospace;font-weight:400;letter-spacing:.02em;font-stretch:normal;color:#e9e4dc;text-shadow:0 0 18px color-mix(in srgb,var(--gs-acc) 50%,transparent)}
+.v-play[data-gs=frisson] .ht-acts :is(.play-btn,.dk-b){height:52px;border-radius:2px;font-family:'PX Frisson',monospace;font-weight:400;font-size:16px;letter-spacing:.08em;text-transform:lowercase}
+.v-play[data-gs=frisson] .ht-acts .play-btn{background:rgba(0,0,0,.62);color:#f0ebe3;box-shadow:inset 0 -2px 0 var(--gs-acc),inset 0 0 0 1px rgba(255,255,255,.12);min-width:180px}
+.v-play[data-gs=frisson] .ht-acts .play-btn::after{display:none}
+.v-play[data-gs=frisson] .ht-acts .dk-b{color:var(--t3)}
+.v-play[data-gs=frisson] .ht-acts .dk-i{width:48px;padding:0}
+@media(hover:hover){
+  .v-play[data-gs=frisson] .ht-acts .play-btn:hover{background:rgba(0,0,0,.7);color:var(--gs-acc);animation:gsFlick 1.6s linear infinite}
+  .v-play[data-gs=frisson] .ht-acts .dk-b:hover{background:none;color:var(--t2)}
+}
+@keyframes gsFlick{0%,19%,23%,60%,64%,100%{opacity:1}20%,22%,62%{opacity:.4}}
+
+/* FPS · Tactique : mono carré, crochets de viseur autour du bouton */
+.v-play[data-gs=tactique] .ht-title{font-family:'Archivo',sans-serif;font-stretch:68%;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.v-play[data-gs=tactique] .ht-acts :is(.play-btn,.dk-b){height:50px;border-radius:0;font-family:'PX Tactique',ui-monospace,monospace;font-weight:400;text-transform:uppercase;letter-spacing:.12em;font-size:14px}
+.v-play[data-gs=tactique] .ht-acts .play-btn{overflow:visible;background:color-mix(in srgb,var(--gs-acc) 88%,#000);color:var(--gs-on);box-shadow:none;min-width:200px;margin:0 8px}
+.v-play[data-gs=tactique] .ht-acts .play-btn .pb-ring{display:none}
+.v-play[data-gs=tactique] .ht-acts .play-btn::after{inset:-7px;border-radius:0;background:none;filter:none;opacity:1;scale:1;border:1.5px solid var(--gs-acc);-webkit-mask:conic-gradient(at 12px 12px,transparent 75%,#000 0) 0 0/calc(100% - 12px) calc(100% - 12px);mask:conic-gradient(at 12px 12px,transparent 75%,#000 0) 0 0/calc(100% - 12px) calc(100% - 12px);transition:inset .2s}
+.v-play[data-gs=tactique] .ht-acts .dk-b{background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:var(--bone);padding:0 18px}
+.v-play[data-gs=tactique] .ht-acts .dk-i{width:50px;padding:0}
+@media(hover:hover){
+  .v-play[data-gs=tactique] .ht-acts .play-btn:hover{background:var(--gs-acc)}
+  .v-play[data-gs=tactique] .ht-acts .play-btn:hover::after{inset:-10px;opacity:1;scale:1}
+  .v-play[data-gs=tactique] .ht-acts .dk-b:hover{background:rgba(255,255,255,.12)}
+}
+
+/* La mise à jour garde son bouton clair, quel que soit le style */
+.v-play[data-gs] .ht-acts .play-btn.is-upd{background:linear-gradient(180deg,#fff,#E9E2E6);color:#150d12}
+.v-play[data-gs] .ht-acts .dk-b:focus-visible,.v-play[data-gs] .ht-acts .play-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.v-play[data-gs] .ht-acts :is(.play-btn,.dk-b):hover{animation:none}}
