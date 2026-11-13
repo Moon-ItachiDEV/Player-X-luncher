@@ -4,9 +4,10 @@ import { existsSync } from 'node:fs'
 import { copyFile as copyOnDisk, mkdir, open, readdir, rename, rm, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app, BrowserWindow, clipboard, ClipboardItem, desktopCapturer, dialog, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, shell, type IpcMainEvent, type Session, type WebContents } from 'electron'
+import { cleanGamePace, cleanPace, gamePace, gamePaceLine, paceLog, paceOf, rateBetween, type ClipPace, type GamePace } from '@shared/clipPace'
 import { CS2_GAME_ID } from '@shared/cs2'
 import { cleanName, isBf6Name } from '@shared/text'
-import type { Clip, ClipDisplay, ClipSettings, ClipsState, Game } from '@shared/types'
+import type { Clip, ClipDisplay, ClipSettings, ClipShareResult, ClipShareStep, ClipsState, Game } from '@shared/types'
 import { getKv, setKv } from '../db'
 import { hotkeyRefusal } from '../hotkeys'
 import { handle } from '../ipc'
@@ -38,14 +39,16 @@ import {
 } from './clipsPlan'
 import { errText, log, logFlushed, logTail } from './clipsLog'
 import { registerClipProtocol } from './clipsProtocol'
+import { cleanShareCopies, dropShareCopies, lightCopy } from './clipsShare'
 import { showClipToast } from './clipsToast'
 import { cs2IsRunning, cs2MomentContext, onCs2Moment, onCs2Running } from './cs2Live'
-import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFlat, parseFragment, parseInit, readBoxes, type FlatPlan, type FragmentInfo, type InitInfo } from './fmp4'
+import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFlat, parseFragment, parseInit, readBoxes, type ClipTrack, type FlatPlan, type FragmentInfo, type InitInfo } from './fmp4'
 import { getSettings } from './settings'
 import { gameExeRegex } from './captureTestArgs'
 import { thumbArgs } from './editCompile'
 import { captureEngineReady, spawnCaptureEngine } from './editFfmpeg'
 import { attemptLabel, engineAttempts, muxArgs, PCM_FRAME_BYTES, PCM_RATE, pcmWindow, readEngineProgress, recordArgs, type EngineAttempt, type PcmPart } from './engineCapture'
+import { DISCORD_MB, type ShareSource } from './sharePlan'
 
 // Clips « comme NVIDIA » : pendant qu'un jeu tourne, une fenêtre cachée capture l'écran et le son du système, MediaRecorder
 // les encode en MP4 fragmenté et chaque fragment (2 s) part dans un tampon circulaire sur le disque. Sur un kill de CS2 ou le
@@ -61,6 +64,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: 
 
 const SETTINGS_KEY = 'clipsSettings'
 const INDEX_KEY = 'clipsIndex'
+/** Bêta 46 : le rythme des clips de la dernière partie finie. */
+const LAST_GAME_KEY = 'clipsLastGame'
 const PARTITION = 'px-clips-capture'
 const PAGE_NAME = 'clips-recorder.html'
 /** Attente de la dernière image après la fermeture de la fenêtre d'un clip : un fragment arrive au plus toutes les 2 s environ. */
@@ -96,6 +101,8 @@ interface Recorder {
   anchor: number
   startedAt: number
   lastDataAt: number
+  /** Bêta 46 : la cadence demandée à cet enregistreur (60, ou 30 en qualité légère), pour dire le rythme réel de ses clips. */
+  wantedFps: number
   seq: number
   queued: number
   writes: Promise<void>
@@ -113,7 +120,7 @@ interface Recorder {
   /** Bêta 42 : le son lu par la page en PCM, daté à l'heure du système, gardé en mémoire le temps du tampon. */
   pcm?: PcmPart[]
   /** Bêta 42 : enregistreur d'image du moteur vidéo. */
-  engine?: { proc: ChildProcess; attempt: EngineAttempt; err: string; progress: string; loggedAt: number }
+  engine?: { proc: ChildProcess; attempt: EngineAttempt; err: string; progress: string; loggedAt: number; last?: { frames: number; at: number } }
 }
 
 interface Capture {
@@ -181,6 +188,8 @@ let hotkeyNow: string | null = null
 let hotkeyError: string | undefined
 /** Dernier problème hors capture (clip impossible). */
 let lastProblem: string | undefined
+/** Bêta 46 : le rythme des clips de la dernière partie finie (relu de la base au démarrage). */
+let lastGame: GamePace | undefined
 let lastStateJson = ''
 let captureSession: Session | null = null
 
@@ -208,8 +217,9 @@ function bufferSeconds(rec: Recorder | null): number {
 }
 
 function stateNow(): ClipsState {
-  if (!current.enabled) return { status: 'off' }
-  if (!capture) return { status: 'idle', ...(lastProblem ? { error: lastProblem } : {}) }
+  const last = lastGame ? { lastGame } : {}
+  if (!current.enabled) return { status: 'off', ...last }
+  if (!capture) return { status: 'idle', ...(lastProblem ? { error: lastProblem } : {}), ...last }
   const c = capture
   const rec = c.rec
   // Bêta 42 : l'image peut venir du moteur (c.eng), le son de la page (c.rec).
@@ -221,7 +231,8 @@ function stateNow(): ClipsState {
     ...(video?.mime ? { encoder: video.mime } : {}),
     ...(rec?.audio ? { audio: rec.audio } : {}),
     ...(problems.length ? { error: problems.join(' ') } : {}),
-    ...(video ? { bufferSeconds: bufferSeconds(video) } : {})
+    ...(video ? { bufferSeconds: bufferSeconds(video) } : {}),
+    ...last
   }
 }
 
@@ -380,6 +391,7 @@ function launchRecorder(c: Capture): void {
     anchor: now,
     startedAt: now,
     lastDataAt: now,
+    wantedFps: QUALITY[current.quality].fps,
     seq: 0,
     queued: 0,
     writes: mkdir(join(bufferRoot(), id), { recursive: true }).then(
@@ -497,6 +509,7 @@ function startEngine(c: Capture): void {
     anchor: now + ENGINE_LATE_MS,
     startedAt: now,
     lastDataAt: now,
+    wantedFps: QUALITY[current.quality].fps,
     seq: 0,
     queued: 0,
     writes: mkdir(join(bufferRoot(), id), { recursive: true }).then(
@@ -530,7 +543,14 @@ function startEngine(c: Capture): void {
     const every = Date.now() - rec.startedAt < 65_000 ? 9_000 : 59_000
     if (/progress=/.test(t) && Date.now() - e.loggedAt > every) {
       const pr = readEngineProgress(e.progress)
-      if (pr) log(`Moteur : ${pr.fps} images/s (${pr.frames} images depuis le début).`)
+      if (pr) {
+        // Bêta 46 : le chiffre du moteur est une moyenne depuis le début ; le rythme depuis le relevé d'avant dit ce qui se passe
+        // maintenant. Pour le journal seulement : une pause du jeu le fait baisser sans que la capture soit en faute.
+        const now = { frames: pr.frames, at: Date.now() }
+        const rate = rateBetween(e.last, now)
+        log(`Moteur : ${pr.fps} images/s (${pr.frames} images depuis le début${rate === null ? '' : `, ${String(rate).replace('.', ',')} images/s depuis le dernier relevé`}).`)
+        e.last = now
+      }
       e.loggedAt = Date.now()
       e.progress = ''
     }
@@ -946,6 +966,12 @@ async function writeEngineClip(p: PendingClip, plan: FlatPlan, sources: string[]
   }
 }
 
+/** Bêta 46 : le rythme réel d'un clip (clipPace.ts), d'après les images de sa piste vidéo. undefined : pas assez d'images pour le dire. */
+function paceOfTracks(tracks: ClipTrack[], durationS: number, wantedFps: number): ClipPace | undefined {
+  const video = tracks.find((t) => t.kind === 'video' && t.samples.length)
+  return (video && paceOf(video.samples.map((s) => (s.dts + s.cto) / video.timescale), durationS, wantedFps)) || undefined
+}
+
 async function writeClip(p: PendingClip): Promise<void> {
   // L'image : un enregistreur qui en a (le moteur, ou la page quand elle filme tout), jamais celui du son seul.
   const vfrags = frags.filter((f) => !recorders.get(f.recId)?.audioOnly)
@@ -962,6 +988,8 @@ async function writeClip(p: PendingClip): Promise<void> {
   const plan = buildFlat(cut, { createdAtMs: p.firstAt })
   // Le fichier commence sur une image clé, souvent avant la fenêtre demandée : les événements se situent depuis cette image-là.
   const firstWall = rec.anchor + firstFrameS(cut) * 1000
+  // Bêta 46 : le rythme réel du clip, d'après l'instant de chacune de ses images.
+  const pace = paceOfTracks(cut, plan.durationS, rec.wantedFps)
   const events = clipEvents(p.events, firstWall, plan.durationS)
   const kills = clipKills(p)
   const title = clipTitle(p.kind, kills, p.headshots, p.peak)
@@ -998,11 +1026,12 @@ async function writeClip(p: PendingClip): Promise<void> {
     ...(p.round !== undefined ? { round: p.round } : {}),
     ...(p.score ? { score: p.score } : {}),
     sessionId: p.sessionId,
+    ...(pace ? { pace } : {}),
     file
   }
   index = [meta, ...index]
   saveIndex()
-  log(`Clip ${p.id} écrit : « ${title} », ${plan.durationS.toFixed(1)} s, ${(size / 1e6).toFixed(1)} Mo, ${kills} élim., ${p.headshots} HS.`)
+  log(`Clip ${p.id} écrit : « ${title} », ${plan.durationS.toFixed(1)} s, ${(size / 1e6).toFixed(1)} Mo, ${kills} élim., ${p.headshots} HS, ${paceLog(pace)}.`)
   lastProblem = undefined
   await applyRetention(p.id)
   // Image du moteur : la vignette vient du clip (vers le moment gardé, avant les secondes « après »).
@@ -1029,6 +1058,8 @@ async function deleteFiles(meta: ClipMeta): Promise<void> {
     }
   }
   await unlink(thumbPath(meta.id)).catch(() => {})
+  // Bêta 46 : ses copies légères pour Discord partent avec lui.
+  await dropShareCopies(meta.id).catch(() => {})
 }
 
 /** Au-delà de la limite : les plus vieux non épinglés partent. Le clip qui vient d'arriver reste. */
@@ -1045,8 +1076,10 @@ async function applyRetention(keepId?: string): Promise<void> {
 
 // ---------- liste et actions ----------
 
-function publicClip({ file: _file, ...meta }: ClipMeta): Clip {
-  return { ...meta, videoUrl: `${SCHEME}://video/${meta.id}`, thumbUrl: `${SCHEME}://thumb/${meta.id}` }
+function publicClip({ file: _file, pace: rawPace, ...meta }: ClipMeta): Clip {
+  // Le rythme est relu de la base : sa structure est vérifiée avant de partir vers la page.
+  const pace = cleanPace(rawPace)
+  return { ...meta, ...(pace ? { pace } : {}), videoUrl: `${SCHEME}://video/${meta.id}`, thumbUrl: `${SCHEME}://thumb/${meta.id}` }
 }
 
 function clipById(id: unknown): ClipMeta | undefined {
@@ -1253,7 +1286,11 @@ function trimClip(id: unknown, startS: unknown, endS: unknown): Promise<Clip> {
     }
     // Les événements qui restent dans la partie gardée suivent, recalés sur la nouvelle première image.
     const events = trimEvents(c.events, firstFrameS(cut), plan.durationS)
-    const made: ClipMeta = { ...c, id: newId, title, at: c.at + 1, durationS: plan.durationS, sizeBytes: plan.size, pinned: false, file, ...(events ? { events } : {}) }
+    // Bêta 46 : la coupe a son propre rythme (celui de la partie gardée), jamais celui du clip entier.
+    const { pace: wholePace, ...rest } = c
+    const wantedFps = cleanPace(wholePace)?.wanted
+    const pace = wantedFps ? paceOfTracks(cut, plan.durationS, wantedFps) : undefined
+    const made: ClipMeta = { ...rest, id: newId, title, at: c.at + 1, durationS: plan.durationS, sizeBytes: plan.size, pinned: false, file, ...(events ? { events } : {}), ...(pace ? { pace } : {}) }
     await copyOnDisk(thumbPath(c.id), thumbPath(newId)).catch(() => {})
     index = [made, ...index]
     saveIndex()
@@ -1322,15 +1359,19 @@ async function openFolder(id: unknown): Promise<void> {
  * -LiteralPath, Windows PowerShell 5.1, livré avec Windows). Le chemin passe par une variable d'environnement, jamais dans la
  * commande. En secours, le format brut FileNameW suffit à l'Explorateur. Rien d'équivalent ailleurs que sous Windows.
  */
-async function copyFile(id: unknown): Promise<boolean> {
-  const c = clipById(id)
-  if (!c || process.platform !== 'win32') return false
+async function copyPath(file: string): Promise<boolean> {
+  if (process.platform !== 'win32') {
+    // Essais en développement seulement (PX_CLIP_TEST_COPY=1) : le fichier est noté au lieu d'aller dans le presse-papiers.
+    if (app.isPackaged || process.env.PX_CLIP_TEST_COPY !== '1') return false
+    testCopied = file
+    return true
+  }
   try {
     await new Promise<void>((resolve, reject) => {
       execFile(
         'powershell.exe',
         ['-NoProfile', '-NonInteractive', '-Sta', '-Command', 'Set-Clipboard -LiteralPath $env:PX_CLIP_FILE'],
-        { windowsHide: true, timeout: 15_000, env: { ...process.env, PX_CLIP_FILE: c.file } },
+        { windowsHide: true, timeout: 15_000, env: { ...process.env, PX_CLIP_FILE: file } },
         (err) => (err ? reject(err) : resolve())
       )
     })
@@ -1339,12 +1380,75 @@ async function copyFile(id: unknown): Promise<boolean> {
     log(`Copie du fichier par PowerShell impossible : ${errText(e)}`)
   }
   try {
-    await clipboard.write([new ClipboardItem({ FileNameW: new Blob([Buffer.from(`${c.file}\0`, 'ucs2')]) })])
+    await clipboard.write([new ClipboardItem({ FileNameW: new Blob([Buffer.from(`${file}\0`, 'ucs2')]) })])
     return true
   } catch (e) {
     log(`Copie du fichier impossible : ${errText(e)}`)
     return false
   }
+}
+
+/** Développement : le dernier fichier « copié » hors de Windows (PX_CLIP_TEST_COPY=1), pour les essais. */
+let testCopied: string | null = null
+
+/** Le fichier d'origine dans le presse-papiers, quel que soit son poids. */
+async function copyFile(id: unknown): Promise<boolean> {
+  const c = clipById(id)
+  return c ? copyPath(c.file) : false
+}
+
+// ---------- copier pour Discord (bêta 46) ----------
+
+/**
+ * La limite du compte Discord choisi dans les réglages. En développement seulement, PX_CLIP_TEST_SHARE_MB impose une limite
+ * (en Mo, à virgule si besoin) : un petit clip d'essai peut alors demander une copie légère.
+ */
+function shareLimit(): { mb: number; bytes: number } {
+  const dev = app.isPackaged ? Number.NaN : Number(process.env.PX_CLIP_TEST_SHARE_MB)
+  const mb = dev > 0 && dev <= 500 ? dev : DISCORD_MB[current.discord]
+  return { mb, bytes: Math.round(mb * 1_000_000) }
+}
+
+/** Ce que le fichier est vraiment (relu dans son index, pas dans sa fiche) : durée, taille de l'image, images par seconde, son. */
+async function shareSource(file: string, sizeBytes: number): Promise<ShareSource> {
+  const fh = await open(file, 'r')
+  const tracks = parseFlat(await readMoov(fh).finally(() => fh.close()))
+  const video = tracks.find((t) => t.kind === 'video' && t.samples.length)
+  if (!video) throw new Error('pas d’image')
+  const seconds = (t: ClipTrack): number => t.samples.reduce((n, x) => n + x.dur, 0) / t.timescale
+  const videoS = seconds(video)
+  const durationS = Math.max(videoS, ...tracks.filter((t) => t.kind === 'audio').map(seconds))
+  return { sizeBytes, durationS, width: video.width, height: video.height, fps: videoS > 0 ? video.samples.length / videoS : 0, hasAudio: tracks.some((t) => t.kind === 'audio' && t.samples.length > 0) }
+}
+
+/**
+ * « Copier pour Discord » : le fichier va dans le presse-papiers s'il passe sous la limite du compte ; sinon une copie plus
+ * légère est fabriquée à côté (clipsShare.ts) et c'est elle qui est copiée. Le clip d'origine n'est jamais modifié. Un clip
+ * trop long, ou une copie impossible, ne met rien dans le presse-papiers : la page le dit et propose l'original.
+ */
+async function shareClip(id: unknown): Promise<ClipShareResult> {
+  const c = needClip(id)
+  const { mb: limitMb, bytes: limit } = shareLimit()
+  const st = await stat(c.file).catch(() => null)
+  if (!st?.isFile()) throw new Error('Le fichier de ce clip a disparu.')
+  if (st.size <= limit) return (await copyPath(c.file)) ? { status: 'copied', sizeBytes: st.size, limitMb } : { status: 'failed' }
+  let src: ShareSource
+  try {
+    src = await shareSource(c.file, st.size)
+  } catch (e) {
+    log(`Copie pour Discord du clip ${c.id} impossible : fichier illisible (${errText(e)}).`)
+    return { status: 'unmade', limitMb, sizeBytes: st.size, reason: 'encode' }
+  }
+  const step = (percent: number): void => broadcast('clips:share', { id: c.id, percent } satisfies ClipShareStep)
+  const made = await lightCopy({ id: c.id, file: c.file, mtimeMs: st.mtimeMs }, src, limit, step)
+  if (made.kind === 'too-long') {
+    log(`Copie pour Discord du clip ${c.id} : ${src.durationS.toFixed(1)} s, trop long pour ${limitMb} Mo (au plus ${made.maxS} s).`)
+    return { status: 'too-long', limitMb, maxS: made.maxS, sizeBytes: st.size }
+  }
+  if (made.kind === 'unmade') return { status: 'unmade', limitMb, sizeBytes: st.size, reason: made.reason }
+  if (made.kind === 'original') return (await copyPath(c.file)) ? { status: 'copied', sizeBytes: st.size, limitMb } : { status: 'failed' }
+  if (!(await copyPath(made.file))) return { status: 'failed' }
+  return { status: 'copied', sizeBytes: made.sizeBytes, limitMb, reduced: { width: made.width, height: made.height, fps: made.fps } }
 }
 
 function displays(): ClipDisplay[] {
@@ -1419,7 +1523,8 @@ function saveClipSettings(patch: unknown): ClipSettings {
   setKv(SETTINGS_KEY, current)
   if (current.capture !== before.capture && capture && !stopping) {
     // Moteur ↔ Chrome : la capture repart de zéro avec l'autre méthode.
-    stopping = stopCapture('méthode de capture changée')
+    // La partie continue : pas de bilan de rythme ici.
+    stopping = stopCapture('méthode de capture changée', false)
       .catch((e) => log(`Arrêt de la capture : ${errText(e)}`))
       .finally(() => {
         stopping = null
@@ -1473,7 +1578,7 @@ function startCapture(game: RunningGame): void {
 }
 
 /** Arrêt propre : le dernier fragment arrive, les clips en attente s'écrivent avec ce qu'il y a, le tampon est vidé. */
-async function stopCapture(reason: string): Promise<void> {
+async function stopCapture(reason: string, gameOver = true): Promise<void> {
   const c = capture
   if (!c) return
   c.stopping = true
@@ -1516,6 +1621,22 @@ async function stopCapture(reason: string): Promise<void> {
   for (const p of [...pendings.values()]) finalize(p)
   await fileQueue
   await clearBuffer()
+  if (gameOver) noteGamePace(c)
+}
+
+/**
+ * Bêta 46 : la partie est finie et ses derniers clips sont écrits. Le rythme de ses clips est gardé pour Paramètres, et la
+ * page le dit une fois si des clips sont sous le seuil (jamais pendant la partie : rien ne s'affiche avant cet instant).
+ */
+function noteGamePace(c: Capture): void {
+  try {
+    lastGame = gamePace(index.filter((x) => x.sessionId === c.sessionId && x.kind !== 'film').map((x) => ({ pace: cleanPace(x.pace), durationS: x.durationS })), c.game.name, Date.now())
+    setKv(LAST_GAME_KEY, lastGame)
+    log(lastGame.clips ? `${gamePaceLine(lastGame)} (${String(lastGame.fps).replace('.', ',')} images/s sur ${lastGame.clips} clip(s), ${c.game.name}).` : `Partie finie sans clip dont le rythme est connu (${c.game.name}).`)
+    emitState()
+  } catch (e) {
+    log(`Rythme de la partie : ${errText(e)}`)
+  }
 }
 
 async function clearBuffer(): Promise<void> {
@@ -1685,6 +1806,7 @@ function registerApi(): void {
   handle('clips:pin', (_e, id: unknown, on: unknown) => pinClip(id, on))
   handle('clips:open-folder', (_e, id: unknown) => openFolder(id))
   handle('clips:copy-file', (_e, id: unknown) => copyFile(id))
+  handle('clips:share', (_e, id: unknown) => shareClip(id))
   handle('clips:trim', (_e, id: unknown, startS: unknown, endS: unknown) => trimClip(id, startS, endS))
   handle('clips:state', () => stateNow())
   handle('clips:settings-get', () => resolved(current))
@@ -1706,6 +1828,8 @@ async function cleanLeftovers(): Promise<void> {
   const known = new Set(index.map((c) => `${c.id}.jpg`))
   const thumbs = await readdir(dirname(thumbPath('x'))).catch(() => [] as string[])
   for (const n of thumbs) if (!known.has(n)) await unlink(join(dirname(thumbPath('x')), n)).catch(() => {})
+  // Bêta 46 : les copies légères pour Discord dont le clip a disparu, ou qui n'ont pas servi depuis 7 jours.
+  await cleanShareCopies(new Set(index.map((c) => c.id))).catch(() => {})
 }
 
 /** Après l'ouverture de la base. */
@@ -1713,6 +1837,7 @@ export function startClips(): void {
   if (started) return
   current = cleanClipSettings(getKv<unknown>(SETTINGS_KEY, {}))
   index = getKv<ClipMeta[]>(INDEX_KEY, []).filter((c) => c && typeof c.id === 'string' && CLIP_ID.test(c.id) && typeof c.file === 'string')
+  lastGame = cleanGamePace(getKv<unknown>(LAST_GAME_KEY, null))
   registerClipProtocol(SCHEME, (id) => {
     const c = clipById(id)
     return c ? { video: c.file, thumb: thumbPath(c.id) } : undefined
@@ -1806,16 +1931,38 @@ export function startClips(): void {
         hotkey: hotkeyNow,
         hotkeyRegistered: hotkeyNow ? globalShortcut.isRegistered(hotkeyNow) : false,
         folder: folderOf(current),
-        bufferRoot: bufferRoot()
+        bufferRoot: bufferRoot(),
+        // Bêta 46 : le dernier fichier « copié » (PX_CLIP_TEST_COPY=1).
+        copied: testCopied
       })
     }
   }
 }
 
-/** Pour l'essai de capture du moteur (captureTest.ts) : le dossier des clips, le jeu filmé, la qualité choisie. */
-export async function captureTestContext(): Promise<{ folder: string; game: { id: string; name: string } | null; quality: { maxWidth: number; maxHeight: number; fps: number; videoBps: number } }> {
+/**
+ * Pour l'essai de capture du moteur (captureTest.ts) : le dossier des clips, le jeu filmé, la qualité choisie. Bêta 46 :
+ * `screen` est la taille réelle (en points de l'écran, pas en points de Windows mis à l'échelle) du premier écran, celui que
+ * l'essai filme (monitor 0) : elle dit s'il y a de quoi essayer une capture réduite.
+ */
+export async function captureTestContext(): Promise<{ folder: string; game: { id: string; name: string } | null; quality: { maxWidth: number; maxHeight: number; fps: number; videoBps: number }; screen: { width: number; height: number } | null }> {
   const q = QUALITY[current.quality]
-  return { folder: await usableFolder(), game: capture?.game ?? null, quality: { maxWidth: q.maxWidth, maxHeight: q.maxHeight, fps: q.fps, videoBps: q.videoBps } }
+  const d = screen.getAllDisplays()[0]
+  const size = d ? { width: Math.round(d.bounds.width * d.scaleFactor), height: Math.round(d.bounds.height * d.scaleFactor) } : null
+  return { folder: await usableFolder(), game: capture?.game ?? null, quality: { maxWidth: q.maxWidth, maxHeight: q.maxHeight, fps: q.fps, videoBps: q.videoBps }, screen: size }
+}
+
+/**
+ * Bêta 46 : la taille de l'image d'une vidéo MP4, relue dans son index (pour l'essai de capture : la vidéo d'essai dit si la
+ * réduction a eu lieu). null : fichier illisible.
+ */
+export async function videoSizeOf(file: string): Promise<{ width: number; height: number } | null> {
+  try {
+    const fh = await open(file, 'r')
+    const video = parseFlat(await readMoov(fh).finally(() => fh.close())).find((t) => t.kind === 'video')
+    return video && video.width > 0 && video.height > 0 ? { width: video.width, height: video.height } : null
+  } catch {
+    return null
+  }
 }
 
 /** Une ligne du journal des clips, pour l'essai de capture. */

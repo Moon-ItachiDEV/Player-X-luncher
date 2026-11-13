@@ -3,6 +3,7 @@ import type { LaunchStatus } from '@shared/launch'
 import type { RoutineStatus } from '@shared/routines'
 import type {
   Bf6RecapEvent,
+  ClipShareStep,
   ClipsState,
   Cs2Live,
   Cs2OverlayConfig,
@@ -167,6 +168,12 @@ const api: LauncherApi = {
   clipsPin: (id, on) => ipcRenderer.invoke('clips:pin', id, on),
   clipsOpenFolder: (id) => ipcRenderer.invoke('clips:open-folder', id),
   clipsCopyFile: (id) => ipcRenderer.invoke('clips:copy-file', id),
+  clipsShare: (id) => ipcRenderer.invoke('clips:share', id),
+  onClipsShare: (cb) => {
+    const listener = (_e: unknown, s: ClipShareStep): void => cb(s)
+    ipcRenderer.on('clips:share', listener)
+    return () => ipcRenderer.removeListener('clips:share', listener)
+  },
   clipsTrim: (id, startS, endS) => ipcRenderer.invoke('clips:trim', id, startS, endS),
   clipsState: () => ipcRenderer.invoke('clips:state'),
   clipsGetSettings: () => ipcRenderer.invoke('clips:settings-get'),

@@ -1,7 +1,7 @@
 // Types partagés : le pont entre la page et le processus principal (window.launcher, window.pxOverlay).
 import type { LaunchOpts, LaunchStatus } from '../launch'
 import type { Bf6Account, Bf6Art, Bf6Match, Bf6Point, Bf6RecapEvent, Bf6RecapState, Bf6Snapshot, Bf6Tracked } from './bf6'
-import type { Clip, ClipDisplay, ClipSettings, ClipsState } from './clips'
+import type { Clip, ClipDisplay, ClipSettings, ClipShareResult, ClipShareStep, ClipsState } from './clips'
 import type { Account, Cs2OverlayConfig, FriendAlert, FriendPlatform, FriendsResult, Game, RareUnlock, ScanReport, Settings, StartupState, SteamFriendProfile } from './core'
 import type { Cs2LifetimeResult, Cs2Live, Cs2RecapEvent, Cs2State } from './cs2'
 import type { CaptureTestResult, CaptureTestStep, EditEngine, EditEngineStep, EditMusic, EditProject, FilmState } from './edit'
@@ -171,8 +171,16 @@ export interface LauncherApi extends V3RoutineApi {
   clipsPin(id: string, on: boolean): Promise<Clip>
   /** Montre le fichier dans l'Explorateur ; sans identifiant, ouvre le dossier des clips. */
   clipsOpenFolder(id?: string): Promise<void>
-  /** Copie le fichier dans le presse-papiers de Windows (à coller dans Discord). false ailleurs ou si l'identifiant est inconnu. */
+  /** Copie le fichier d'origine dans le presse-papiers de Windows, quel que soit son poids. false ailleurs ou si l'identifiant est inconnu. */
   clipsCopyFile(id: string): Promise<boolean>
+  /**
+   * « Copier pour Discord » (bêta 46) : le fichier va dans le presse-papiers s'il passe sous la limite du compte Discord des
+   * réglages ; sinon une copie plus légère est fabriquée à côté (l'avancement arrive par onClipsShare) et c'est elle qui est
+   * copiée. Rejette avec un message à afficher si le moteur vidéo est occupé ou si le fichier a disparu.
+   */
+  clipsShare(id: string): Promise<ClipShareResult>
+  /** L'avancement de la copie légère en cours de fabrication. Renvoie la fonction de désabonnement. */
+  onClipsShare(cb: (s: ClipShareStep) => void): () => void
   /** Coupe le clip (début sur l'image clé précédente, sans réencodage) et remplace le fichier. */
   clipsTrim(id: string, startS: number, endS: number): Promise<Clip>
   clipsState(): Promise<ClipsState>

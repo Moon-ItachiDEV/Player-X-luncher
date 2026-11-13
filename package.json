@@ -1,6 +1,6 @@
 {
   "name": "test-v3-player-x",
-  "version": "0.5.3-beta.44",
+  "version": "0.5.3-beta.46",
   "description": "Player X V3 Test : la V3 de Player X, sur le vrai moteur de Player X, installée à part.",
   "main": "out/main/index.js",
   "private": true,
@@ -23,7 +23,7 @@
     "test:ready": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/steamUpdate.test.ts src/shared/servers.test.ts src/shared/gameEvents.test.ts src/shared/shelves.test.ts src/main/services/recentGames.test.ts",
     "test:armory": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/bf6Loadouts.test.ts src/shared/bf6Workshop.test.ts",
     "test:security": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/trust.test.ts src/main/services/routineRules.test.ts src/main/services/settingsRules.test.ts",
-    "test:clips": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/fmp4.test.ts src/main/services/clipsPlan.test.ts src/main/services/cs2Moments.test.ts",
+    "test:clips": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/fmp4.test.ts src/main/services/clipsPlan.test.ts src/main/services/cs2Moments.test.ts src/shared/clipPace.test.ts src/main/services/sharePlan.test.ts",
     "test:edit": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/editEngineRules.test.ts src/main/services/editPlan.test.ts src/main/services/editCompile.test.ts src/main/services/editBeats.test.ts src/shared/editShots.test.ts src/main/services/captureTestArgs.test.ts src/main/services/engineCapture.test.ts",
     "test": "npm run test:launch && npm run test:news && npm run test:bf6 && npm run test:cs2 && npm run test:achievements && npm run test:played && npm run test:friends && npm run test:home && npm run test:ui && npm run test:overlay && npm run test:cs2stats && npm run test:profile && npm run test:ready && npm run test:armory && npm run test:clips && npm run test:edit && npm run test:security",
     "dist": "node scripts/dist-v3.mjs",

@@ -25,7 +25,7 @@ const Settings = (() => {
   // La recherche lit les noms des réglages et quelques synonymes
   const IDX = [
     ['accounts', 'r-steam', 'Steam', 'compte clé api web key déconnecter clé web api'], ['accounts', 'r-discord', 'Discord', 'serveur vocal membres client secret widget id serveur application avancé'], ['accounts', 'r-bf6', 'Profil Battlefield 6', 'ea stats compte bf6 pseudo'], ['accounts', 'r-psn', 'PlayStation', 'psn compte npsso sony jeton'], ['accounts', 'r-epic', 'Epic Games, EA app et GOG', 'origin compte gog galaxy'], ['accounts', 'r-me', 'Pseudo et photo', 'profil nom avatar'],
-    ['rec', 'r-rec', 'Garder mes moments', 'autorecord enregistrement rec clip nvidia highlights kills'], ['rec', 'r-dur', 'Durée d’un clip', 'avant après secondes longueur'], ['rec', 'r-merge', 'Réunir les kills proches', 'doublé fusion multi'], ['rec', 'r-trig', 'Ce qui garde un clip', 'déclencheurs kill headshot triple quadra ace mort automatique'], ['rec', 'r-qual', 'Qualité', 'bitrate mbit résolution fps images légère équilibrée haute'], ['rec', 'r-capm', 'Capture de l’image', 'moteur vidéo chrome obs carte graphique fluide fenêtre du jeu'], ['rec', 'r-game', 'Son du PC', 'audio son du jeu discord'], ['rec', 'r-mic', 'Micro', 'voix microphone piste'], ['rec', 'r-folder', 'Dossier des clips', 'emplacement vidéos chemin'], ['rec', 'r-limit', 'Place maximale', 'stockage disque go espace effacer favoris'], ['rec', 'r-disp', 'Écran filmé', 'moniteur display'], ['rec', 'r-gms', 'Jeux filmés', 'jeux enregistrés tous cs2 bf6'], ['rec', 'r-log', 'Copier le journal', 'diagnostic erreur log souci problème'], ['rec', 'r-cap', 'Essayer la capture comme OBS', 'obs fluide images par seconde saccade freeze essai capture'],
+    ['rec', 'r-rec', 'Garder mes moments', 'autorecord enregistrement rec clip nvidia highlights kills'], ['rec', 'r-dur', 'Durée d’un clip', 'avant après secondes longueur'], ['rec', 'r-merge', 'Réunir les kills proches', 'doublé fusion multi'], ['rec', 'r-trig', 'Ce qui garde un clip', 'déclencheurs kill headshot triple quadra ace mort automatique'], ['rec', 'r-qual', 'Qualité', 'bitrate mbit résolution fps images légère équilibrée haute'], ['rec', 'r-capm', 'Capture de l’image', 'moteur vidéo chrome obs carte graphique fluide fenêtre du jeu'], ['rec', 'r-game', 'Son du PC', 'audio son du jeu discord'], ['rec', 'r-mic', 'Micro', 'voix microphone piste'], ['rec', 'r-folder', 'Dossier des clips', 'emplacement vidéos chemin'], ['rec', 'r-limit', 'Place maximale', 'stockage disque go espace effacer favoris'], ['rec', 'r-disp', 'Écran filmé', 'moniteur display'], ['rec', 'r-gms', 'Jeux filmés', 'jeux enregistrés tous cs2 bf6'], ['rec', 'r-log', 'Copier le journal', 'diagnostic erreur log souci problème'], ['rec', 'r-cap', 'Essayer la capture comme OBS', 'obs fluide images par seconde saccade freeze essai capture 1080p réduit'], ['rec', 'r-disc', 'Mon Discord', 'nitro basic partage partager copier limite poids taille 20 mo 50 mo 500 mo envoyer fichier trop lourd'],
     ['overlay', 'r-ovcs', 'Overlay de Counter-Strike 2', 'cs2 hud style verre apple'],
     ['edit', 'r-eng', 'Moteur vidéo', 'montage film frag movie export rendu ffmpeg encodeur carte graphique nvidia amd intel essai tester'], ['about', 'r-ffm', 'Licence du moteur vidéo', 'ffmpeg lgpl sources logiciel libre'],
     ['routine', 'r-rt', 'Créer une routine', 'étapes jouer discord salon fermer appli lancer ordre'],
@@ -38,6 +38,9 @@ const Settings = (() => {
   const QUAL = { light: ['Légère', '1080p, 30 images/s', 10.13], balanced: ['Équilibrée', '1080p, 60 images/s', 20.16], high: ['Haute', 'Ton écran, 60 images/s', 40.19] }
   // Bêta 42 : avec le moteur vidéo, l'image garde la taille de l'écran ; la qualité règle les images par seconde et le débit.
   const QUAL_ENGINE = { light: '30 images/s, 10 Mb/s', balanced: '60 images/s, 20 Mb/s', high: '60 images/s, 40 Mb/s' }
+  // Bêta 46 : la limite d'envoi de chaque compte Discord, en Mo (les mêmes que dans services/sharePlan.ts)
+  const DISCORD = [['free', 'Sans Nitro', 20], ['basic', 'Nitro Basic', 50], ['nitro', 'Nitro', 500]]
+  const discordSub = (k) => `Copier pour Discord fait une copie plus légère des clips de plus de ${(DISCORD.find((x) => x[0] === k) || DISCORD[0])[2]} Mo.`
   // Un moment n'a qu'un genre : un kill à la tête compte comme headshot, le 3e et le 4e kill d'un round comme triple ou quadra, le 5e comme ACE
   const TRIG = [['kill', 'Kill'], ['hs', 'Headshot'], ['multi', 'Triple ou quadra'], ['ace', 'ACE'], ['death', 'Ta mort']]
   const FIXED = { search: ['Ctrl', 'K'], find: ['Ctrl', 'F'], settings: ['Ctrl', ','] }
@@ -221,6 +224,9 @@ const Settings = (() => {
       return
     }
     const stt = Real.clipsLive, on = c.enabled, live = Real.st.settings?.cs2Live !== false
+    // Bêta 46 : le rythme des clips de la dernière partie, sous la méthode de capture ; en couleur d'alerte si des clips sont lents
+    const pace = Shared.clipPace.gamePaceLine(stt?.lastGame)
+    const paceTxt = pace ? ` ${stt.lastGame.slow ? `<em class="rc-err">${esc(pace)}</em>` : esc(pace)}` : ''
     const stateTxt = !on ? 'Coupé, aucun clip n’est gardé'
       : stt?.error ? `<em class="rc-err">${esc(stt.error)}</em> <button class="sr-lnk" id="rLog2">Copier le journal</button>`
       : stt?.status === 'recording' ? `En cours${stt.game ? ` sur ${esc(stt.game)}` : ''}${stt.audio === 'none' ? ', sans le son' : ''}`
@@ -236,10 +242,13 @@ const Settings = (() => {
           <label for="rAfter"><span>Après le moment</span><b class="num" id="rAfterV"></b><input id="rAfter" type="range" min="0" max="30" step="1" value="${c.after}"></label></div>
           <p class="rd-res num" id="rdRes"></p></div>`)}
       ${group('Image et son', `<div class="sb" id="r-qual"><div class="seg3" role="radiogroup" aria-label="Qualité">${Object.entries(QUAL).map(([k, [n, f]]) => `<button class="seg3-b" role="radio" data-q="${k}" aria-checked="${c.quality === k}" tabindex="${c.quality === k ? 0 : -1}"><b>${n}</b><span>${c.capture === 'chrome' ? f : QUAL_ENGINE[k]}</span></button>`).join('')}</div></div>
-        ${row('r-capm', 'Capture de l’image', c.capture === 'chrome' ? 'Par Chrome : moins fluide quand le jeu tourne à fond.' : 'Par la carte graphique, comme OBS. Seule la fenêtre du jeu est filmée.', seg('Capture de l’image', [['engine', 'Moteur vidéo'], ['chrome', 'Chrome']], c.capture || 'engine'))}
+        ${row('r-capm', 'Capture de l’image', `${c.capture === 'chrome' ? 'Par Chrome : moins fluide quand le jeu tourne à fond.' : 'Par la carte graphique, comme OBS. Seule la fenêtre du jeu est filmée.'}${paceTxt}`, seg('Capture de l’image', [['engine', 'Moteur vidéo'], ['chrome', 'Chrome']], c.capture || 'engine'))}
         ${row('r-game', 'Son du PC', '', sw('rGame', c.gameAudio, 'Son du PC'))}
         ${row('r-mic', 'Micro', '', sw('rMic', c.mic, 'Micro'))}`)}
-      ${group('Essai', row('r-cap', 'Essayer la capture comme OBS', '<span id="rCapS">Pendant une partie : lance l’essai, retourne dans ton jeu, il filme 30 s.</span>', '<button class="btn sm" id="rCap">Lancer l’essai</button>'))}
+      </div>
+      ${group('Partage', row('r-disc', 'Mon Discord', `<span id="rDiscS">${discordSub(c.discord)}</span>`, seg('Mon Discord', DISCORD.map(([k, l]) => [k, l]), c.discord || 'free')))}
+      <div class="rec-rest ${on ? '' : 'off'}" ${on ? '' : 'inert'}>
+      ${group('Essai', row('r-cap', 'Essayer la capture comme OBS', '<span id="rCapS">Pendant une partie : lance l’essai, retourne dans ton jeu, il filme moins d’une minute.</span>', '<button class="btn sm" id="rCap">Lancer l’essai</button>'))}
       ${more('rec', 'Jeux filmés, kills proches, dossier, place', `${row('r-gms', 'Jeux filmés', '', seg('Jeux filmés', [['all', 'Tous mes jeux'], ['cs2bf6', 'CS2 et Battlefield 6']], c.games))}
         <div id="rDispBox" hidden></div>
         <div class="sb" id="r-merge"><div class="rd-sl one"><label for="rMerge"><span>Réunir les kills à moins de</span><b class="num" id="rMergeV"></b><input id="rMerge" type="range" min="0" max="30" step="1" value="${c.merge}"></label></div><p class="rd-res" id="rdRes2"></p></div>
@@ -253,6 +262,8 @@ const Settings = (() => {
     bindSeg($('.seg3', b), (v) => { saveClips({ quality: v }); Real.clipsCfg.quality = v; diag() })
     bindSeg($('#r-gms .seg', b), (v) => saveClips({ games: v }))
     bindSeg($('#r-capm .seg', b), (v) => saveClips({ capture: v }).then(() => { const y = b.scrollTop; paint(); b.scrollTop = y; $('#r-capm [aria-checked=true]', el)?.focus() }))
+    // Le partage se règle même quand l'enregistrement est coupé : les clips déjà gardés se copient toujours
+    bindSeg($('#r-disc .seg', b), (v) => { $('#rDiscS', b).textContent = discordSub(v); saveClips({ discord: v }) })
     // Chaque enregistrement remplace Real.clipsCfg : le curseur écrit dans la version du moment, pas dans celle de l'ouverture
     const bind = (id, key) => { const i = $('#' + id, b); i.oninput = () => { Real.clipsCfg[key] = +i.value; diag() }; i.onchange = () => saveClips({ [key]: +i.value }).then(diag) }
     bind('rBefore', 'before'); bind('rAfter', 'after'); bind('rMerge', 'merge'); bind('rLimit', 'limitGb')
@@ -273,9 +284,11 @@ const Settings = (() => {
       })
       try {
         const r = await API.editCaptureTest()
-        const line = r.trials.map((x) => (x.ok ? `${x.label} : ${String(x.fps).replace('.', ',')} images/s` : `${x.label} : raté`)).join(' · ')
-        if (st()) st().textContent = `${line}${r.game ? '' : ' (aucun jeu en cours)'}. Vidéos dans « Essais capture ».`
-        toast(`${ic('check')} Essai fini. ${esc(line)}`, { ms: 12000 })
+        // Bêta 46 : chaque méthode sur sa ligne, avec la taille réelle de l'image filmée (une méthode peut être essayée réduite)
+        const lines = r.trials.map((x) => (x.ok ? `${x.label} : ${String(x.fps).replace('.', ',')} images/s${x.width ? `, image de ${x.width} × ${x.height}` : ''}` : `${x.label} : raté`))
+        if (st()) st().innerHTML = `${lines.map(esc).join('<br>')}<br>${r.game ? '' : 'Aucun jeu en cours. '}Vidéos dans « Essais capture ».`
+        const short = lines.join(' · ')
+        toast(`${ic('check')} Essai fini. ${short.length <= 120 ? esc(short) : 'Le résultat est sous « Essayer la capture comme OBS ».'}`, { ms: 12000 })
       } catch (err) { if (st()) st().textContent = errText(err); failed(err) }
       finally { off(); btn.removeAttribute('aria-busy'); btn.disabled = false }
     }

@@ -21,7 +21,8 @@ export const DEFAULT_CLIP_SETTINGS: ClipSettings = {
   limitGb: 20,
   games: 'all',
   display: 0,
-  capture: 'engine'
+  capture: 'engine',
+  discord: 'free'
 }
 
 export interface QualityProfile {
@@ -71,7 +72,8 @@ export function cleanClipSettings(raw: unknown, base: ClipSettings = DEFAULT_CLI
     limitGb: typeof r.limitGb === 'number' && Number.isFinite(r.limitGb) ? Math.min(5000, Math.max(0.001, r.limitGb)) : base.limitGb,
     games: r.games === 'all' || r.games === 'cs2bf6' ? r.games : base.games,
     display: clampInt(r.display, 0, Number.MAX_SAFE_INTEGER, base.display),
-    capture: r.capture === 'engine' || r.capture === 'chrome' ? r.capture : base.capture
+    capture: r.capture === 'engine' || r.capture === 'chrome' ? r.capture : base.capture,
+    discord: r.discord === 'free' || r.discord === 'basic' || r.discord === 'nitro' ? r.discord : base.discord
   }
 }
 

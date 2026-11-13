@@ -1,9 +1,12 @@
 // Types partagés : clips (enregistrement en arrière-plan).
+import type { ClipPace, GamePace } from '../clipPace'
 
 // ---------- clips (enregistrement en arrière-plan, services/clips.ts) ----------
 
 export type ClipKind = 'kill' | 'hs' | 'multi' | 'ace' | 'death' | 'manual'
 export type ClipQuality = 'light' | 'balanced' | 'high'
+/** Le compte Discord de la personne : il fixe le poids maximal d'un fichier envoyé (20, 50 ou 500 Mo). */
+export type ClipDiscord = 'free' | 'basic' | 'nitro'
 
 /** Un événement à l'intérieur d'un clip : un kill, une mort, l'appui sur le raccourci. */
 export interface ClipEvent {
@@ -50,6 +53,8 @@ export interface Clip {
   thumbUrl: string
   /** Une session par partie (de l'ouverture à la fermeture du jeu). */
   sessionId: string
+  /** Bêta 46 : le rythme réel du clip (images par seconde gardées par la capture). Absent des clips plus anciens et des films. */
+  pace?: ClipPace
 }
 
 export interface ClipSettings {
@@ -80,6 +85,8 @@ export interface ClipSettings {
    * capté par Chrome et recollé. chrome : l'ancienne capture, image et son par Chrome.
    */
   capture: 'engine' | 'chrome'
+  /** Bêta 46 : « Copier pour Discord » garde le fichier sous la limite de ce compte (un clip trop lourd est copié en plus léger). */
+  discord: ClipDiscord
 }
 
 export interface ClipsState {
@@ -95,6 +102,31 @@ export interface ClipsState {
   error?: string
   /** Secondes disponibles dans le tampon. */
   bufferSeconds?: number
+  /** Bêta 46 : le rythme des clips de la dernière partie finie (absent tant qu'aucune partie n'a fini). */
+  lastGame?: GamePace
+}
+
+/**
+ * Bêta 46 : ce que « Copier pour Discord » a fait.
+ * - copied : le fichier est dans le presse-papiers. `reduced` : c'est une copie plus légère, fabriquée à côté du clip (sa
+ *   taille d'image, ses images par seconde) ; sans `reduced`, c'est le fichier d'origine, déjà sous la limite.
+ * - too-long : même à la plus petite taille, ce clip ne tient pas sous la limite (`maxS` : la durée la plus longue qui
+ *   tient). Rien n'est copié.
+ * - unmade : la copie légère n'a pas pu être fabriquée (engine : le moteur vidéo manque ou a été modifié ; encode : aucun
+ *   encodeur n'y est arrivé). Rien n'est copié.
+ * - failed : le presse-papiers a refusé (ou l'appli ne tourne pas sous Windows).
+ * `sizeBytes` : le poids de ce qui est copié (copied), sinon celui du fichier d'origine.
+ */
+export type ClipShareResult =
+  | { status: 'copied'; sizeBytes: number; limitMb: number; reduced?: { width: number; height: number; fps: number } }
+  | { status: 'too-long'; sizeBytes: number; limitMb: number; maxS: number }
+  | { status: 'unmade'; sizeBytes: number; limitMb: number; reason: 'engine' | 'encode' }
+  | { status: 'failed' }
+
+/** Bêta 46 : avancement de la fabrication d'une copie légère (0 à 100), pour le bouton « Copier pour Discord ». */
+export interface ClipShareStep {
+  id: string
+  percent: number
 }
 
 export interface ClipDisplay {
