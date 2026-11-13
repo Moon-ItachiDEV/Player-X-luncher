@@ -308,7 +308,7 @@ func drawn(hwnd uintptr, shot string, scale float64, logo logoRect) bool {
 			}
 		}
 		b := img.Bounds()
-		// Le logo est rose autour de la console blanche : part de pixels roses dans son rectangle.
+		// Le blason : contour et chevrons roses sur un écu sombre (environ 20 % de pixels roses dans son rectangle).
 		left, top := int(logo.X*scale), int(logo.Y*scale)
 		right, bottom := left+int(logo.W*scale), top+int(logo.H*scale)
 		pink, all := 0, 0
@@ -327,7 +327,7 @@ func drawn(hwnd uintptr, shot string, scale float64, logo logoRect) bool {
 		}
 		bg := img.RGBAAt(int(20*scale), b.Dy()-int(40*scale))
 		fmt.Printf("capture %d (%s) : %dx%d, logo rose à %d %%, fond %d,%d,%d\n", i, map[bool]string{false: "PrintWindow", true: "écran"}[fromScreen], b.Dx(), b.Dy(), share, bg.R, bg.G, bg.B)
-		if share >= 30 {
+		if share >= 12 {
 			ok = true
 		}
 	}

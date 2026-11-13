@@ -55,7 +55,7 @@ svg{display:block}
 .tbar{position:absolute;inset:0 0 auto;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 24px;z-index:30;pointer-events:none}
 .tbar>*{pointer-events:auto}
 .t-brand{display:flex;align-items:center;gap:12px;min-height:44px;font:600 16px/1.25 var(--brand);letter-spacing:-.01em;border-radius:8px}
-.t-brand .mark{width:41px;height:25px}.t-brand .wm{display:block;height:15px}.t-brand .wm svg{display:block;height:100%;width:auto}
+.t-brand .mark{width:24px;height:28px}.t-brand .wm{display:block;height:15px}.t-brand .wm svg{display:block;height:100%;width:auto}
 .t-brand .mark svg{width:100%;height:100%}
 .t-ctrl{display:flex;align-items:center;gap:2px;color:var(--t2)}
 .t-ctrl button{width:40px;height:32px;display:grid;place-items:center;border-radius:8px;transition:background-color .15s,color .15s}
