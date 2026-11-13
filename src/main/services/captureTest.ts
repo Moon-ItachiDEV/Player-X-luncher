@@ -4,7 +4,7 @@ import { CS2_GAME_ID } from '@shared/cs2'
 import type { CaptureTestResult, CaptureTestStep } from '@shared/types'
 import { UserError } from '../errors'
 import { gameExeRegex, readProgress, trialArgs, trialsFor, TRIAL_ATTEMPTS, TRIAL_S, type TrialMode } from './captureTestArgs'
-import { captureTestContext, clipsLogLine } from './clips'
+import { captureTestContext, clipsLogLine, videoSizeOf } from './clips'
 import { scrub } from './editEngineRules'
 import { filmEngine } from './editFfmpeg'
 
@@ -12,6 +12,8 @@ import { filmEngine } from './editFfmpeg'
 // dans le jeu, puis chaque méthode filme 10 s avec le moteur vidéo, l'image restant dans la carte graphique
 // (captureTestArgs.ts). Le résultat (images par seconde) s'affiche et s'écrit dans le journal des clips ; les vidéos d'essai
 // restent dans « Essais capture », dans le dossier des clips. La capture habituelle continue pendant ce temps.
+// Bêta 46 : sur un écran plus grand que 1920 × 1080, les deux méthodes gfxcapture sont aussi essayées réduites (la réduction
+// intégrée à la capture, pas scale_d3d11). Le résultat donne la taille réelle de l'image, relue dans chaque vidéo d'essai.
 
 const WAIT_S = 10
 const TRIAL_TIMEOUT_MS = (TRIAL_S + 25) * 1000
@@ -30,7 +32,7 @@ export async function runCaptureTest(onStep: (s: CaptureTestStep) => void): Prom
     const ctx = await captureTestContext()
     const dir = join(ctx.folder, 'Essais capture')
     await mkdir(dir, { recursive: true })
-    const trials = trialsFor(gameExeRegex(ctx.game, CS2_GAME_ID))
+    const trials = trialsFor(gameExeRegex(ctx.game, CS2_GAME_ID), ctx.screen)
     for (let s = WAIT_S; s > 0; s--) {
       onStep({ phase: 'wait', seconds: s })
       await sleep(1000)
@@ -40,7 +42,9 @@ export async function runCaptureTest(onStep: (s: CaptureTestStep) => void): Prom
     const MODE_WORD: Record<TrialMode, string> = { gpu: 'tout dans la carte graphique', 'gpu-auto': 'carte graphique, périphérique de la source', copie: 'copie par le processeur avant l’encodeur' }
     for (const [i, t] of trials.entries()) {
       onStep({ phase: 'run', label: t.label, index: i + 1, total: trials.length })
-      const name = `Essai ${stamp()} ${t.id}.mp4`
+      // Un essai réduit a le même genre que son essai à la taille de l'écran : son nom et son identifiant le distinguent.
+      const id = 'scale' in t && t.scale ? `${t.id}-reduit` : t.id
+      const name = `Essai ${stamp()} ${id}.mp4`
       const out = join(dir, name)
       let done: CaptureTestResult['trials'][number] | null = null
       let lastErr = ''
@@ -49,7 +53,9 @@ export async function runCaptureTest(onStep: (s: CaptureTestStep) => void): Prom
         const p = readProgress(r.out)
         const size = await stat(out).then((x) => x.size, () => 0)
         if (r.code === 0 && p && p.frames > 0 && size > 0) {
-          done = { id: t.id, label: t.label, ok: true, fps: p.fps, frames: p.frames, encoder: `${at.encoder}, ${MODE_WORD[at.mode]}`, file: name }
+          // La taille réelle de l'image, relue dans la vidéo : c'est elle qui dit si la réduction a eu lieu.
+          const image = await videoSizeOf(out)
+          done = { id, label: t.label, ok: true, fps: p.fps, frames: p.frames, encoder: `${at.encoder}, ${MODE_WORD[at.mode]}`, file: name, ...(image ?? {}) }
           // Cette manière marche : les essais suivants commencent par elle.
           attempts = [at, ...attempts.filter((x) => x !== at)]
           break
@@ -66,9 +72,9 @@ export async function runCaptureTest(onStep: (s: CaptureTestStep) => void): Prom
         clipsLogLine(`Essai de capture « ${t.label} », ${at.encoder} (${MODE_WORD[at.mode]}) raté :`)
         for (const l of keep) clipsLogLine(`  ${scrub(l, hide)}`)
       }
-      done ??= { id: t.id, label: t.label, ok: false, error: (lastErr || 'échec').slice(0, 200) }
+      done ??= { id, label: t.label, ok: false, error: (lastErr || 'échec').slice(0, 200) }
       results.push(done)
-      clipsLogLine(done.ok ? `Essai de capture « ${t.label} » (${done.encoder}, ${ctx.quality.maxWidth ? `${ctx.quality.maxWidth}×${ctx.quality.maxHeight}` : 'taille de l’écran'}) : ${done.frames} images en ${TRIAL_S} s, ${done.fps} par seconde.` : `Essai de capture « ${t.label} » : toutes les manières ont raté.`)
+      clipsLogLine(done.ok ? `Essai de capture « ${t.label} » (${done.encoder}, ${done.width ? `image de ${done.width} × ${done.height}` : 'taille de l’image inconnue'}) : ${done.frames} images en ${TRIAL_S} s, ${done.fps} par seconde.` : `Essai de capture « ${t.label} » : toutes les manières ont raté.`)
     }
     onStep({ phase: 'done' })
     return { game: ctx.game?.name ?? null, seconds: TRIAL_S, trials: results }

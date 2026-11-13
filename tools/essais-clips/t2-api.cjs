@@ -60,15 +60,20 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol
     // --- épingle
     check('épingle', (await L('clipsPin', triple.id, true)).pinned === true)
     check('épingle retirée', (await L('clipsPin', triple.id, false)).pinned === false)
-    // --- découpe
+    // --- découpe : une découpe devient un nouveau clip, l'original reste (trimClip, clips.ts)
     const dBefore = renamed.durationS
     const cutStart = 3.2, cutEnd = dBefore - 1.1
     const clockKept0 = clockAt(f2, cutEnd - 0.1, 640, 360)
+    const size2 = fs.statSync(f2).size
+    const mp4s = () => listDir(folder).filter((n) => n.endsWith('.mp4'))
+    const newFile = (before) => path.join(folder, mp4s().find((n) => !before.includes(n)))
+    const before3 = mp4s()
     const trimmed = await L('clipsTrim', triple.id, cutStart, cutEnd)
-    const f3 = fileOf()
+    const f3 = newFile(before3)
     const pr3 = probe(f3)
-    check('découpe : nouveau fichier plus court, même identifiant et même chemin', f3 === f2 && trimmed.id === triple.id && trimmed.durationS < dBefore && trimmed.sizeBytes < renamed.sizeBytes && near(pr3.duration, trimmed.durationS, 0.05), { avant: dBefore, après: trimmed.durationS, ffprobe: pr3.duration })
-    check('découpe : commence sur une image clé avant le début demandé', trimmed.durationS >= cutEnd - cutStart && trimmed.durationS <= cutEnd - cutStart + 2.3, { demandé: cutEnd - cutStart, obtenu: trimmed.durationS })
+    check('découpe : un nouveau clip plus court, l’original reste tel quel', trimmed.id !== triple.id && trimmed.durationS < dBefore && trimmed.sizeBytes < renamed.sizeBytes && near(pr3.duration, trimmed.durationS, 0.05) && fs.existsSync(f2) && fs.statSync(f2).size === size2 && / \(coupé\)\.mp4$/.test(f3) && (await L('clipsList')).length === 2, { avant: dBefore, après: trimmed.durationS, ffprobe: pr3.duration, fichier: path.basename(f3) })
+    // Sans réencodage, le début se cale sur l'image clé la plus proche (une toutes les 2 s) : au plus 1 s d'écart.
+    check('découpe : commence sur l’image clé la plus proche du début demandé', near(trimmed.durationS, cutEnd - cutStart, 1.1), { demandé: cutEnd - cutStart, obtenu: trimmed.durationS })
     const clockKept1 = clockAt(f3, trimmed.durationS - 0.1, 640, 360)
     check('découpe : même dernière image', near(clockKept1, clockKept0, 150), { écart: clockKept1 - clockKept0 })
     check('découpe : décodage complet sans erreur', decodeCheck(f3).ok)
@@ -80,8 +85,10 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol
       const at = v.currentTime; v.remove(); return { d, at }
     }, trimmed.videoUrl)
     check('découpe : durée et avance rapide dans video', near(seek.d, trimmed.durationS, 0.1) && near(seek.at, seek.d * 0.7, 0.05), seek)
-    const again = await L('clipsTrim', triple.id, 0, 1.5)
-    check('deuxième découpe (MP4 déjà coupé)', again.durationS >= 1.4 && decodeCheck(f3).ok && near(probe(f3).duration, again.durationS, 0.05), { d: again.durationS, p: probe(f3).streams })
+    const before4 = mp4s()
+    const again = await L('clipsTrim', trimmed.id, 0, 1.5)
+    const f4 = newFile(before4)
+    check('deuxième découpe (MP4 déjà coupé) : un troisième clip', again.id !== trimmed.id && again.durationS >= 1.4 && decodeCheck(f4).ok && near(probe(f4).duration, again.durationS, 0.05) && fs.existsSync(f3), { d: again.durationS, p: probe(f4).streams })
     const err2 = await L('clipsTrim', triple.id, 5, 5.1).then(() => null, (e) => String(e))
     check('découpe trop courte refusée', /Découpe invalide/.test(err2 || ''), err2)
     // --- suite : un clip par kill séparé (écart > merge)
@@ -91,8 +98,8 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol
     await simPost(app, payload({ round: 2, kills: 4, rk: 1 }))
     await sleep(2500)
     await simPost(app, payload({ round: 2, kills: 5, rk: 2, rhs: 1 }))
-    list = await waitClips(3)
-    check('hors de la fenêtre de fusion : deux clips', list.length === 3, list.map((c) => c.title))
+    list = await waitClips(5)
+    check('hors de la fenêtre de fusion : deux clips', list.length === 5, list.map((c) => c.title))
     // --- déclencheur coupé
     await L('clipsSaveSettings', { triggers: { kill: false } })
     await simPost(app, payload({ round: 3, phase: 'freezetime', kills: 5 }))
@@ -103,7 +110,7 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol
     await simPost(app, payload({ round: 3, kills: 7, rk: 2, rhs: 1 }))
     await sleep(300)
     check('headshot encore actif', (await test(app, 'info')).pendings.length === 1)
-    await waitClips(4)
+    await waitClips(6)
     // --- mort, si réglée
     await L('clipsSaveSettings', { triggers: { kill: true, death: true } })
     await simPost(app, payload({ round: 4, phase: 'freezetime', kills: 7 }))
@@ -113,18 +120,18 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol
     await sleep(300)
     const deaths = (await test(app, 'info')).pendings
     check('mort réglée : un clip « Mort »', deaths.length === 1 && deaths[0].kind === 'death', deaths.map((x) => x.kind))
-    list = await waitClips(5)
+    list = await waitClips(7)
     check('titre Mort', list[0].title === 'Mort', list[0].title)
     // --- ace
     await L('clipsSaveSettings', { triggers: { death: false } })
     await simPost(app, payload({ round: 5, phase: 'freezetime', kills: 7 }))
     await simPost(app, payload({ round: 5, phase: 'live', kills: 7 }))
     await simPost(app, payload({ round: 5, kills: 12, rk: 5, rhs: 4 }))
-    list = await waitClips(6)
+    list = await waitClips(8)
     check('ace d’un coup', list[0].title === 'Ace' && list[0].kills === 5 && list[0].headshots === 4, { t: list[0].title, k: list[0].kills })
     // --- manuel
     check('clip manuel accepté', (await test(app, 'saveNow')) === true)
-    list = await waitClips(7)
+    list = await waitClips(9)
     check('titre manuel, carte du match en cours', list[0].title === 'Clip manuel' && list[0].kind === 'manual', { t: list[0].title, map: list[0].map, round: list[0].round })
     // --- vignettes
     await sleep(500)

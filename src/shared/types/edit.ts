@@ -154,5 +154,9 @@ export interface CaptureTestResult {
   /** Le jeu filmé pendant l'essai (null : aucun). */
   game: string | null
   seconds: number
-  trials: Array<{ id: string; label: string; ok: true; fps: number; frames: number; encoder: string; file: string } | { id: string; label: string; ok: false; error: string }>
+  /**
+   * Un résultat par méthode essayée. Bêta 46 : `width` et `height` sont la taille réelle de l'image, relue dans la vidéo d'essai
+   * (absentes si le fichier n'a pas pu être relu) ; une méthode essayée une seconde fois, réduite, a son identifiant en « -reduit ».
+   */
+  trials: Array<{ id: string; label: string; ok: true; fps: number; frames: number; encoder: string; file: string; width?: number; height?: number } | { id: string; label: string; ok: false; error: string }>
 }

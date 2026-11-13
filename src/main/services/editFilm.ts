@@ -92,7 +92,7 @@ const same = <T>(values: readonly T[]): T | undefined => (values.length && value
 export async function startFilm(ids: unknown): Promise<FilmState> {
   if (busy) throw new UserError('Un film est déjà en cours de fabrication.')
   if (gameRunning()) throw new UserError('Un jeu tourne. Fais ton film après ta partie : la fabrication gênerait ton jeu.')
-  if (!filmEngine.begin()) throw new UserError('Le moteur vidéo est en cours d’essai. Relance le film dans un instant.')
+  if (!filmEngine.begin()) throw new UserError(filmEngine.heldBy() === 'share' ? 'Une copie pour Discord est en préparation. Relance le film dans quelques secondes.' : 'Le moteur vidéo est en cours d’essai. Relance le film dans un instant.')
   busy = true
   stopWhy = null
   let job: Job

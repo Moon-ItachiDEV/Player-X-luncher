@@ -164,8 +164,11 @@ async function reportContext(): Promise<{ app: string; build: string; system: st
 
 let testing: Promise<EditEngine> | null = null
 let stopAsked = false
-/** Un film est en cours de fabrication (services/editFilm.ts) : pas d'essai pendant ce temps, un seul ffmpeg à la fois. */
-let filming = false
+/**
+ * Ce qui tient le moteur : un film (services/editFilm.ts) ou, depuis la bêta 46, une copie pour Discord (clipsShare.ts). Pas
+ * d'essai pendant ce temps, un seul ffmpeg à la fois.
+ */
+let holder: 'film' | 'share' | null = null
 
 export async function engine(): Promise<EditEngine> {
   const status = await fileStatus()
@@ -203,7 +206,8 @@ async function doTest(onStep: (s: EditEngineStep) => void): Promise<void> {
   if (status === 'missing') throw new UserError('Le moteur vidéo manque. Réinstalle Player X V3 Test pour le remettre.')
   if (status === 'damaged') throw new UserError('Le moteur vidéo a été modifié depuis l’installation. Réinstalle Player X V3 Test pour le remettre.')
   if (gameRunning()) throw new UserError('Un jeu tourne. Teste le moteur après ta partie : l’essai gênerait ton jeu.')
-  if (filming) throw new UserError('Un film est en cours de fabrication. Teste le moteur quand il sera prêt.')
+  if (holder === 'share') throw new UserError('Une copie pour Discord est en préparation. Teste le moteur dans quelques secondes.')
+  if (holder) throw new UserError('Un film est en cours de fabrication. Teste le moteur quand il sera prêt.')
   const work = await mkdtemp(join(app.getPath('temp'), 'px-moteur-'))
   const hide = [work, app.getPath('temp'), app.getPath('home')]
   const stopped = (): void => {
@@ -285,22 +289,25 @@ async function doTest(onStep: (s: EditEngineStep) => void): Promise<void> {
 const FILM_ENCODER_KEY = 'editFilmEncoder'
 
 /**
- * Le moteur, pour un film : son état, puis `run` pour lancer ffmpeg (un seul à la fois, priorité basse, sortie standard au fil
- * de l'eau) et `stop` pour couper celui qui tourne. `begin` renvoie faux si un essai du moteur est en cours ; `end` rend la main.
+ * Le moteur, pour un film ou une copie pour Discord : son état, puis `run` pour lancer ffmpeg (un seul à la fois, priorité
+ * basse, sortie standard au fil de l'eau) et `stop` pour couper le film qui tourne. `begin` renvoie faux si un essai du moteur,
+ * un film ou une copie tient déjà le moteur (`heldBy` dit lequel des deux derniers) ; `end` rend la main.
  */
 export const filmEngine = {
   status: (): Promise<EditEngine['status']> => fileStatus(),
-  begin(): boolean {
-    if (testing || filming) return false
-    filming = true
+  begin(who: 'film' | 'share' = 'film'): boolean {
+    if (testing || holder) return false
+    holder = who
     return true
   },
   end(): void {
-    filming = false
+    holder = null
   },
+  heldBy: (): 'film' | 'share' | null => holder,
   run: (args: string[], cwd: string, timeoutMs: number, onOut?: (chunk: string) => void, priority: 'low' | 'normal' = 'low'): Promise<EngineRun> => run(args, cwd, timeoutMs, onOut, priority),
+  /** Coupe le film en cours. Jamais une copie pour Discord : elle ne dure que quelques secondes. */
   stop(): void {
-    if (filming) child?.kill()
+    if (holder === 'film') child?.kill()
   },
   /** Les encodeurs à essayer, dans l'ordre (le dernier qui a fabriqué un film, ceux de l'essai, puis les autres). */
   async encoders(): Promise<string[]> {

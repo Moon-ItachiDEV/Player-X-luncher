@@ -62,6 +62,12 @@ test('réglages : valeurs sûres par défaut, tout est vérifié', () => {
   assert.equal(next.before, 30)
   assert.equal(next.quality, 'high')
   assert.equal(next.mic, true)
+  // Le compte Discord : sans Nitro par défaut, une valeur inconnue garde l'ancienne.
+  assert.equal(s.discord, 'free')
+  assert.equal(cleanClipSettings({ discord: 'basic' }).discord, 'basic')
+  assert.equal(cleanClipSettings({ discord: 'nitro' }).discord, 'nitro')
+  assert.equal(cleanClipSettings({ discord: 'boost' }, { ...DEFAULT_CLIP_SETTINGS, discord: 'nitro' }).discord, 'nitro')
+  assert.equal(cleanClipSettings({ before: 30 }, { ...DEFAULT_CLIP_SETTINGS, discord: 'basic' }).discord, 'basic')
 })
 
 test('fenêtre : before + after autour de l’événement, on attend le plus long de after et merge', () => {

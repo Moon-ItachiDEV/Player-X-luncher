@@ -22,6 +22,8 @@ const Clips = (() => {
   const gameOf = (c) => Real.byRid(c.gameId)
   const whereOf = (c) => (c.map ? Shared.cs2.mapLabel(c.map) : c.gameName)
   const noteOf = (c) => [c.round ? `Round ${c.round}` : '', c.kills ? `${c.kills} kill${c.kills > 1 ? 's' : ''}` : c.kind === 'manual' ? 'Gardé à la main' : '', c.headshots ? `${c.headshots} à la tête` : ''].filter(Boolean).join(', ')
+  // Bêta 46 : un clip filmé sous le seuil le dit (« Filmé à 46 images/s »). Rien pour les autres, ni pour les films.
+  const slowOf = (c) => Shared.clipPace.paceNote(c.pace)
   // Un film monté à partir de clips est rangé avec eux (kind « film »). Sa fabrication se passe dans le processus principal :
   // la page envoie les identifiants des clips, puis suit l'avancement.
   let film = { status: 'idle' }
@@ -46,10 +48,17 @@ const Clips = (() => {
     })
     // Un problème se dit une fois : pas de nouvelle alerte tant que c'est le même
     let lastErr = live?.error || ''
+    // Bêta 46 : le rythme des clips se dit une fois, quand la partie finit (jamais pendant), et seulement s'il y a un souci
+    let paceAt = live?.lastGame?.at || 0
     API.onClipsState((s) => {
       Real.clipsLive = s; Settings.sync()
       if (s.error && s.error !== lastErr) toast(esc(s.error), { tone: 'warn', ms: 7000, action: { label: 'Voir les réglages', fn: () => Settings.open('rec') } })
       lastErr = s.error || ''
+      if (s.lastGame && s.lastGame.at > paceAt) {
+        paceAt = s.lastGame.at
+        const slow = Shared.clipPace.gamePaceAlert(s.lastGame)
+        if (slow) toast(esc(slow), { tone: 'warn', ms: 9000, action: { label: 'Voir les réglages', fn: () => Settings.go('rec', 'r-capm') } })
+      }
     })
     Real.applyGames()
   }
@@ -138,7 +147,7 @@ const Clips = (() => {
       <span class="ct-frame">${pick ? `<span class="ct-chk">${ic('check')}</span>` : ''}<img src="${esc(c.thumbUrl)}" alt="" loading="lazy" decoding="async" draggable="false" data-fb="1"><i class="ct-shade"></i>
         <span class="ct-time num">${fmtTime(c.durationS)}</span><span class="ct-flags">${isFilm(c) ? `<span class="ct-film">${ic('film')}</span>` : ''}${c.pinned ? `<span class="ct-star">${ic('starf')}</span>` : ''}</span>
       </span>
-      <span class="ct-t"><b>${esc(c.title)}</b><span>${esc(isFilm(c) ? T.capitalize(T.timeAgo(c.at)) : noteOf(c) || whereOf(c))}</span></span>
+      <span class="ct-t"><b>${esc(c.title)}</b><span>${esc(isFilm(c) ? T.capitalize(T.timeAgo(c.at)) : [slowOf(c), noteOf(c) || whereOf(c)].filter(Boolean).join(' · '))}</span></span>
     </button>`
   }
   // Survoler un clip le lit sans le son : l'image fixe ne dit pas tout
@@ -242,6 +251,7 @@ const Clips = (() => {
         <div class="cell-edit cp-tt" id="cpCell"><button type="button" class="cell-display cp-title" id="cpTitle" data-tip="Renommer le ${wordOf(c)}" data-tip-l>${esc(c.title)}</button><input class="cell-input cp-title" id="cpTitleI" hidden maxlength="80" value="${esc(c.title)}" aria-label="Nom du ${wordOf(c)}" autocomplete="off" spellcheck="false"></div>
         <p class="cp-det">${esc(T.capitalize(T.timeAgo(c.at)))}</p>
         ${noteOf(c) ? `<p class="cp-det">${esc(noteOf(c))}</p>` : ''}
+        ${slowOf(c) ? `<p class="cp-det cp-slow">${esc(slowOf(c))}</p>` : ''}
         <button class="btn rose cp-share" id="cpShare">${ic('copy')}<span>Copier pour Discord</span></button>
         <p class="cp-size num" id="cpSize"></p>
         <div class="cp-acts">
@@ -353,18 +363,34 @@ const Clips = (() => {
     const full = `${Math.round(whole)} s, ${sizeLabel(c)}${c.width ? `, ${c.width} × ${c.height}` : ''}.`
     $('#cpSize').textContent = d < whole - .05 ? `${full} Coupe : environ ${Math.round(d)} s.` : full
   }
-  // Le fichier lui-même dans le presse-papiers : Ctrl V dans Discord l'envoie tel quel
-  async function copy(c, b) {
+  // Le fichier lui-même dans le presse-papiers : Ctrl V dans Discord l'envoie tel quel.
+  // Bêta 46 : il doit passer sous la limite du compte Discord (Paramètres, Mon Discord). Un fichier trop lourd est copié en
+  // plus léger : la copie se fabrique à côté, l'original ne change pas, et le bouton suit la fabrication. `original` : le
+  // fichier d'origine quel que soit son poids (proposé quand la copie légère n'a pas pu se faire).
+  const maxText = (s) => (s >= 60 ? `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}` : `${s} s`)
+  async function copy(c, b, { original = false } = {}) {
     if (b.getAttribute('aria-busy')) return
     const lab = $('span', b) || b, old = lab.textContent
+    const size = (n) => esc(Shared.steamUpdate.formatBytes(n || 0))
     b.setAttribute('aria-busy', 'true'); lab.textContent = 'Copie…'
+    const off = original ? null : API.onClipsShare?.((s) => { if (s.id === c.id) lab.textContent = `Préparation… ${s.percent} %` })
     try {
-      if (!(await API.clipsCopyFile(c.id))) throw new Error(`Le ${wordOf(c)} n’a pas pu aller dans le presse-papiers. Ouvre le dossier et glisse le fichier dans Discord.`)
-      lab.textContent = 'Prêt : Ctrl V dans Discord'
-      toast(`${ic('check')} ${isFilm(c) ? 'Film' : 'Clip'} dans le presse-papiers, ${esc(sizeLabel(c))}`, { ms: 2400 })
-      setTimeout(() => { if (lab.isConnected) lab.textContent = old }, 2600)
+      const r = original || !API.clipsShare ? ((await API.clipsCopyFile(c.id)) ? { status: 'copied', sizeBytes: c.sizeBytes } : { status: 'failed' }) : await API.clipsShare(c.id)
+      if (r.status === 'failed') throw new Error(`Le ${wordOf(c)} n’a pas pu aller dans le presse-papiers. Ouvre le dossier et glisse le fichier dans Discord.`)
+      if (r.status === 'copied') {
+        lab.textContent = 'Prêt : Ctrl V dans Discord'
+        if (r.reduced) toast(`${ic('check')} Copie légère dans le presse-papiers : ${size(r.sizeBytes)}, ${r.reduced.width} × ${r.reduced.height}, ${r.reduced.fps} images/s`, { ms: 6000, action: { label: 'Mon Discord', fn: () => Settings.go('rec', 'r-disc') } })
+        else toast(`${ic('check')} ${isFilm(c) ? 'Film' : 'Clip'} dans le presse-papiers, ${size(r.sizeBytes)}`, { ms: 2400 })
+        setTimeout(() => { if (lab.isConnected) lab.textContent = old }, 2600)
+      } else {
+        // Rien n'a été copié : on dit pourquoi, et l'original reste à un clic
+        lab.textContent = old
+        const why = r.status === 'too-long' ? `Trop long pour ${r.limitMb} Mo : ${maxText(r.maxS)} au plus. ${isFilm(c) ? 'Refais-le plus court' : 'Raccourcis-le'}, ou copie l’original (${size(r.sizeBytes)}).`
+          : `${r.reason === 'engine' ? 'Moteur vidéo absent ou modifié : pas de copie légère' : 'La copie légère n’a pas pu être fabriquée'}. L’original pèse ${size(r.sizeBytes)}, pour ${r.limitMb} Mo acceptés.`
+        toast(why, { tone: 'warn', ms: 12000, action: { label: 'Copier l’original', fn: () => copy(c, b, { original: true }) } })
+      }
     } catch (e) { lab.textContent = old; toast(esc(errText(e)), { tone: 'warn', ms: 5000 }) }
-    b.removeAttribute('aria-busy')
+    off?.(); b.removeAttribute('aria-busy')
   }
   function seek(t) { if (!player) return; player.vid.currentTime = clamp(t, player.inS, player.outS) }
   function playerToggle() { if (!player) return; const v = player.vid; if (v.paused) v.play().catch(() => {}); else v.pause() }
