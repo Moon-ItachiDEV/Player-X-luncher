@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Installation</title>
+<!-- Installeur : la page de la fenêtre (installer/main.go). Polices, logo et icône intégrés à la construction
+     (scripts/build-installer-v3test.mjs pour Player X V3 Test, scripts/build-installer.mjs pour Player X).
+     Rien n'est chargé depuis Internet. Le nom de l'appli vient de pxInfo : la même page sert aux deux.
+     Design « La scène » (9 novembre) : la console est le produit présenté sur scène, au centre, sur un halo rose.
+     Elle ne bouge jamais d'un écran à l'autre ; seul ce qui est dessous change. Elle sert de chargeur (barre d'écran),
+     s'éteint en cas d'erreur et s'allume à la fin : c'est le seul moment fort.
+     Repère facultatif __PX_WORDMARK__ (dans un commentaire HTML, sous la console) : le mot « PLAYER X » (WORDMARK de
+     v3ui/constants.js, ids pxc- renommés pxi- comme le logo). Sans lui, un texte le remplace. -->
+<style>
+/*__PX_FONTS__*/
+:root {
+  color-scheme: dark;
+  --ink: #08060b;
+  --bone: #f7f1f4; --t2: rgba(247, 241, 244, .78); --t3: rgba(247, 241, 244, .62); --t4: rgba(247, 241, 244, .42);
+  --hair: rgba(255, 236, 243, .1); --hair2: rgba(255, 236, 243, .2);
+  --rose: #ff5c86; --rose-hi: #ff7d9f; --on-rose: #2a0612; --rose-t: #ff9db5;
+  --danger: #ff7a5c; --danger-t: #ffa58f;
+  --glass: rgba(16, 11, 18, .55); --glass-2: rgba(20, 14, 23, .78);
+  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, .11), inset 0 1px 0 rgba(255, 255, 255, .07);
+  --f: 'Archivo', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --brand: 'Sora', 'Archivo', 'Segoe UI', sans-serif;
+  --e-out: cubic-bezier(.23, 1, .32, 1); --e-md: cubic-bezier(.2, 0, 0, 1); --e-soft: cubic-bezier(.33, 0, .15, 1);
+  /* La scène : taille du dessin de la console (carré 1024 du logo) et place de la console dans la fenêtre. */
+  --s: 540px;
+  --stage-top: 96px;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--ink); color: var(--bone); font: 400 14px/1.5 var(--f); -webkit-font-smoothing: antialiased; user-select: none; }
+h1, p { margin: 0; }
+h1 { text-wrap: balance; }
+p { text-wrap: pretty; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--rose-hi); outline-offset: 2px; }
+h1:focus { outline: none; }
+.nb { white-space: nowrap; }
+
+/* Fenêtre : de l'encre, une lumière de scène très douce qui tombe d'en haut sur la console. */
+.win { position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden; isolation: isolate;
+  background: radial-gradient(34% 62% at 50% -8%, rgba(255, 214, 226, .07), transparent 72%), var(--ink); }
+.win::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); pointer-events: none; z-index: 5; }
+
+/* Barre de titre : on déplace la fenêtre en la tenant. */
+.bar { position: relative; z-index: 3; flex: none; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 4px 0 16px; }
+.bar img { width: 18px; height: 18px; border-radius: 5px; }
+.bar-title { flex: 1; font: 500 12.5px/1 var(--f); color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wbtn { display: grid; place-items: center; width: 44px; height: 36px; border-radius: 8px; color: var(--t3); transition: background-color .15s, color .15s; }
+.wbtn:hover { background: rgba(255, 255, 255, .07); color: var(--bone); }
+.wbtn.close:hover { background: #c42b1c; color: #fff; }
+.wbtn:disabled { opacity: .3; pointer-events: none; }
+
+/* La scène : la console à place fixe, le texte dessous. */
+.scene { position: relative; flex: 1; min-height: 0; }
+.stage { position: absolute; left: 50%; top: var(--stage-top); translate: -50% 0; width: calc(var(--s) * 800 / 1024); height: calc(var(--s) * 434 / 1024);
+  transform: translateY(var(--lift, 0px)) scale(var(--shrink, 1)); transition: transform .8s var(--e-soft); }
+
+/* Le halo rose sous la console et le reflet du sol, comme un produit posé sur scène. */
+.halo, .floor, .bloom { position: absolute; left: 50%; pointer-events: none; }
+.halo { top: 50%; width: 760px; height: 520px; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 92, 134, .26), rgba(224, 64, 101, .12) 46%, rgba(163, 18, 63, .04) 72%, transparent);
+  transition: opacity 1.4s var(--e-soft), scale 1.8s var(--e-soft), filter 1.4s var(--e-soft); }
+.floor { top: calc(100% - 6px); width: 520px; height: 90px; translate: -50% 0; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 157, 181, .14), rgba(255, 92, 134, .05) 60%, transparent);
+  transition: opacity 1.4s var(--e-soft); }
+/* L'allumage (fin) : une lumière qui monte derrière la console, puis reste. */
+.bloom { top: 46%; width: 560px; height: 380px; translate: -50% -50%; border-radius: 50%; opacity: 0;
+  background: radial-gradient(closest-side, rgba(255, 196, 212, .34), rgba(255, 92, 134, .16) 50%, transparent); }
+
+.console { position: absolute; inset: 0; animation: pxLogo 1.1s .05s var(--e-soft) both; transition: filter 1.2s var(--e-soft), translate 1.6s var(--e-soft); }
+.console .logo, .console > img { position: absolute; display: block; width: var(--s); height: var(--s); left: calc(var(--s) * -112 / 1024); top: calc(var(--s) * -290 / 1024); }
+.console .logo svg { display: block; width: 100%; height: 100%; }
+.console > img { width: 70%; height: auto; left: 15%; top: -20%; }
+@keyframes pxLogo { from { opacity: 0; scale: .96; } }
+.tag { position: absolute; left: 50%; bottom: -12px; translate: -50% 0; padding: 7px 18px 6px; border-radius: 999px; background: #140a10; color: #fff;
+  font: 800 19px/1 var(--f); letter-spacing: .06em; box-shadow: 0 0 0 3px #ffd3dc, 0 10px 24px -6px rgba(0, 0, 0, .6); }
+
+/* Pièces animées du logo V3 (mêmes classes que dans l'appli : v3ui/constants.js, LOGO_FULL). */
+.logo .l-bar { transform-box: fill-box; transform-origin: 0 50%; transform: scaleX(var(--bar, .4)); transition: transform .6s var(--e-md); }
+.logo .l-scr { transform-box: fill-box; transform-origin: 50% 50%; transition: opacity 1s var(--e-md); }
+.logo .l-p, .logo .l-x { transform-box: fill-box; transform-origin: 50% 50%; transition: transform .9s var(--e-soft), filter .9s var(--e-soft); }
+.logo .l-gp, .logo .l-gx { transition: opacity .9s var(--e-soft); }
+.logo.busy .l-blink { animation: lgBreath 3.2s var(--e-md) infinite; }
+.logo.lit .l-gx, .logo.lit .l-gp { opacity: .85; }
+.logo.lit .l-x, .logo.lit .l-p { transform: scale(1.05); filter: brightness(1.45) saturate(1.25); }
+.logo.lit .l-blink { opacity: .1; animation: lgOn 1.8s .1s var(--e-out) both; }
+.logo.dark .l-scr { opacity: 0; }
+@keyframes lgBreath { 0%, 100% { opacity: 0; } 50% { opacity: .14; } }
+@keyframes lgOn { 0% { opacity: 0; } 24% { opacity: .42; } 100% { opacity: .1; } }
+
+/* État de la scène : fin (allumée), erreur (éteinte). */
+.scene.is-done .halo { scale: 1.12; }
+.scene.is-done .bloom { opacity: .9; animation: pxBloom 2.2s .1s var(--e-out) both; }
+.scene.is-done .console { filter: drop-shadow(0 0 36px rgba(255, 92, 134, .35)); translate: 0 -4px; }
+@keyframes pxBloom { 0% { opacity: 0; scale: .7; } 30% { opacity: 1; } 100% { opacity: .9; scale: 1; } }
+.scene.is-err .halo { opacity: .35; filter: saturate(.4); }
+.scene.is-err .floor { opacity: .4; }
+.scene.is-err .console { filter: saturate(.55) brightness(.78); }
+
+/* Sous la console : un seul écran à la fois, centré. */
+.below { position: absolute; left: 0; right: 0; top: calc(var(--stage-top) + var(--s) * 434 / 1024 + 34px); bottom: 0;
+  display: flex; flex-direction: column; align-items: center; padding: 0 48px; text-align: center; }
+.below > * { animation: pxIn .7s .12s var(--e-soft) both; }
+.is-done .below > * { animation-delay: .1s; animation-duration: .35s; }
+@keyframes pxIn { from { opacity: 0; translate: 0 6px; } }
+
+/* Le mot « PLAYER X » (dessin sur mesure) ; un texte le remplace si la page est construite sans lui. */
+.mark { display: block; width: 360px; transition: opacity .3s var(--e-md); }
+#markArt { display: block; }
+.mark svg { width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 2px 10px rgba(0, 0, 0, .5)); }
+.mark-txt { font: 700 34px/1 var(--brand); letter-spacing: .14em; color: var(--bone); }
+.mark-txt b { font-weight: inherit; color: var(--rose); }
+.line { margin-top: 18px; max-width: 540px; font: 400 15px/22px var(--f); color: var(--t3); transition: opacity .3s var(--e-md); }
+.line.is-short { color: var(--danger-t); }
+
+/* L'îlot de verre (comme la barre du bas et le bloc « Jouer » de l'appli) : un bouton rose, une action discrète. */
+.isle-wrap { position: relative; margin-top: 34px; }
+.isle { display: inline-flex; align-items: center; gap: 6px; padding: 6px; border-radius: 24px; background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: var(--glass-edge), 0 24px 48px -24px rgba(0, 0, 0, .8); }
+.go { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 196px; height: 54px; padding: 0 30px; border-radius: 18px;
+  background: linear-gradient(180deg, #f47995, #df4468); color: var(--on-rose); font: 600 17px/1 var(--f); letter-spacing: .005em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -2px 0 rgba(110, 8, 38, .28), 0 14px 30px -14px rgba(255, 92, 134, .7);
+  transition: background-color .2s, scale .15s var(--e-out); }
+.go svg { width: 18px; height: 18px; flex: none; }
+.go:hover { background: linear-gradient(180deg, #ff8aa5, #e8507a); }
+.go:active { scale: .98; }
+.go.is-quiet { background: rgba(255, 255, 255, .1); color: var(--bone); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
+.go.is-quiet:hover { background: rgba(255, 255, 255, .15); }
+.sec { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 54px; padding: 0 18px; border-radius: 18px;
+  font: 500 14px/1 var(--f); color: var(--t2); transition: background-color .15s, color .15s; }
+.sec svg { width: 17px; height: 17px; flex: none; }
+.sec:hover { background: rgba(255, 255, 255, .08); color: var(--bone); }
+.sec[aria-expanded='true'] { background: rgba(255, 255, 255, .1); color: var(--bone); }
+.isle :focus-visible { outline-offset: -2px; }
+.link { min-height: 44px; margin-top: 8px; padding: 0 10px; color: var(--t3); font: 500 13px/1 var(--f); text-decoration: underline; text-decoration-color: var(--hair2); text-underline-offset: 4px; }
+.link:hover { color: var(--bone); }
+
+/* Options : un panneau de verre qui s'ouvre au-dessus de l'îlot. */
+.below.is-opts .mark, .below.is-opts .line { opacity: 0; }
+.panel { position: absolute; left: 50%; bottom: calc(100% + 12px); width: 448px; translate: -50% 0; text-align: left; border-radius: 22px; overflow: hidden;
+  background: var(--glass-2); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: var(--glass-edge), 0 30px 60px -24px rgba(0, 0, 0, .9);
+  transform-origin: 50% 100%; animation: pxPanel .35s var(--e-out) both; }
+@keyframes pxPanel { from { opacity: 0; scale: .97; translate: -50% 6px; } }
+.row { display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 12px 14px 12px 18px; }
+.row + .row { border-top: 1px solid var(--hair); }
+.row-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.k { font: 500 12.5px/16px var(--f); color: var(--t3); }
+.path { font: 500 14px/20px var(--f); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text; }
+.v { font: 500 14.5px/20px var(--f); }
+.hint { font: 400 12.5px/17px var(--f); color: var(--t3); }
+.hint.is-short { color: var(--danger-t); }
+.chip { flex: none; min-height: 44px; padding: 0 16px; border-radius: 14px; background: rgba(255, 255, 255, .08); font: 600 13.5px/1 var(--f); transition: background-color .15s, scale .15s var(--e-out); }
+.chip:hover { background: rgba(255, 255, 255, .14); }
+.chip:active { scale: .97; }
+/* Interrupteurs : toute la ligne se clique. */
+.opt { width: 100%; text-align: left; transition: background-color .15s; }
+.opt:hover { background: rgba(255, 255, 255, .03); }
+.opt:focus-visible { outline-offset: -2px; border-radius: 0; }
+.switch { position: relative; flex: none; width: 44px; height: 26px; border-radius: 999px; background: rgba(255, 255, 255, .14); transition: background-color .25s; }
+.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--t2); transition: transform .25s var(--e-out), background-color .25s; }
+.opt[aria-checked='true'] .switch { background: var(--rose); }
+.opt[aria-checked='true'] .switch::after { transform: translateX(18px); background: var(--on-rose); }
+
+/* Installation : le minimum sous la console. La console elle-même montre la progression. */
+.prog { width: 320px; margin-top: 26px; }
+.state { font: 500 16px/24px var(--f); color: var(--bone); }
+.meter { position: relative; height: 4px; margin-top: 18px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+/* Un reflet passe sur la barre tant qu'elle travaille : on voit que ça avance, même entre deux pourcentages */
+.meter::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .35), transparent); translate: -100% 0; animation: pxSweep 1.6s ease-in-out infinite; }
+@keyframes pxSweep { to { translate: 100% 0; } }
+@media (prefers-reduced-motion: reduce) { .meter::after { animation: none; opacity: 0; } }
+.meter i { position: absolute; inset: 0; border-radius: inherit; background: var(--rose); transform-origin: left; transform: scaleX(var(--p, 0)); transition: transform .6s var(--e-md); }
+.meta { display: flex; justify-content: space-between; margin-top: 10px; font: 500 14px/20px var(--f); color: var(--t2); }
+
+/* Fin et erreur. */
+h1.title { font: 600 40px/1.1 var(--f); font-stretch: 86%; letter-spacing: -.015em; }
+h1.title.is-err { font-size: 30px; }
+/* Le mot « PLAYER X » reste à sa place d'un écran à l'autre : seule la ligne du dessous change */
+.mark.keep { animation: none; }
+
+h1.title.is-small { font: 600 22px/30px var(--f); font-stretch: 90%; letter-spacing: -.01em; margin-top: 18px; }
+.below > .prog { margin-top: 20px; }
+.sub { margin-top: 10px; max-width: 470px; font: 400 15px/22px var(--f); color: var(--t2); }
+.safe { margin-top: 4px; max-width: 470px; font: 400 13.5px/20px var(--f); color: var(--t3); }
+.note { margin-top: 14px; max-width: 470px; font: 400 13px/18px var(--f); color: var(--danger-t); }
+.isle-wrap.is-tight { margin-top: 26px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="win" id="win" role="dialog" aria-labelledby="title">
+  <div class="bar" id="bar">
+    <img src="__PX_ICON__" alt="">
+    <span class="bar-title" id="barTitle">Installation</span>
+    <button type="button" class="wbtn" id="min" aria-label="Réduire"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1 6h10" stroke="currentColor" stroke-width="1.2"></path></svg></button>
+    <button type="button" class="wbtn close" id="close" aria-label="Fermer"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.2"></path></svg></button>
+  </div>
+
+  <div class="scene" id="scene">
+    <div class="stage" aria-hidden="true">
+      <div class="halo"></div>
+      <div class="floor"></div>
+      <div class="bloom"></div>
+      <div class="console" id="console"><!--__PX_LOGO__--><span class="tag" id="tag" hidden>TEST</span></div>
+    </div>
+    <!-- Sous la console : un seul écran visible à la fois (accueil, installation, prêt, erreur). -->
+    <div class="below" id="col"></div>
+  </div>
+</div>
+
+<template id="t-welcome">
+  <h1 class="mark" id="title" tabindex="-1"><span id="markArt"><!--__PX_WORDMARK__--></span><span class="sr" id="markName" hidden></span></h1>
+  <p class="line" id="sub"></p>
+  <div class="isle-wrap">
+    <div class="panel" id="opts" role="group" aria-label="Options d’installation" hidden>
+      <div class="row">
+        <span class="row-txt"><span class="k">Dossier</span><span class="path" id="path"></span><span class="hint num" id="space"></span></span>
+        <button type="button" class="chip" id="pick" hidden>Changer</button>
+      </div>
+      <button type="button" class="row opt" role="switch" aria-checked="true" id="desk"><span class="row-txt"><span class="v">Raccourci sur le Bureau</span></span><span class="switch" aria-hidden="true"></span></button>
+      <button type="button" class="row opt" role="switch" aria-checked="false" id="boot" hidden><span class="row-txt"><span class="v">Démarrer avec Windows</span><span class="hint" id="bootHint"></span></span><span class="switch" aria-hidden="true"></span></button>
+    </div>
+    <div class="isle">
+      <button type="button" class="go" id="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"></path></svg><span id="goLabel">Installer</span></button>
+      <button type="button" class="go is-quiet" id="recheck" hidden>Vérifier à nouveau</button>
+      <button type="button" class="sec" id="optBtn" aria-expanded="false" aria-controls="opts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2.2"></circle><circle cx="9" cy="17" r="2.2"></circle></svg>Options</button>
+    </div>
+  </div>
+</template>
+
+<template id="t-busy">
+  <div class="mark keep" aria-hidden="true"></div>
+  <div class="prog">
+    <h1 class="state" id="title" tabindex="-1"></h1>
+    <div class="meter" aria-hidden="true"><i id="meter"></i></div>
+    <p class="meta num" role="status"><span id="step"></span><span id="pct"></span></p>
+  </div>
+</template>
+
+<template id="t-done">
+  <div class="mark keep" aria-hidden="true"></div>
+  <h1 class="title is-small" id="title" tabindex="-1"></h1>
+  <p class="sub" id="sub"></p>
+  <div class="isle-wrap is-tight">
+    <div class="isle">
+      <button type="button" class="go" id="launch"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"></path></svg><span id="launchLabel"></span></button>
+      <button type="button" class="sec" id="finish">Fermer</button>
+    </div>
+  </div>
+  <p class="note" id="note" role="status" hidden></p>
+</template>
+
+<template id="t-error">
+  <h1 class="title is-err" id="title" tabindex="-1"></h1>
+  <div role="alert">
+    <p class="sub" id="errText"></p>
+    <p class="safe" id="errSafe"></p>
+  </div>
+  <div class="isle-wrap is-tight">
+    <div class="isle">
+      <button type="button" class="go" id="retry"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"></path></svg>Réessayer</button>
+      <button type="button" class="sec" id="classic">Installeur classique</button>
+    </div>
+  </div>
+  <button type="button" class="link" id="copy" hidden>Copier le détail</button>
+</template>
+
+<script>
+'use strict'
+// Liaisons avec l'installeur (main.go) : pxInfo, pxFree, pxPick, pxInstall, pxLaunch, pxClassic, pxDrag, pxMinimize,
+// pxClose, pxReady(place du logo) ; il appelle window.pxProgress({percent, step, error, detail, code, note}) pendant l'installation.
+const $ = (id) => document.getElementById(id)
+const state = {
+  screen: '', dir: '', need: 0, free: 0, busy: false, update: false, version: '', desk: true, boot: false,
+  name: 'Player X', fixed: false, updates: true, bootOpt: true, last: null
+}
+const mo = (b) => Math.max(1, Math.round(b / 1048576)).toLocaleString('fr-FR')
+const size = (b) => (b >= 1073741824 ? (b / 1073741824).toLocaleString('fr-FR', { maximumFractionDigits: b < 10737418240 ? 1 : 0 }) + ' Go' : mo(b) + ' Mo')
+const drive = (d) => (/^[a-z]:/i.test(d) ? 'le disque ' + d[0].toUpperCase() : 'ce disque')
+const logo = () => document.querySelector('#console .logo')
+// Étapes de install.go (0 copie, 1 raccourcis, 2 vérification), chacune en un mot.
+const STEPS = ['Installation des fichiers…', 'Raccourcis…', 'Vérification…', 'Terminé']
+
+// Le logo de la console : barre d'écran = progression, écran qui respire pendant le travail, éteint en cas d'erreur, allumé à la fin.
+function setConsole(mode, p) {
+  const l = logo()
+  const sc = $('scene')
+  sc.classList.toggle('is-done', mode === 'done')
+  sc.classList.toggle('is-err', mode === 'err')
+  if (!l) return
+  l.classList.toggle('busy', mode === 'busy')
+  l.classList.toggle('dark', mode === 'err')
+  l.classList.toggle('lit', mode === 'done')
+  l.style.setProperty('--bar', String(mode === 'done' ? 1 : mode === 'busy' ? Math.max(0.02, (p || 0) / 100) : 0.4))
+}
+
+function show(screen) {
+  state.screen = screen
+  const col = $('col')
+  col.classList.remove('is-opts')
+  makeRoom(null)
+  col.replaceChildren($('t-' + screen).content.cloneNode(true))
+  $('close').disabled = screen === 'busy'
+  // Le même mot « PLAYER X » que l'accueil, gardé d'un écran à l'autre
+  const keep = col.querySelector('.mark.keep')
+  if (keep) keep.innerHTML = state.wm || ''
+  wire(screen)
+}
+
+// Le nom de l'appli d'un seul tenant (« Player X V3 Test » ne se coupe pas).
+function named(el, before, after) {
+  const n = document.createElement('span')
+  n.className = 'nb'
+  n.textContent = state.name
+  el.replaceChildren(before || '', n, after || '')
+}
+
+// Le mot « PLAYER X » dessiné (repère __PX_WORDMARK__) ; sinon le même mot en texte. Le nom exact reste lisible par les lecteurs d'écran.
+function wordmark() {
+  const art = $('markArt')
+  art.setAttribute('aria-hidden', 'true')
+  if (!art.querySelector('svg')) {
+    const t = document.createElement('span')
+    const b = document.createElement('b')
+    t.className = 'mark-txt'
+    b.textContent = 'X'
+    t.append('PLAYER ', b)
+    art.replaceChildren(t)
+  }
+  const n = $('markName')
+  n.hidden = false
+  n.textContent = (state.update ? 'Mettre à jour ' : 'Installer ') + state.name
+  n.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap'
+}
+
+function welcome() {
+  show('welcome')
+  // Le titre de la fenêtre dit ce qui se passe : une mise à jour n'est pas une installation.
+  document.title = (state.update ? 'Mise à jour de ' : 'Installation de ') + state.name
+  $('barTitle').textContent = document.title
+  wordmark()
+  if (state.update) {
+    $('sub').textContent = 'Passe à la version ' + state.version + '. Tes réglages et tes jeux sont gardés.'
+    $('goLabel').textContent = 'Mettre à jour'
+    // Mise à jour : raccourci et démarrage avec Windows restent comme ils ont été réglés (install.go).
+    $('desk').hidden = true
+  } else {
+    $('sub').textContent = state.fixed
+      ? 'La nouvelle interface V3, installée à part : ton Player X habituel ne bouge pas.'
+      : 'Tes jeux Steam, Epic et EA réunis au même endroit.'
+  }
+  $('sub').dataset.text = $('sub').textContent
+  $('desk').setAttribute('aria-checked', String(state.desk))
+  $('boot').hidden = !state.bootOpt || state.update
+  $('boot').setAttribute('aria-checked', String(state.boot))
+  $('bootHint').textContent = state.name + ' s’ouvre réduit près de l’horloge.'
+  $('pick').hidden = state.fixed
+  showDir(state.dir)
+  showSpace()
+  setConsole('idle')
+  if (!$('go').hidden) $('go').focus({ preventScroll: true })
+}
+
+function showDir(d) {
+  state.dir = d
+  const el = $('path')
+  if (!el) return
+  el.textContent = d
+  el.title = d
+}
+
+// Place libre : dans les options en temps normal ; sous le nom, à la place de la phrase, quand il en manque.
+function showSpace() {
+  const el = $('space')
+  if (!el) return
+  const short = state.free > 0 && state.need > 0 && state.free < state.need
+  el.textContent = !state.need ? '' : mo(state.need) + ' Mo' + (state.free ? ', il reste ' + size(state.free) + ' sur ' + drive(state.dir) : '')
+  el.classList.toggle('is-short', short)
+  const sub = $('sub')
+  sub.textContent = short
+    ? 'Il manque de la place sur ' + drive(state.dir) + ' : il faut ' + mo(state.need) + ' Mo, il reste ' + size(state.free) + '. Libère de la place, puis vérifie à nouveau.'
+    : sub.dataset.text || sub.textContent
+  sub.classList.toggle('is-short', short)
+  sub.setAttribute('role', short ? 'status' : 'none')
+  $('go').hidden = short
+  $('recheck').hidden = !short
+  if (short && (document.activeElement === document.body || document.activeElement === $('go'))) $('recheck').focus({ preventScroll: true })
+}
+
+// Options ouvertes : la console recule et monte juste ce qu'il faut pour laisser la place au panneau (rien ne se chevauche).
+function makeRoom(p) {
+  const st = document.querySelector('.stage')
+  if (!p) {
+    st.style.removeProperty('--lift')
+    st.style.removeProperty('--shrink')
+    return
+  }
+  const k = 0.7
+  const top = st.offsetTop, h = st.offsetHeight
+  const bottom = top + h / 2 + (h * k) / 2
+  // Haut du panneau sans son animation d'entrée : il est posé 12 px au-dessus de l'îlot.
+  const room = p.parentElement.getBoundingClientRect().top - 12 - p.offsetHeight - $('scene').getBoundingClientRect().top - 18
+  st.style.setProperty('--shrink', String(k))
+  st.style.setProperty('--lift', -Math.max(0, Math.round(bottom - room)) + 'px')
+}
+
+function setOpts(open) {
+  const p = $('opts'), b = $('optBtn')
+  if (!p) return
+  p.hidden = !open
+  b.setAttribute('aria-expanded', String(open))
+  $('col').classList.toggle('is-opts', open)
+  makeRoom(open ? p : null)
+  if (open) {
+    const first = p.querySelector('button:not([hidden])')
+    if (first) first.focus({ preventScroll: true })
+  }
+}
+
+function busy() {
+  show('busy')
+  named($('title'), state.update ? 'Mise à jour de ' : 'Installation de ')
+  progress({ percent: 0, step: 0 })
+  $('title').focus({ preventScroll: true })
+}
+
+function progress(p) {
+  const pct = Math.max(0, Math.min(100, Number(p.percent) || 0))
+  $('pct').textContent = pct + ' %'
+  $('step').textContent = STEPS[Math.min(STEPS.length - 1, Number(p.step) || 0)]
+  $('meter').style.setProperty('--p', String(pct / 100))
+  setConsole('busy', pct)
+}
+
+function done(p) {
+  show('done')
+  $('title').textContent = state.update ? 'C’est à jour' : 'C’est prêt'
+  // Première ouverture : l'appli cherche les jeux et leurs jaquettes (l'installeur ne le fait pas lui-même).
+  if (state.update) $('sub').hidden = true
+  else named($('sub'), 'À sa première ouverture, ', ' retrouve tes jeux et leurs jaquettes.')
+  named($('launchLabel'), 'Lancer ')
+  if (p.note) {
+    $('note').textContent = p.note
+    $('note').hidden = false
+  }
+  setConsole('done')
+  $('launch').focus({ preventScroll: true })
+}
+
+function error(p) {
+  state.last = p
+  show('error')
+  $('title').textContent = p.code === 'space' ? 'Il manque de la place' : state.update ? 'La mise à jour s’est arrêtée' : 'L’installation s’est arrêtée'
+  $('errText').textContent = p.error
+  $('errSafe').textContent = state.fixed ? 'Ton Player X habituel n’a pas été touché.' : (state.update ? 'Tes réglages et tes jeux sont gardés.' : '')
+  $('errSafe').hidden = !$('errSafe').textContent
+  $('copy').hidden = !p.detail
+  setConsole('err')
+  $('retry').focus({ preventScroll: true })
+}
+
+window.pxProgress = (p) => {
+  if (p.error) {
+    state.busy = false
+    error(p)
+    return
+  }
+  if (state.screen !== 'busy') return
+  if (p.step < 3) {
+    progress(p)
+    return
+  }
+  state.busy = false
+  progress(p)
+  // La barre d'écran finit de se remplir, puis la console s'allume.
+  setTimeout(() => done(p), 450)
+}
+
+async function start() {
+  if (state.busy) return
+  if (state.screen === 'welcome') {
+    state.desk = $('desk').getAttribute('aria-checked') === 'true'
+    state.boot = !$('boot').hidden && $('boot').getAttribute('aria-checked') === 'true'
+  }
+  state.busy = true
+  busy()
+  try {
+    await window.pxInstall({ dir: state.dir, desktop: state.desk, boot: state.boot })
+  } catch (e) {
+    window.pxProgress({ step: 0, error: String(e && e.message ? e.message : e) })
+  }
+}
+
+async function recheck() {
+  try {
+    state.free = await window.pxFree(state.dir)
+  } catch (e) {}
+  showSpace()
+  if (!$('go').hidden) $('go').focus({ preventScroll: true })
+}
+
+function toggle(el) {
+  el.setAttribute('aria-checked', String(el.getAttribute('aria-checked') !== 'true'))
+}
+
+function wire(screen) {
+  if (screen === 'welcome') {
+    $('desk').addEventListener('click', (e) => toggle(e.currentTarget))
+    $('boot').addEventListener('click', (e) => toggle(e.currentTarget))
+    $('go').addEventListener('click', start)
+    $('recheck').addEventListener('click', recheck)
+    $('optBtn').addEventListener('click', () => setOpts($('opts').hidden))
+    $('pick').addEventListener('click', async () => {
+      try {
+        const d = await window.pxPick(state.dir)
+        if (!d) return
+        showDir(d)
+        state.free = await window.pxFree(d)
+        showSpace()
+      } catch (e) {
+        $('space').textContent = String(e && e.message ? e.message : e)
+      }
+    })
+  } else if (screen === 'done') {
+    $('finish').addEventListener('click', () => window.pxClose())
+    $('launch').addEventListener('click', () => window.pxLaunch(state.dir).catch(() => {
+      $('note').textContent = state.name + ' ne s’est pas ouvert. Ouvre-le depuis le menu Démarrer.'
+      $('note').hidden = false
+    }))
+  } else if (screen === 'error') {
+    $('retry').addEventListener('click', start)
+    $('classic').addEventListener('click', () => window.pxClassic().catch(() => {
+      $('errText').textContent = 'L’installeur classique ne s’est pas ouvert. Télécharge l’installeur à nouveau.'
+    }))
+    $('copy').addEventListener('click', async () => {
+      const p = state.last || {}
+      const text = [state.name + ' ' + state.version, 'Étape ' + (Number(p.step) + 1), p.error, p.detail].filter(Boolean).join('\n')
+      try {
+        await navigator.clipboard.writeText(text)
+        $('copy').textContent = 'Détail copié'
+      } catch (e) {
+        $('copy').textContent = 'Copie impossible'
+      }
+    })
+  }
+}
+
+$('bar').addEventListener('mousedown', (e) => {
+  if (e.button === 0 && !e.target.closest('button')) window.pxDrag()
+})
+$('min').addEventListener('click', () => window.pxMinimize())
+$('close').addEventListener('click', () => window.pxClose())
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return
+  // Échap ferme d'abord les options, puis la fenêtre (jamais pendant l'installation).
+  if ($('opts') && !$('opts').hidden) {
+    setOpts(false)
+    $('optBtn').focus({ preventScroll: true })
+    return
+  }
+  if (!state.busy) window.pxClose()
+})
+// Un clic hors du panneau d'options le referme.
+document.addEventListener('pointerdown', (e) => {
+  const p = $('opts')
+  if (p && !p.hidden && !p.contains(e.target) && !e.target.closest('#optBtn')) setOpts(false)
+})
+document.addEventListener('contextmenu', (e) => e.preventDefault())
+
+;(async () => {
+  // Logo : la console animée intégrée à la construction ; sinon l'icône de l'appli (ancienne construction).
+  if (!logo()) {
+    const img = document.createElement('img')
+    img.src = '__PX_ICON__'
+    img.alt = ''
+    $('console').prepend(img)
+  }
+  try {
+    const i = await window.pxInfo()
+    state.need = i.need
+    state.free = i.free
+    state.update = !!i.update
+    state.version = i.version
+    state.dir = i.dir
+    if (i.name) state.name = i.name
+    state.fixed = !!i.fixed
+    state.updates = i.updates !== false
+    state.bootOpt = i.boot !== false
+    state.boot = state.bootOpt
+  } catch (e) {}
+  document.title = 'Installation de ' + state.name
+  $('barTitle').textContent = 'Installation de ' + state.name
+  // Badge TEST de l'icône : seulement pour la version d'essai, qui s'installe à part.
+  $('tag').hidden = !state.fixed || !logo()
+  // Le dessin du mot « PLAYER X », repris sur les écrans suivants
+  state.wm = $('t-welcome').content.querySelector('#markArt')?.innerHTML || ''
+  welcome()
+  // Deux images peintes : la fenêtre peut s'afficher sans éclair. La place de la console (son corps rose,
+  // sans le vide autour) sert à la vérification --selftest.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    // Place finale (sans l'agrandissement de l'arrivée en cours). La boîte va des gâchettes (y 290 du dessin 1024)
+    // au bas du corps (724) ; on n'envoie que le corps (322 à 710), sans les gâchettes ni l'ombre.
+    const c = $('console'), r = c.getBoundingClientRect(), w = c.offsetWidth, h = c.offsetHeight
+    const top = r.top + r.height / 2 - h / 2
+    window.pxReady({ x: Math.round(r.left + r.width / 2 - w / 2), y: Math.round(top + (h * 32) / 434), w, h: Math.round((h * 388) / 434) })
+  }))
+})()
+</script>
+</body>
+</html>

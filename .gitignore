@@ -1,0 +1,22 @@
+node_modules
+out
+dist
+.env
+
+# Interface V3 : produite par python3 v3ui/build.py (npm run build, dev, preview et dist le lancent d'abord)
+src/renderer/public/v3/
+v3ui/.shared.js
+
+# Constructions de la V3 Test et captures
+dist-*/
+*.pem
+# Installeur V3 Test : dossier entièrement refait par scripts/build-installer-v3test.mjs (contient un setup de 121 Mo)
+build/installer-v3test/
+# Captures et données des scénarios d'essai
+tools/essais/shots/
+tools/essais*/data-*
+tools/essais-clips/work/
+.env.*
+!.env.example
+# Moteur vidéo (FFmpeg, 132 Mo) : téléchargé et vérifié par scripts/fetch-ffmpeg.mjs, jamais dans git
+vendor/

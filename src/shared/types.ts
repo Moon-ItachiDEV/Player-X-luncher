@@ -1,0 +1,11 @@
+// Tous les types partagés, rangés par domaine dans types/ : ce fichier les réexporte (les imports « @shared/types » restent valables).
+export * from './types/core'
+export * from './types/bf6'
+export * from './types/cs2'
+export * from './types/news'
+export * from './types/steam'
+export * from './types/shelves'
+export * from './types/servers'
+export * from './types/clips'
+export * from './types/edit'
+export * from './types/api'

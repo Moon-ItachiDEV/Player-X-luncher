@@ -1,0 +1,131 @@
+{
+  "name": "test-v3-player-x",
+  "version": "0.5.3-beta.44",
+  "description": "Player X V3 Test : la V3 de Player X, sur le vrai moteur de Player X, installée à part.",
+  "main": "out/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "python3 v3ui/build.py && electron-vite dev",
+    "build": "python3 v3ui/build.py && electron-vite build",
+    "preview": "python3 v3ui/build.py && electron-vite preview",
+    "test:launch": "node --experimental-strip-types --test src/main/services/tracking.test.ts src/main/services/launchWatchParse.test.ts src/main/services/launches.test.ts src/main/services/gogInfo.test.ts && node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/launchWatch.test.ts src/shared/view/launchCopy.test.ts src/shared/view/launchPhase.test.ts src/main/services/artworkMatch.test.ts",
+    "test:news": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/newsFormat.test.ts src/main/services/newsFeed.test.ts",
+    "test:bf6": "node --experimental-strip-types --test src/main/services/bf6Diff.test.ts",
+    "test:cs2": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/cs2Match.test.ts src/main/services/cs2Gsi.test.ts",
+    "test:achievements": "node --experimental-strip-types --test src/main/services/achievementsFormat.test.ts",
+    "test:played": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/played.test.ts src/main/services/demo.test.ts",
+    "test:friends": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/discordMembers.test.ts src/main/services/steamProfile.test.ts src/main/services/chromiumCrypt.test.ts src/shared/view/friendView.test.ts src/shared/view/voice.test.ts",
+    "test:home": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/view/pick.test.ts src/shared/view/around.test.ts",
+    "test:ui": "node --experimental-strip-types --test src/renderer/src/styles/*.test.ts",
+    "test:overlay": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/hotkey.test.ts src/renderer/src/overlay/view.test.ts",
+    "test:profile": "node --experimental-strip-types --test src/shared/profile.test.ts src/shared/steamApps.test.ts",
+    "test:cs2stats": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/cs2Lifetime.test.ts",
+    "test:ready": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/steamUpdate.test.ts src/shared/servers.test.ts src/shared/gameEvents.test.ts src/shared/shelves.test.ts src/main/services/recentGames.test.ts",
+    "test:armory": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/bf6Loadouts.test.ts src/shared/bf6Workshop.test.ts",
+    "test:security": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/trust.test.ts src/main/services/routineRules.test.ts src/main/services/settingsRules.test.ts",
+    "test:clips": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/fmp4.test.ts src/main/services/clipsPlan.test.ts src/main/services/cs2Moments.test.ts",
+    "test:edit": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/editEngineRules.test.ts src/main/services/editPlan.test.ts src/main/services/editCompile.test.ts src/main/services/editBeats.test.ts src/shared/editShots.test.ts src/main/services/captureTestArgs.test.ts src/main/services/engineCapture.test.ts",
+    "test": "npm run test:launch && npm run test:news && npm run test:bf6 && npm run test:cs2 && npm run test:achievements && npm run test:played && npm run test:friends && npm run test:home && npm run test:ui && npm run test:overlay && npm run test:cs2stats && npm run test:profile && npm run test:ready && npm run test:armory && npm run test:clips && npm run test:edit && npm run test:security",
+    "dist": "node scripts/dist-v3.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc -p tsconfig.scripts.json",
+    "postinstall": "node node_modules/electron/install.js",
+    "ui": "python3 v3ui/build.py"
+  },
+  "build": {
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "appId": "dev.breezy.playerx.v3test",
+    "electronLanguages": [
+      "fr",
+      "en-US"
+    ],
+  "productName": "Player X V3 Test",
+    "files": [
+      "out/**/*",
+      "!out/main/launchSim-*.js",
+      "!out/main/bf6Sim-*.js",
+      "!out/main/newsSim-*.js",
+      "!out/main/cs2Sim-*.js",
+      "!out/main/cs2LifetimeSim-*.js",
+      "resources/icon.png",
+      "resources/tray*.png",
+      "!out/main/serversSim-*.js",
+      "!out/main/steamUpdatesSim-*.js",
+      "!node_modules/sql.js/dist/{sql-asm*,sql-wasm-*,worker.*,*.zip}",
+      "!node_modules/sql.js/.devcontainer{,/**}",
+      "!node_modules/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "ffmpeg.exe",
+          "LICENSE.txt",
+          "SOURCE.txt"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Player X V3 Test",
+      "uninstallDisplayName": "Player X V3 Test",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "artifactName": "Player-X-V3-Test-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": true,
+      "language": "1036",
+      "installerLanguages": [
+        "fr_FR"
+      ],
+      "unicode": true
+    },
+    "publish": null,
+    "icon": "resources/icon.png",
+    "copyright": "Breezydev"
+  },
+  "dependencies": {
+    "psn-api": "^2.18.1",
+    "sql.js": "^1.15.0"
+  },
+  "devDependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/sora": "^5.3.0",
+    "@types/node": "^26.6.5",
+    "@types/sql.js": "^1.4.11",
+    "electron": "44.10.2",
+    "electron-builder": "26.15.3",
+    "electron-vite": "^6.0.0",
+    "esbuild": "0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  },
+  "productName": "Player X V3 Test",
+  "author": "Breezydev",
+  "overrides": {
+    "fast-uri": "^3.1.9"
+  }
+}

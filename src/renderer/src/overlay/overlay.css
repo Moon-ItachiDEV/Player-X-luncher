@@ -1,0 +1,597 @@
+/* Overlay CS2 (bêta), overlay/overlay.ts : la fenêtre transparente par-dessus le jeu. Classes en .ov- seulement.
+   Placement commun (écran de 1080 px de haut, mis à l'échelle par `zoom`) : achat et mi-temps sous le radar (zone A),
+   bilan de fin sous le fil des éliminations (zone B), pastille au-dessus des munitions (zone C, l'île du style A sous le score).
+   Trois styles : .ov-a façon Apple, .ov-b verre, .ov-c finition du style Player X (design Braise).
+   Camps : bleu CT et ocre T, les couleurs du jeu lui-même (pas celles de l'appli). */
+
+html.ov-page,
+html.ov-page body,
+html.ov-page #root {
+  background: transparent !important;
+  overflow: hidden;
+}
+
+.ov-root {
+  --ov-ct: #7fb2ff;
+  --ov-t: #f0b54a;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- placement ---------- */
+
+.ov-card {
+  position: absolute;
+  box-sizing: border-box;
+}
+.ov-buy {
+  left: 24px;
+  top: 328px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ov-end {
+  right: 24px;
+  top: 236px;
+  width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+.ov-pill {
+  right: 24px;
+  bottom: 132px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+  font: 500 14px/1 var(--font-ui);
+}
+.ov-pill b {
+  font-weight: 700;
+}
+.ov-pill-kda {
+  font: 700 18px/1 var(--font-display);
+}
+.ov-pill-sep {
+  width: 1px;
+  height: 16px;
+  background: currentColor;
+  opacity: 0.25;
+}
+.ov-sample {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  translate: -50% 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(12, 10, 17, 0.86);
+  font: 600 13px/1 var(--font-ui);
+  color: var(--accent-text);
+}
+
+/* ---------- contenu commun ---------- */
+
+.ov-head,
+.ov-end-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+/* En-tête du bilan sur une ligne : Inter est plus large que l'ancienne police étroite. */
+.ov-end-top .ov-kicker {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  letter-spacing: 0.03em;
+}
+.ov-end-top .ov-sub {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ov-title {
+  font: 600 15px/20px var(--font-ui);
+}
+.ov-sub {
+  font: 500 13px/16px var(--font-ui);
+  opacity: 0.75;
+}
+.ov-kicker {
+  font: 600 12px/16px var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.ov-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.ov-score {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.ov-score-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.ov-score-side b {
+  font: 700 44px/1.05 var(--font-display);
+  letter-spacing: -0.03em;
+}
+.ov-score-side.is-them b {
+  opacity: 0.65;
+}
+.ov-dash {
+  font: 700 22px/1 var(--font-display);
+  opacity: 0.6;
+  padding-bottom: 8px;
+}
+.ov-side {
+  width: fit-content;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font: 600 12px/16px var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.ov-side.is-ct {
+  background: color-mix(in srgb, var(--ov-ct) 26%, transparent);
+}
+.ov-side.is-t {
+  background: color-mix(in srgb, var(--ov-t) 26%, transparent);
+}
+.ov-money {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-bottom: 6px;
+}
+.ov-money b {
+  font: 700 22px/1.2 var(--font-display);
+}
+.ov-k {
+  font: 600 12px/16px var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.ov-stats {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.ov-stat dt {
+  font: 600 12px/16px var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.ov-stat dd {
+  margin: 2px 0 0;
+  font: 700 22px/1.2 var(--font-display);
+}
+.ov-lead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.ov-lead b {
+  font: 700 34px/1.1 var(--font-display);
+  letter-spacing: -0.02em;
+}
+.ov-lead span {
+  font: 700 28px/1.1 var(--font-display);
+  letter-spacing: -0.02em;
+  opacity: 0.8;
+}
+.ov-line {
+  margin: 0;
+  font: 500 14px/1.45 var(--font-ui);
+  opacity: 0.85;
+}
+.ov-line b {
+  font-weight: 700;
+}
+.ov-end-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.ov-end-title b {
+  font: 700 32px/1.1 var(--font-display);
+  letter-spacing: -0.02em;
+}
+.ov-end-title span {
+  font: 700 26px/1.1 var(--font-display);
+  letter-spacing: -0.02em;
+  opacity: 0.8;
+}
+.ov-res.is-win {
+  color: var(--success);
+}
+.ov-res.is-loss {
+  color: var(--danger-text);
+}
+
+/* Frise des rounds : la forme et le filet disent gagné ou perdu, la couleur s'y ajoute. */
+.ov-strip {
+  display: flex;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ov-r {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.ov-r.is-swap {
+  margin-left: 9px;
+  position: relative;
+}
+.ov-r.is-swap::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.45;
+}
+.ov-r.is-unknown {
+  background: rgba(255, 255, 255, 0.08);
+}
+.ov-r.is-next {
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  box-sizing: border-box;
+}
+
+/* ---------- arrivée ---------- */
+
+@keyframes ov-in {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    translate: 0 12px;
+  }
+}
+@keyframes ov-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ov-enter,
+  .ov-enter .ov-s1,
+  .ov-enter .ov-s2,
+  .ov-enter .ov-s3,
+  .ov-enter .ov-s4 {
+    animation: ov-fade 200ms ease-out both !important;
+  }
+}
+
+/* =====================================================================
+   A · façon Apple : matériau sombre épais, ressorts amortis (sans rebond), sheet depuis le bord, île sous le score.
+   Police du système (Segoe UI Variable sous Windows), serrée sur les grands chiffres.
+   ===================================================================== */
+
+.ov-a {
+  --ov-font: 'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --ov-spring: linear(0, 0.249, 0.528, 0.731, 0.856, 0.927, 0.965, 0.984, 0.993, 0.997, 0.999, 1);
+  color: #f5f5f7;
+}
+.ov-a,
+.ov-a .ov-title,
+.ov-a .ov-sub,
+.ov-a .ov-kicker,
+.ov-a .ov-line,
+.ov-a .ov-k,
+.ov-a .ov-stat dt,
+.ov-a .ov-side,
+.ov-a .ov-pill {
+  font-family: var(--ov-font);
+}
+.ov-a .ov-score-side b,
+.ov-a .ov-stat dd,
+.ov-a .ov-money b,
+.ov-a .ov-lead b,
+.ov-a .ov-lead span,
+.ov-a .ov-end-title b,
+.ov-a .ov-end-title span,
+.ov-a .ov-pill-kda,
+.ov-a .ov-dash {
+  font-family: var(--ov-font);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+.ov-a .ov-card {
+  background: rgba(28, 28, 30, 0.86);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.ov-a .ov-buy {
+  padding: 18px;
+  border-radius: 22px;
+  transform-origin: top left;
+}
+.ov-a .ov-stat {
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.ov-a .ov-end {
+  padding: 10px 22px 22px;
+  border-radius: 28px;
+  background: rgba(28, 28, 30, 0.9);
+}
+.ov-a .ov-grabber {
+  align-self: center;
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(235, 235, 245, 0.3);
+}
+.ov-a .ov-kicker {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 13px;
+  opacity: 0.75;
+}
+.ov-a .ov-res.is-win {
+  color: #30d158;
+}
+.ov-a .ov-res.is-loss {
+  color: #ff6961;
+}
+.ov-a .ov-pill.is-island {
+  left: 50%;
+  right: auto;
+  top: 92px;
+  bottom: auto;
+  translate: -50% 0;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 22px;
+  background: rgba(18, 18, 20, 0.9);
+}
+.ov-a .ov-pill-hot {
+  color: #30d158;
+}
+/* Frise : un round perdu est plus bas qu'un round gagné. */
+.ov-a .ov-strip {
+  align-items: flex-end;
+  height: 22px;
+}
+.ov-a .ov-r {
+  border-radius: 6px;
+}
+.ov-a .ov-r.is-won {
+  height: 22px;
+  background: #30d158;
+}
+.ov-a .ov-r.is-lost {
+  height: 10px;
+  background: rgba(255, 105, 97, 0.9);
+}
+.ov-a .ov-r.is-unknown,
+.ov-a .ov-r.is-next {
+  height: 10px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ov-a .ov-buy.ov-enter {
+    animation: ov-a-grow 560ms var(--ov-spring) both;
+  }
+  .ov-a .ov-end.ov-enter {
+    animation: ov-a-sheet 620ms var(--ov-spring) both;
+  }
+  .ov-a .ov-pill.ov-enter {
+    animation: ov-a-island 520ms var(--ov-spring) both;
+  }
+}
+@keyframes ov-a-grow {
+  from {
+    scale: 0.88;
+    opacity: 0;
+  }
+}
+@keyframes ov-a-sheet {
+  from {
+    translate: calc(100% + 32px) 0;
+  }
+}
+@keyframes ov-a-island {
+  from {
+    opacity: 0;
+    scale: 0.5 1;
+  }
+}
+
+/* =====================================================================
+   B · verre (style par défaut) : l'ancienne carte « À la une » des Actus (0.9.5), demande de
+   Breezydev (0.9.5-beta.2) : verre sombre --glass, liseré --glass-line, reflet du haut --glass-hi, coins de 24 px,
+   surtitre rose, titres en Sora. Sans flou : une fenêtre transparente ne peut pas flouter le jeu derrière elle, et
+   l'aperçu de Paramètres › Overlay doit montrer ce qu'on verra en jeu.
+   ===================================================================== */
+
+.ov-b {
+  color: var(--text-1);
+}
+.ov-b .ov-card {
+  isolation: isolate;
+  background: var(--glass);
+  box-shadow:
+    inset 0 0 0 1px var(--glass-line),
+    inset 0 1px 0 var(--glass-hi),
+    0 22px 40px -28px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.ov-b .ov-buy {
+  padding: 24px;
+  border-radius: 24px;
+}
+.ov-b .ov-end {
+  padding: 24px;
+  border-radius: 24px;
+}
+.ov-b .ov-pill {
+  height: 44px;
+  border-radius: 22px;
+}
+.ov-b .ov-kicker {
+  color: var(--accent-text);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ov-b .ov-title {
+  font: 700 17px/22px var(--font-display);
+  letter-spacing: -0.01em;
+}
+.ov-b .ov-sub {
+  color: var(--text-2);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ov-b .ov-enter {
+    animation: ov-in 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+.ov-b .ov-r.is-won {
+  background: rgba(52, 211, 153, 0.36);
+  border: 1px solid rgba(160, 255, 215, 0.6);
+}
+.ov-b .ov-r.is-lost {
+  background: rgba(255, 84, 104, 0.3);
+  border: 1px dashed rgba(255, 170, 180, 0.65);
+}
+.ov-b .ov-r {
+  box-sizing: border-box;
+  border-radius: 6px;
+}
+.ov-b .ov-pill-hot {
+  color: #a0ffd7;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ov-b .ov-card {
+    background: #1a1622;
+  }
+}
+
+/* =====================================================================
+   C · finition du style Player X : ombres plutôt que bordures, coins concentriques, entrée en cascade de 100 ms,
+   ✓ / ✕ dans la frise, chiffres à chasse fixe.
+   ===================================================================== */
+
+.ov-c .ov-card {
+  border: 1px solid transparent;
+  background: rgba(19, 16, 25, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(255, 200, 220, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.2),
+    0 18px 40px rgba(0, 0, 0, 0.36);
+}
+/* Le dégradé de l'icône (corail → rose → framboise) en filet sur le haut des grandes cartes */
+.ov-c .ov-buy::before,
+.ov-c .ov-end::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 18px;
+  right: 18px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, var(--brand-1), var(--brand-2) 55%, var(--brand-3));
+}
+.ov-c .ov-buy {
+  padding: 12px;
+  border-radius: 20px;
+}
+.ov-c .ov-buy > .ov-head,
+.ov-c .ov-buy > .ov-row,
+.ov-c .ov-buy > .ov-lead,
+.ov-c .ov-buy > .ov-line {
+  padding: 0 4px;
+}
+.ov-c .ov-stat {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.ov-c .ov-end {
+  padding: 12px;
+  border-radius: 24px;
+}
+.ov-c .ov-end > .ov-end-top,
+.ov-c .ov-end > .ov-end-title,
+.ov-c .ov-end > .ov-line {
+  padding: 0 8px;
+}
+.ov-c .ov-end > .ov-end-top {
+  padding-top: 8px;
+}
+.ov-c .ov-kicker {
+  color: var(--accent-text);
+}
+.ov-c .ov-end .ov-stat:first-child dd {
+  color: var(--accent);
+}
+.ov-c .ov-r {
+  height: 26px;
+}
+.ov-c .ov-r.is-won {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.ov-c .ov-r.is-lost {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+.ov-c .ov-pill-hot {
+  color: var(--success);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ov-c .ov-enter .ov-s1 {
+    animation: ov-in 300ms ease-out both;
+  }
+  .ov-c .ov-enter .ov-s2 {
+    animation: ov-in 300ms ease-out 100ms both;
+  }
+  .ov-c .ov-enter .ov-s3 {
+    animation: ov-in 300ms ease-out 200ms both;
+  }
+  .ov-c .ov-enter .ov-s4 {
+    animation: ov-in 300ms ease-out 300ms both;
+  }
+  .ov-c .ov-pill.ov-enter {
+    animation: ov-in 300ms ease-out both;
+  }
+}

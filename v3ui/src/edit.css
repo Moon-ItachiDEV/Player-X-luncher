@@ -1,0 +1,72 @@
+/* L'éditeur de films (bêta 35) : en-tête, aperçu à gauche, réglages à droite, la bande des plans en bas. */
+.ed{position:absolute;inset:0;padding:64px clamp(24px,3cqw,48px) 104px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:20px}
+.ed-head{display:flex;align-items:center;gap:20px}
+.ed-ttl{flex:1;min-width:0}
+.ed-ttl h1{font-size:clamp(26px,2.4cqw,36px);line-height:1.1;font-weight:600;font-stretch:90%;letter-spacing:-.016em}
+.ed-ttl p{margin-top:4px;font-size:14px;line-height:1.4;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ed-body{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(290px,24cqw,360px);gap:clamp(20px,2.4cqw,36px)}
+.ed-main{min-width:0;min-height:0;display:flex;flex-direction:column;gap:12px}
+.ed-frame{position:relative;flex:1;min-height:0;border-radius:clamp(14px,1.5cqw,22px);overflow:hidden;background:#000;box-shadow:0 30px 70px -24px #000,0 0 0 1px rgba(255,255,255,.09)}
+.ed-frame video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.ed-tr{display:flex;align-items:center;gap:8px}
+.ed-hint{font-size:12px;line-height:1.4;color:var(--t3);margin-left:8px}
+.ed-ur{margin-left:auto;display:flex;gap:4px}
+.ed-redo .ic{scale:-1 1}
+.ed-side{min-width:0;overflow-y:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:16px;padding-right:4px}
+.ed-side>*{flex:none}
+.ed-sec{display:flex;flex-direction:column;gap:4px;padding:16px;border-radius:18px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--hair)}
+.ed-sec h2{font-size:16px;line-height:1.4;font-weight:600;margin-bottom:6px}
+.ed-sec h2 span{font-weight:400;color:var(--t3)}
+.ed-music{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.07);text-align:left;font-size:14px;font-weight:500;color:var(--bone);transition:background-color .15s}
+.ed-music:hover{background:rgba(255,255,255,.11)}
+.ed-music>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ed-music em{font-style:normal;font-size:12px;color:var(--rose-t)}
+.ed-music .ic{width:17px;height:17px;flex:none;color:var(--t2)}
+.ed-music[aria-busy=true]{opacity:.75;pointer-events:none}
+.ed-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:14px;color:var(--t2)}
+.ed-row>span{white-space:nowrap}
+.ed-step{display:flex;align-items:center;gap:6px}
+.ed-step b{min-width:72px;text-align:center;font-weight:500;color:var(--bone)}
+.ed-step .btn{font-size:18px}
+.ed-vol{flex:1;min-width:0;max-width:170px;accent-color:var(--rose)}
+.ed-note{font-size:14px;line-height:1.5;color:var(--t3);margin-top:8px}
+.ed-clip{font-size:14px;line-height:1.4;color:var(--t3);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ed-acts{display:flex;gap:8px;margin-top:8px}
+.ed-acts .btn:last-child{flex:1}
+/* La bande des plans : largeur = durée dans le film, les temps de la musique en filigrane, le kill en rose */
+.ed-strip{display:flex;gap:4px;height:84px;padding:4px;overflow-x:auto;scrollbar-width:thin;border-radius:18px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--hair)}
+.ed-shot{position:relative;flex:1 1 0;min-width:56px;height:100%;border-radius:12px;overflow:hidden;background:#17121c;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);transition:box-shadow .15s,scale .15s ease-out}
+.ed-shot:active{scale:.98}
+.ed-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.62;transition:opacity .15s}
+.ed-shot:hover img{opacity:.8}
+.ed-shot[aria-selected=true]{box-shadow:inset 0 0 0 2px var(--bone)}
+.ed-shot[aria-selected=true] img{opacity:.95}
+.ed-shot.is-gone{background:repeating-linear-gradient(135deg,#1b151f 0 8px,#120e16 8px 16px)}
+.ed-beats{position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(255,255,255,.28) 1px,transparent 1px);background-repeat:repeat-x;pointer-events:none}
+.ed-slow{position:absolute;top:0;bottom:0;background:rgba(255,92,134,.22);box-shadow:inset 0 2px 0 var(--rose);pointer-events:none}
+.ed-k{position:absolute;top:6px;bottom:6px;width:3px;margin-left:-1.5px;border-radius:3px;background:var(--rose);box-shadow:0 0 10px rgba(255,92,134,.8);pointer-events:none}
+.ed-sn{position:absolute;left:6px;bottom:4px;font-size:12px;font-weight:600;color:var(--bone);text-shadow:0 1px 3px #000}
+.ed-addb{flex:none;width:56px;height:100%;border-radius:12px;display:grid;place-items:center;color:var(--t2);background:rgba(255,255,255,.06);transition:background-color .15s}
+.ed-addb:hover{background:rgba(255,255,255,.12);color:var(--bone)}
+.ed-addb .ic{width:20px;height:20px}
+/* Ajouter des clips */
+.ed-add{width:min(880px,92vw)}
+.ed-addg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-height:56vh;overflow-y:auto;margin:12px 0 4px;padding:2px}
+.ed-pick{display:flex;flex-direction:column;gap:6px;text-align:left;border-radius:12px;padding:4px}
+.ed-pf{position:relative;display:block;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#17121c;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.ed-pf img{width:100%;height:100%;object-fit:cover}
+.ed-pf i{position:absolute;right:6px;top:6px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:rgba(14,10,18,.6);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.6);color:transparent}
+.ed-pf i .ic{width:14px;height:14px}
+.ed-pick[aria-pressed=true] .ed-pf{box-shadow:0 0 0 2px var(--rose)}
+.ed-pick[aria-pressed=true] .ed-pf i{background:var(--rose);color:var(--on-rose);box-shadow:none}
+.ed-pick>span:last-child{display:flex;flex-direction:column;font-size:12px;line-height:1.4;color:var(--t3)}
+.ed-pick b{font-size:14px;font-weight:500;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Choisir des clips dans la liste (supprimer, monter) */
+.ct-tile.is-pick .ct-frame{box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.ct-tile.is-pick[aria-pressed=true] .ct-frame{box-shadow:0 0 0 3px var(--rose)}
+.ct-chk{position:absolute;left:10px;top:10px;z-index:2;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:rgba(14,10,18,.6);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.7);color:transparent}
+.ct-chk .ic{width:15px;height:15px}
+.ct-tile[aria-pressed=true] .ct-chk{background:var(--rose);color:var(--on-rose);box-shadow:none}
+.cl-sel{display:flex;align-items:center;gap:8px;margin-left:auto}
+.cl-sel>span{font-size:14px;color:var(--t2);margin-right:8px}
+.ct-tile.is-pick .ct-flags{display:none}

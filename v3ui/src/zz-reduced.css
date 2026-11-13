@@ -1,0 +1,22 @@
+/* Mouvement réduit : des fondus, plus de déplacements ni de boucles. Toujours chargé en dernier. */
+@keyframes fadeOnly{from{opacity:0}to{opacity:1}}
+@keyframes hitFade{0%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-property:opacity,background-color,color,box-shadow!important;transition-duration:.15s!important;transition-delay:0s!important}
+  :active{scale:none!important}
+  .card.is-launch,.card.is-hold{transform:none!important;filter:none!important}
+  .rail-t span{translate:none}
+  .ct-frame img{transform:scale(var(--z,1.3))!important}
+  .pb-ring,.logo.busy .l-blink,.logo.rec .l-rec{animation:none}
+  .pb-ring::before{animation:none}
+  .ht-ready.r-in>li,.hs,.sl-kick,.sl-big,.sl-score,.sl-stats li,.sl-h1,.sl-h2,.su-lead,.rl-c,.sl-frame,.sl-side,.sl-tiles,.sl-acts,.ar,.bd li,.iw-logo,.wn-list li,.ln-x.pop{animation-name:fadeOnly;animation-delay:0s;animation-duration:.15s}
+  .sl-bg,.sl-frame>img,.ln-x.pop::after{animation:none}
+  .odo-s,.ch-svg,.ch-area,.ln-fill,.ln-head,.card.is-hold,.card.is-launch,.bd-b i{transition:none!important}
+  .ch-svg{clip-path:none}
+  .ch-area{opacity:1}
+  .play-btn{translate:none!important}
+  .sh,.ov,#bar.is-hidden{translate:0 0}
+  .ct-frame:hover,.ar:hover img,.lw:hover .lw-art>*{translate:none;transform:none}
+}
+
+@media(prefers-reduced-motion:reduce){.bgw-g{animation:none}.bgw-p{transition:none}.bgi-g{translate:none;transition:opacity .15s linear}.bgi-m{scale:none;transition:opacity .15s linear}}

@@ -1,0 +1,144 @@
+/* Accueil : le texte à gauche, la pile à droite */
+.v-play{perspective:1500px;perspective-origin:62% 46%}
+.ht{position:absolute;left:clamp(32px,4.4cqw,72px);bottom:calc(84px + 5.2cqh);width:min(46cqw,680px);z-index:5;display:flex;flex-direction:column;align-items:flex-start;transition:opacity .3s var(--e-md),translate .3s var(--e-out)}
+.launch-go .ht{opacity:0;translate:-16px 0}
+.ht-kick{display:flex;align-items:center;gap:16px;font-size:14px;font-weight:500;color:var(--t2);min-height:20px;margin-bottom:12px;white-space:nowrap}
+.ht-k,.ht-tag{display:inline-flex;align-items:center;gap:8px}
+.ht-kick .ic{width:15px;height:15px;color:var(--rose-t);stroke-width:2}
+.ht-tag i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.ht-tag.tone-ok i{color:var(--ok)}.ht-tag.tone-lav i{color:var(--rose)}
+.ht-title{margin-block:-.06em -.02em;font-size:clamp(56px,7cqw,108px);line-height:1.1;font-weight:600;font-stretch:88%;letter-spacing:-.02em;text-wrap:balance;margin-left:-.03em}
+.ht-title[data-len=m]{font-size:clamp(46px,5.5cqw,86px)}
+.ht-title[data-len=l]{font-size:clamp(42px,4.8cqw,74px);line-height:1.1}
+/* Le titre : en rafale de molette il change pâle et sans animation, à l'arrêt il se resserre en vraie largeur */
+.ht-title.is-wait{opacity:.6}
+.ht-title.is-in{animation:htW .3s var(--e-out) both}
+.ht-title.is-fade{animation:htF .3s var(--e-out) both}
+.ht-ln{display:block;white-space:nowrap}
+@keyframes htW{from{font-stretch:116%;opacity:.6;letter-spacing:0}to{font-stretch:88%;opacity:1;letter-spacing:-.02em}}
+@keyframes htF{from{opacity:.4}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.ht-title.is-in{animation-name:htF}}
+.ht-meta{margin-top:16px;font-size:16px;color:var(--t2)}
+.launching .ht-meta,.launching .ht-acts,.launching .ht-ready{display:none}
+.ht-acts{margin-top:24px;display:inline-flex;align-items:center;gap:6px;width:max-content}
+.ht-acts .btn{height:48px;padding:0 24px}.ht-acts .btn.icon{width:48px;padding:0}
+.play-btn{position:relative;height:58px;min-width:172px;padding:0 32px 0 32px;border-radius:999px;background:var(--rose);color:var(--on-rose);font-size:18px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;isolation:isolate;transition:scale .15s ease-out,background-color .2s,translate .3s var(--e-out)}
+.play-btn:not(:disabled):active{scale:.96}
+.play-btn:disabled{opacity:.55;cursor:default}
+.play-btn .pb-in{position:relative;display:inline-flex;align-items:center;gap:12px;z-index:1}
+.play-btn .ic{width:20px;height:20px;translate:1px 0}
+.pb-ring{position:absolute;inset:0;border-radius:inherit;z-index:-1;overflow:hidden;opacity:0;transition:opacity .2s;-webkit-mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);padding:1.5px}
+.play-btn:focus-visible .pb-ring{opacity:.9}
+.pb-ring::before{content:"";position:absolute;left:50%;top:50%;width:140%;aspect-ratio:1;translate:-50% -50%;background:conic-gradient(from 0deg,transparent 0 62%,rgba(255,255,255,.95) 78%,#ff9db5 88%,transparent 100%);animation:ring 1.8s linear infinite paused}
+.play-btn::after{content:"";position:absolute;inset:-14px;border-radius:inherit;background:var(--rose);filter:blur(26px);opacity:0;z-index:-2;transition:opacity .2s,scale .3s var(--e-out)}
+@media(hover:hover){.play-btn:hover{background:var(--rose-hi)}.play-btn:hover::after{opacity:.55;scale:1.08}.play-btn:hover .pb-ring{opacity:.9}.play-btn:hover .pb-ring::before{animation-play-state:running}}
+.play-btn.is-upd{background:var(--bone);color:#150d12}.play-btn.is-upd::after{background:#fff;opacity:.16}
+@keyframes ring{to{rotate:360deg}}
+.ic-swap{position:relative;display:grid;place-items:center;width:18px;height:18px}
+.ic-swap>span{grid-area:1/1;display:block;transition:opacity .3s var(--e-md),scale .3s var(--e-md),filter .3s var(--e-md)}
+.ic-swap .b{opacity:0;scale:.25;filter:blur(4px)}
+[aria-pressed=true] .ic-swap .a,.is-b .ic-swap .a{opacity:0;scale:.25;filter:blur(4px)}
+[aria-pressed=true] .ic-swap .b,.is-b .ic-swap .b{opacity:1;scale:1;filter:none}
+#htFav[aria-pressed=true]{color:var(--gold)}
+.ht-ready{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0 0;min-height:44px}
+.ht-ready.r-in>li{animation:rIn .3s var(--e-out) both}
+.ht-ready.r-in>li:nth-child(2){animation-delay:30ms}.ht-ready.r-in>li:nth-child(3){animation-delay:60ms}
+@keyframes rIn{from{opacity:0;transform:translateY(6px);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+.r-row{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px 0 12px;border-radius:13px;text-align:left;white-space:nowrap;font-size:14px;color:var(--t2);transition:background-color .15s,color .15s}
+.r-row b{font-weight:500}
+span.r-row{padding-left:0}
+button.r-row{position:relative;height:36px;color:rgba(247,241,244,.92);background:rgba(16,12,20,.5);-webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+button.r-row::after{content:"";position:absolute;inset:-4px 0}
+@media(hover:hover){button.r-row:hover{background:rgba(36,28,42,.74);color:var(--bone)}}
+.r-ic{display:grid;place-items:center;flex:none;width:18px;height:18px}
+.r-ic .ic{width:16px;height:16px;stroke-width:1.9}
+.r-ic .xm{color:var(--rose);width:13px;height:13px}
+/* Le lancement : les étapes prennent la place des boutons, le titre ne bouge pas */
+.ht-steps{display:none;flex-direction:column;gap:4px;margin-top:24px;min-height:178px}
+.launching .ht-steps{display:flex}
+.hs{display:flex;align-items:center;gap:12px;height:32px;font-size:16px;color:var(--t3);animation:rIn .3s calc(var(--i)*30ms) var(--e-out) both;transition:color .2s}
+.hs i{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);transition:background-color .2s,color .2s,box-shadow .2s,scale .3s var(--spring)}
+.hs .ic{width:13px;height:13px;stroke-width:2}
+.hs.done{color:var(--t2)}.hs.done i{background:var(--bone);color:#150d12}
+.hs.cur{color:var(--bone);font-weight:500}.hs.cur i{background:var(--rose);color:var(--on-rose);box-shadow:0 0 0 4px rgba(255,92,134,.25);scale:1.08}
+.r-avs{display:flex;flex:none;margin-right:1px}
+.r-avs .av{box-shadow:0 0 0 2px rgba(10,8,14,.72)}
+.r-avs .av+.av{margin-left:-7px}
+.av{display:inline-grid;place-items:center;border-radius:50%;font-weight:600;color:#fff;background:linear-gradient(145deg,hsl(var(--h) 62% 36%),hsl(calc(var(--h) + 34) 62% 28%));flex:none;line-height:1.1}
+
+/* La pile : les jeux s'éloignent dans la profondeur */
+.stack{position:absolute;left:47%;right:0;top:40px;bottom:84px;transform-style:preserve-3d;will-change:transform}
+.card{position:absolute;left:13%;top:calc(50% - var(--ch)/2 + 4%);width:var(--cw);height:var(--ch);border-radius:clamp(14px,1.6cqw,22px);transform-style:preserve-3d;overflow:hidden;background:#15101a;box-shadow:0 40px 90px -24px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.07);will-change:transform,opacity,filter;cursor:pointer;backface-visibility:hidden}
+/* Ombre de contact : la jaquette de face est posée, elle ne flotte pas */
+.card.is-front{box-shadow:0 22px 18px -16px rgba(0,0,0,.9),0 40px 90px -24px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.07)}
+.card img{width:100%;height:100%;object-fit:cover;pointer-events:none;user-select:none}
+.card::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.22);pointer-events:none}
+.card-spec{position:absolute;inset:0;background:radial-gradient(60% 45% at var(--sx,50%) var(--sy,30%),rgba(255,255,255,.3),transparent 70%);mix-blend-mode:soft-light;opacity:0;transition:opacity .3s}
+.card.is-front .card-spec{opacity:1}
+.card.is-front:focus-visible{outline:3px solid #fff;outline-offset:4px}
+.card.is-back{transition:transform .3s var(--e-out),opacity .2s linear,filter .2s linear}
+.card.is-hold{transition:transform .9s var(--e-out),filter .3s linear,opacity .3s linear}
+.card.is-launch{transition:transform .62s var(--e-io),opacity .42s .18s linear,filter .42s .18s linear}
+.card-all{background:#1a1420;display:flex;flex-direction:column;padding:16px;gap:12px}
+.ca-grid{flex:1;min-height:0;display:grid;place-items:center;container-type:size}
+.ca-in{--h:min((100cqh - (var(--n,2) - 1)*8px)/var(--n,2),(100cqw - (var(--n,2) - 1)*8px)/var(--n,2)*3/2);display:grid;grid-template-columns:repeat(var(--n,2),calc(var(--h)*2/3));grid-auto-rows:var(--h);gap:8px}
+.ca-in img{display:block;width:100%;height:100%;object-fit:cover;border-radius:8px}
+.ca-t{display:flex;flex-direction:column;text-align:left}
+.ca-t b{font-weight:600;font-size:18px}
+.ca-t span{color:var(--t3);font-size:12px;line-height:1.4}
+
+/* Repère vertical à droite (façon Time Machine) : le jeu courant toujours nommé, ses voisins au survol, au clavier ou juste après un cran */
+.rail{position:absolute;right:16px;top:50%;translate:0 calc(-50% - 30px);display:flex;flex-direction:column;align-items:flex-end;z-index:6}
+.rail-t{display:flex;flex-direction:row-reverse;align-items:center;gap:8px;min-width:44px;height:28px;color:var(--t3);border-radius:6px;padding-left:8px}
+.rail-t i{flex:none;width:24px;height:2px;border-radius:2px;background:currentColor;box-shadow:0 0 0 1px rgba(8,6,11,.4);transform:scaleX(.58);transform-origin:right center;transition:transform .2s var(--e-out),background-color .15s}
+.rail-t span{max-width:18ch;overflow:hidden;text-overflow:ellipsis;padding:2px 8px;border-radius:6px;background:rgba(8,6,11,.58);font-size:12px;line-height:1.4;font-weight:500;opacity:0;translate:6px 0;transition:opacity .15s,translate .2s var(--e-out);white-space:nowrap}
+.rail-t.on{color:var(--bone)}.rail-t.on i{transform:none;background:var(--rose)}
+.rail-t.on span,.rail-t:focus-visible span{opacity:1;translate:0 0}
+.rail:is(:focus-within,.peek) .rail-t.nb span{opacity:1;translate:0 0}
+@media(hover:hover){.rail:hover .rail-t.nb span,.rail-t:hover span{opacity:1;translate:0 0}.rail-t:hover{color:var(--bone)}}
+/* Fenêtre étroite : les noms des voisins passeraient sur la pile */
+@container (max-width:1099px){.rail .rail-t.nb:not(:hover):not(:focus-visible) span{opacity:0}}
+
+.launching .card:not(.is-launch):not(.is-hold){opacity:0!important;transition:opacity .3s linear}
+.launching .rail{opacity:0;transition:opacity .2s}
+.hm-fr{position:absolute;right:40px;top:64px;z-index:6;display:flex;align-items:center;height:44px;padding:0 16px 0 8px;border-radius:22px;background:rgba(16,12,20,.74);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);box-shadow:var(--glass-edge);transition:background-color .15s,opacity .2s}
+.hm-fr .av{margin-left:-8px;box-shadow:0 0 0 2px rgba(20,15,24,.8)}
+.hm-fr .av:first-child{margin-left:0}
+.hm-fr span:last-child{display:flex;flex-direction:column;margin-left:8px;font-size:12px;line-height:1.3;color:rgba(247,241,244,.86);text-align:left;white-space:nowrap}
+.hm-fr b{font-size:12px;line-height:1.4;font-weight:600;color:var(--bone)}
+.launching .hm-fr{opacity:0;pointer-events:none}
+@media(hover:hover){.hm-fr:hover{background:rgba(32,25,38,.76)}}
+/* Boutons d'action (9 novembre) : un îlot de verre comme la barre du bas.
+   « Jouer » ou « Installer » en haut, plus doux (coins de 18 px, léger relief), et les actions secondaires en rangée segmentée dessous. */
+.dock,.ht-acts{padding:6px;border-radius:24px;background:rgba(16,11,18,.55);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),0 24px 48px -24px rgba(0,0,0,.8)}
+.dock{display:flex;flex-direction:column;gap:6px}
+:is(.dock,.ht-acts) .play-btn{height:54px;border-radius:18px;background:var(--key);box-shadow:var(--key-edge);font-size:17px;letter-spacing:.005em}
+:is(.dock,.ht-acts) .play-btn::after{border-radius:22px}
+@media(hover:hover){:is(.dock,.ht-acts) .play-btn:hover{background:var(--key-hi)}}
+:is(.dock,.ht-acts) .play-btn.is-upd{background:linear-gradient(180deg,#fff,#E9E2E6);color:#150d12}
+.ht-acts .play-btn{min-width:180px}
+.dock .gp-mini{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px}
+.dk-b{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:0;height:44px;padding:0 12px;border-radius:14px;font-size:13px;font-weight:500;color:var(--t2);white-space:nowrap;transition:background-color .15s ease-out,color .15s ease-out}
+.dk-b>span:last-child{overflow:hidden;text-overflow:ellipsis}
+.dk-b .ic{width:17px;height:17px;flex:none}
+.ht-acts .dk-b{height:54px;padding:0 18px;font-size:14px;border-radius:18px}
+.ht-acts .dk-i{width:54px;padding:0}
+.dk-b[aria-pressed=true]{color:var(--bone)}
+.dk-b[aria-pressed=true] .ic-swap .b{color:var(--rose)}
+.dk-b[aria-expanded=true]{background:rgba(255,255,255,.1);color:var(--bone)}
+@media(hover:hover){.dk-b:hover{background:rgba(255,255,255,.08);color:var(--bone)}}
+.dk-b:focus-visible{outline:2px solid var(--rose);outline-offset:-2px}
+@media(prefers-reduced-motion:reduce){.dk-b{transition:none}}
+/* Trois actions ou plus sous la jaquette : des icônes seules (le nom est dans la bulle), pour ne rien couper */
+.dock .gp-mini:has(> :nth-child(3)) .dk-b>span:last-child{display:none}
+.dock .gp-mini:has(> :nth-child(3)) .dk-b{padding:0}
+.ht-kick:empty{display:none}
+/* Titres de l'Accueil en lettrage Player X : chaque mot est un dessin, ils passent à la ligne comme du texte */
+.ht-title.is-px{line-height:1.1;margin-left:0;font-size:clamp(40px,4.6cqw,72px);text-wrap:wrap}
+.ht-title.is-px[data-len=m]{font-size:clamp(36px,4cqw,62px)}
+.ht-title.is-px[data-len=l]{font-size:clamp(32px,3.4cqw,52px)}
+.ht-title .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.pxt-w{display:inline-block;height:.74em;width:auto;vertical-align:baseline;filter:drop-shadow(0 2px 18px rgba(0,0,0,.45))}
+/* Parcours (agent flow) : seulement ce que le JS des parcours demande */
+/* Installer : le bouton attend Steam */
+.play-btn[aria-busy=true]{cursor:progress}

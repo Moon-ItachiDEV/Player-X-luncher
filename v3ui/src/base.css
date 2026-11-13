@@ -1,0 +1,227 @@
+/* Player X V3. Concept : le lanceur devient un player. Fond fluide aux couleurs du jeu, pile de jaquettes en profondeur,
+   une seule barre de transport en verre, un X (le hitmarker du logo) sur la ligne pour chaque moment. Thème sombre assumé. */
+:root{
+  color-scheme:dark;
+  --ink:#08060b;--ink2:#120e16;--ink3:#1c1721;
+  --bone:#f7f1f4;--t2:rgba(247,241,244,.78);--t3:rgba(247,241,244,.66);--t4:rgba(247,241,244,.52);
+  --hair:rgba(255,236,243,.11);--hair2:rgba(255,236,243,.2);
+  --rose:#ff5c86;--rose-hi:#ff7d9f;--on-rose:#2a0612;--rose-soft:rgba(255,92,134,.16);--rose-t:#ff9db5;
+  /* La touche rose (bêta 31) : le dégradé et le relief du « Jouer » du dock, pour tous les boutons roses */
+  --key:linear-gradient(180deg,#F47995,#DF4468);--key-hi:linear-gradient(180deg,#FF8AA5,#E8507A);
+  --key-edge:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -2px 0 rgba(110,8,38,.28);
+  --live:#4fd6e8;--live-soft:rgba(79,214,232,.14);--gold:#f2c66d;--lav:var(--rose);--ok:#5be49b;--warn:#f5b44a;--danger:#ff7a5c;
+  --ct:#7fb2ff;--te:#f0b54a;
+  --f:'Archivo',ui-sans-serif,'Segoe UI',system-ui,sans-serif;--brand:'Sora','Archivo',ui-sans-serif,sans-serif;
+  --e-out:cubic-bezier(.23,1,.32,1);--e-io:cubic-bezier(.77,0,.175,1);--e-md:cubic-bezier(.2,0,0,1);
+  --spring:cubic-bezier(.2,.9,.25,1);
+  --glass:rgba(22,17,27,.5);--glass-2:rgba(30,24,36,.62);
+  --glass-edge:inset 0 0 0 1px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.1);
+  --glass-blur:blur(28px) saturate(170%);
+  --game-a:#a3123f;--game-b:#ff5c86;
+  /* Échelles partagées : texte 12 (méta), 14 (secondaire), 16 (corps), 18, 24 (titre de section) ; rayons 8, 12, 16, 20 (surfaces et feuilles) */
+  --fs-meta:12px;--fs-sm:14px;--fs-md:16px;--fs-lg:18px;--fs-h2:24px;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;--r-panel:20px;
+  --focus:var(--rose-hi);
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:#050407;color:var(--bone);font:400 14px/1.5 var(--f);-webkit-font-smoothing:antialiased;overflow:hidden;font-stretch:100%}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+input,select{font:inherit;color:inherit}
+h1,h2,h3,h4,p,ul,ol,figure{margin:0;padding:0}
+h1,h2,h3{text-wrap:balance}
+p,li{text-wrap:pretty}
+ul,ol{list-style:none}
+img{display:block;max-width:100%}
+svg{display:block}
+.ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.num{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* Lignes de listes qui défilent : l'anneau se dessine dedans, sinon le bord du défilement le coupe */
+#root{height:100%;display:flex;flex-direction:column;padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px))}
+#stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:clip;background:radial-gradient(70% 80% at 50% 50%,#120d17,#050407 78%)}
+#stage::before{content:"";position:absolute;left:50%;top:50%;width:min(1760px,110%);height:min(1120px,120%);translate:-50% -50%;background:radial-gradient(50% 50% at 50% 50%,color-mix(in srgb,var(--game-a) 30%,transparent),transparent 72%);opacity:.75;pointer-events:none;transition:background .9s var(--e-md)}
+#win{position:relative;flex:none;overflow:clip;background:var(--ink);container-type:size;isolation:isolate;border-radius:16px}
+#win::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);pointer-events:none;z-index:95}
+#winSh{position:absolute;left:50%;top:50%;translate:-50% -50%;border-radius:16px;box-shadow:0 60px 140px -30px rgba(0,0,0,.95),0 24px 70px -20px rgba(0,0,0,.8);transition:opacity .4s}
+#stage:has(#win.is-inst) #winSh{opacity:0}
+#fluid{position:absolute;inset:0;width:100%;height:100%;z-index:-2;transition:opacity .3s var(--e-md);background:radial-gradient(70% 90% at 72% 40%,color-mix(in srgb,var(--game-a) 60%,transparent),transparent 72%),radial-gradient(60% 70% at 92% 90%,color-mix(in srgb,var(--game-b) 28%,transparent),transparent 70%),var(--ink)}
+.grain{position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* Barre du prototype (hors de l'appli) */
+
+/* Fenêtre de l'appli */
+.tbar{position:absolute;inset:0 0 auto;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 24px;z-index:30;pointer-events:none}
+.tbar>*{pointer-events:auto}
+.t-brand{display:flex;align-items:center;gap:12px;min-height:44px;font:600 16px/1.25 var(--brand);letter-spacing:-.01em;border-radius:8px}
+.t-brand .mark{width:41px;height:25px}.t-brand .wm{display:block;height:15px}.t-brand .wm svg{display:block;height:100%;width:auto}
+.t-brand .mark svg{width:100%;height:100%}
+.t-ctrl{display:flex;align-items:center;gap:2px;color:var(--t2)}
+.t-ctrl button{width:40px;height:32px;display:grid;place-items:center;border-radius:8px;transition:background-color .15s,color .15s}
+.t-ctrl .ic{width:14px;height:14px;stroke-width:1.4}
+@media(hover:hover){.t-ctrl button:hover{background:rgba(255,255,255,.1);color:var(--bone)}}
+
+/* Vues */
+.v{position:absolute;inset:0;z-index:1;overflow:clip}
+.v[hidden]{display:none}
+.v:focus{outline:none}
+.scroll{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;padding:72px 48px 152px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.scroll::-webkit-scrollbar{width:10px}
+.scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:10px;border:3px solid transparent;background-clip:content-box}
+.demo{font-size:12px;line-height:1.4;color:var(--t3)}
+
+/* Boutons (bêta 31) : une seule famille, celle du dock. Des touches aux coins arrondis (14 px, 12 px en petit), plus de pastilles rondes :
+   les pastilles (.pill) restent pour les filtres. Le rose n'est plus un aplat mais la touche du dock (--key, --key-edge). */
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border-radius:14px;font-weight:500;font-size:14px;white-space:nowrap;transition:scale .15s ease-out,background-color .15s,color .15s,box-shadow .2s;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.1);color:var(--bone)}
+.btn:not(:disabled):active{scale:.96}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.rose{font-weight:600;font-size:15px;letter-spacing:.005em;background:var(--key);color:var(--on-rose);box-shadow:var(--key-edge),0 10px 24px -12px rgba(223,68,104,.7)}
+.btn.bone{font-weight:600;background:linear-gradient(180deg,#fff,#E9E2E6);color:#140d12;box-shadow:inset 0 1px 0 #fff,inset 0 -2px 0 rgba(60,40,50,.16)}
+.btn.quiet{background:none;box-shadow:none;color:var(--t2);padding:0 12px}
+.btn.icon{width:44px;padding:0}
+.btn .ic{width:17px;height:17px;stroke-width:2}
+.btn.sm{height:36px;padding:0 16px;border-radius:12px;font-size:14px}
+.btn.sm .ic{width:15px;height:15px}
+.btn.sm::after{content:"";position:absolute;inset:-4px}
+.btn.danger{font-weight:600;background:linear-gradient(180deg,#FF927A,#F0623F);color:#2a0a04;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -2px 0 rgba(110,30,8,.25)}
+.btn.sm.icon{width:36px;padding:0}
+@media(hover:hover){.btn:not(:disabled):hover{background:rgba(255,255,255,.14)}.btn.rose:not(:disabled):hover{background:var(--key-hi)}.btn.danger:not(:disabled):hover{background:linear-gradient(180deg,#FFA28C,#F4704F)}.btn.bone:not(:disabled):hover{background:#fff}.btn.quiet:not(:disabled):hover{color:var(--bone);background:rgba(255,255,255,.08)}}
+.xm{width:12px;height:12px;flex:none;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round}
+
+/* Fenêtre de confirmation : native, parce que le navigateur gère le focus, Échap et le fond */
+.cf{width:min(440px,calc(100vw - 40px));padding:24px 24px 20px;border:0;border-radius:var(--r-panel);color:var(--bone);background:rgba(24,18,29,.88);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);box-shadow:var(--glass-edge),0 30px 80px -14px #000;font:400 14px/1.5 var(--f);opacity:0;scale:.98;transition:opacity .15s ease-out,scale .15s ease-out,display .15s allow-discrete,overlay .15s allow-discrete}
+.cf[open]{opacity:1;scale:1}
+@starting-style{.cf[open]{opacity:0;scale:.98}}
+.cf::backdrop{background:rgba(5,3,7,.52);opacity:0;transition:opacity .15s,display .15s allow-discrete,overlay .15s allow-discrete}
+.cf[open]::backdrop{opacity:1}
+@starting-style{.cf[open]::backdrop{opacity:0}}
+.cf h2{font-size:24px;line-height:1.17;font-weight:600;letter-spacing:-.012em}
+.cf p{margin-top:12px;color:var(--t2);font-size:14px}
+.cf-a{display:flex;justify-content:flex-end;gap:8px;margin-top:24px}
+/* Petit menu rattaché à un bouton : il sort de son bouton */
+.mn{position:fixed;inset:auto;margin:0;border:0;color:var(--bone);font:500 14px/1.5 var(--f);opacity:0;scale:.98;transition:opacity .1s ease-out,scale .15s var(--e-out),display .15s allow-discrete,overlay .15s allow-discrete}
+.mn:popover-open{opacity:1;scale:1}
+@starting-style{.mn:popover-open{opacity:0;scale:.98}}
+.mn button{display:flex;align-items:center;width:100%;text-align:left;transition:background-color .1s;height:40px;gap:12px;padding:0 12px;border-radius:14px;font-size:14px}
+.mn .ic{width:16px;height:16px;stroke-width:2;color:var(--t2)}
+@media(hover:hover){.mn button:hover{background:rgba(255,255,255,.1)}}
+
+#stage::after{content:"Pensé pour un écran de PC";position:absolute;left:0;right:0;bottom:10px;text-align:center;font-size:12px;line-height:1.4;color:var(--t3);display:none}
+@media(max-width:700px){#stage::after{display:block}}
+
+/* Infobulles : même dessin partout, au survol et au clavier. La première attend un peu, les suivantes répondent tout de suite. */
+[data-tip]::before{content:attr(data-tip);position:absolute;bottom:calc(100% + 10px);left:50%;translate:-50% 0;padding:8px 12px;border-radius:10px;background:rgba(14,10,18,.96);box-shadow:var(--glass-edge),0 10px 26px -8px #000;font:500 12px/1.2 var(--f);white-space:nowrap;color:var(--bone);pointer-events:none;z-index:50;opacity:0;transition:opacity .1s}
+[data-tip]:focus-visible::before{opacity:1}
+@media(hover:hover){[data-tip]:hover::before{opacity:1;transition-delay:.3s}.tip-fast [data-tip]:hover::before{transition-delay:0s}}
+[data-tip-b]::before{bottom:auto;top:calc(100% + 10px)}
+[data-tip-r]::before{left:auto;right:0;translate:none}
+[data-tip-l]::before{left:0;translate:none}
+.b-tab[aria-current=page]::before{display:none}
+
+/* Sans flou disponible, le verre devient opaque : le texte reste lisible */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#bar,.sh,.pal,.toast,.cf,.mn,.ov{background:#1b1520}}
+.srch{display:flex;align-items:center;gap:8px;flex:none;min-width:288px;height:44px;padding:0 8px 0 16px;border-radius:999px;background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);color:var(--t2);font-size:14px;transition:background-color .15s,color .15s,scale .15s ease-out}
+.srch span{flex:1;text-align:left}.srch .ic{width:16px;height:16px;stroke-width:2}.srch:active{scale:.98}
+@media(hover:hover){.srch:hover{background:rgba(255,255,255,.1);color:var(--bone)}}
+
+/* Les fonds à comparer */
+#win[data-bg]:not([data-bg=fluide]) .grain{display:none}
+#win[data-bg=mur] #fluid{visibility:hidden}
+#bgw,#bgi{position:absolute;inset:0;overflow:hidden;z-index:-1;visibility:hidden;contain:strict;pointer-events:none;opacity:calc(var(--bg-k,1)*var(--bg-dim,1));transition:opacity .3s var(--e-md)}
+#win[data-bg=mur] #bgw,#win[data-bg=verre] #bgi,#win[data-bg=cannele] #bgi{visibility:visible}
+.bgw-p{position:absolute;left:50%;top:50%;width:2940px;height:3700px;margin:-1500px 0 0 -1470px;transform:perspective(2000px) rotateX(16deg) rotateY(-13deg) rotateZ(8deg);translate:var(--px,0) calc(var(--py,0px) + var(--wy,0px));transition:translate .6s var(--e-out)}
+.bgw-g{display:flex;gap:16px;animation:wallUp 150s linear infinite;will-change:transform}
+.bgw-c{flex:none;width:210px;display:flex;flex-direction:column;gap:16px}
+.bgw-c:nth-child(even){margin-top:-157px}
+.bgw-c img{width:210px;height:315px;border-radius:12px;object-fit:cover;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+@keyframes wallUp{to{transform:translateY(-1324px)}}
+.bg-still .bgw-g{animation-play-state:paused}
+#bgw::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#08060b 0,rgba(8,6,11,.96) 26%,rgba(8,6,11,.78) 52%,rgba(8,6,11,.66) 100%),linear-gradient(0deg,rgba(8,6,11,.72),transparent 30%),linear-gradient(180deg,rgba(8,6,11,.66),transparent 22%)}
+.bgw-tint{position:absolute;inset:0;background:var(--game-a);mix-blend-mode:color;opacity:.32;transition:background-color .6s var(--e-md)}
+#bgi{--bg-k:1}
+.bgi-g{position:absolute;inset:-14px;margin:0;opacity:0;translate:var(--px,0) var(--py,0);transition:opacity .3s var(--e-md),translate .6s var(--e-out)}
+.bgi-g.on{opacity:1}
+.bgi-g img{position:absolute;left:0;top:0;width:100%;height:100%;max-width:none;object-fit:cover;object-position:50% 32%}
+.bgi-u{filter:blur(34px) saturate(1.25) brightness(.72);scale:1.08;transition:opacity .3s var(--e-md)}
+.bgi-m{opacity:0;scale:1.03;transition:opacity .25s var(--e-md) .06s,scale .9s var(--e-out)}
+.bgi-g.on .bgi-m{opacity:1;scale:1}
+.bgi-g.is-wide .bgi-m{height:auto;-webkit-mask-image:linear-gradient(#000 58%,transparent);mask-image:linear-gradient(#000 58%,transparent)}
+#bgi::after{content:"";position:absolute;inset:0;background:radial-gradient(90% 110% at 64% 44%,transparent 46%,rgba(8,6,11,.46) 100%),rgb(8 6 11/var(--art-dim,0));opacity:0;transition:opacity .3s}
+/* Sur les autres pages : plus que la version floutée de l'image, sombre. Le contenu reste seul net. */
+#win:not(.is-home) .bgi-g .bgi-m{opacity:0;transition-delay:0s}
+#win:not(.is-home) #bgi::after{background:rgb(8 6 11/.66)}
+#bgi:has(.bgi-g.on)::after{opacity:1}
+
+/* Zones floutées : le centre reste net, l'interface se pose sur du verre. Chaque couche floute un peu plus, de plus en plus près du bord. */
+.z{position:absolute;pointer-events:none}
+.z i{position:absolute;inset:0;-webkit-backdrop-filter:blur(var(--b));backdrop-filter:blur(var(--b));-webkit-mask-image:linear-gradient(var(--d),#000 var(--s),transparent var(--e));mask-image:linear-gradient(var(--d),#000 var(--s),transparent var(--e))}
+.z i:nth-child(1){--b:2px;--s:30%;--e:100%}
+.z i:nth-child(2){--b:6px;--s:20%;--e:76%}
+.z i:nth-child(3){--b:14px;--s:10%;--e:54%}
+.z i:nth-child(4){--b:30px;--s:0%;--e:34%}
+.z::after{content:"";position:absolute;inset:0;background:linear-gradient(var(--d),var(--tone),transparent 92%)}
+.z-top{inset:0 0 auto;height:64px;z-index:20;--d:to bottom;--tone:rgb(8 6 11/calc(var(--z-tone,.7) - .06))}
+.z-bot{inset:auto 0 0;height:176px;z-index:20;--d:to top;--tone:rgba(8,6,11,.7)}
+#win.is-home .z-bot{height:132px}
+.z-left{left:0;top:0;bottom:0;width:58%;z-index:-1;--d:to right;--tone:rgb(8 6 11/var(--z-tone,.8));opacity:0;transition:opacity .3s var(--e-md),--z-tone .3s var(--e-md)}
+#win.is-home .z-left{opacity:1}
+.z-left::after{background:linear-gradient(to right,rgb(8 6 11/var(--z-tone,.8)) 0,rgb(8 6 11/calc(var(--z-tone,.8)*.88)) 46%,rgb(8 6 11/calc(var(--z-tone,.8)*.62)) 74%,transparent 100%)}
+.z-left i:nth-child(1){--s:34%;--e:100%}
+.z-left i:nth-child(2){--s:26%;--e:82%}
+.z-left i:nth-child(3){--s:18%;--e:66%}
+.z-left i:nth-child(4){--s:8%;--e:50%}
+#win.is-inst .z,#win.is-boot .z{opacity:0;visibility:hidden}
+/* Le verre cannelé : le même flou, avec des stries nettes qui s'effacent vers l'image */
+#win[data-bg=cannele] .z-left::before{content:"";position:absolute;inset:0;z-index:1;background:repeating-linear-gradient(90deg,rgba(255,255,255,.075) 0,rgba(255,255,255,.012) 3px,rgba(0,0,0,.03) 12px,rgba(0,0,0,.16) 17px,rgba(255,255,255,.1) 18px);-webkit-mask-image:linear-gradient(to right,#000 30%,transparent 92%);mask-image:linear-gradient(to right,#000 30%,transparent 92%)}
+/* Sans carte graphique ni flou disponible : un simple dégradé, et le contenu s'efface en haut et en bas */
+#win.no-z .z i{-webkit-backdrop-filter:none;backdrop-filter:none}
+#win.no-z .scroll{-webkit-mask-image:linear-gradient(to bottom,transparent 10px,#000 58px,#000 calc(100% - 124px),transparent calc(100% - 44px));mask-image:linear-gradient(to bottom,transparent 10px,#000 58px,#000 calc(100% - 124px),transparent calc(100% - 44px))}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.scroll{-webkit-mask-image:linear-gradient(to bottom,transparent 10px,#000 58px,#000 calc(100% - 124px),transparent calc(100% - 44px));mask-image:linear-gradient(to bottom,transparent 10px,#000 58px,#000 calc(100% - 124px),transparent calc(100% - 44px))}}
+#win.no-gl #fluid{background:repeating-linear-gradient(0deg,rgba(8,6,11,.5) 0 2px,transparent 2px 4px),radial-gradient(70% 90% at 72% 40%,color-mix(in srgb,var(--game-a) 60%,transparent),transparent 72%),#08060b}
+@property --z-tone{syntax:'<number>';inherits:true;initial-value:.8}
+@property --art-dim{syntax:'<number>';inherits:true;initial-value:0}
+.z-top,.z-bot{transition:--z-tone .3s var(--e-md)}
+#bgi{transition:opacity .3s var(--e-md),--art-dim .3s var(--e-md)}
+/* Écrans sans jeu (première ouverture, nouveautés, listes) : tes jaquettes en mur, sombre et flouté */
+#win.wall-soft #fluid{visibility:hidden}
+#win.wall-soft #bgw{visibility:visible;opacity:calc(var(--bg-k,1)*var(--bg-dim,1)*.9)}
+#win.wall-soft .bgw-p{filter:blur(9px) saturate(1.1) brightness(.62)}
+#win.wall-soft .bgw-g{animation-play-state:paused}
+#win.wall-soft .bgw-tint{opacity:0}
+#win.wall-soft #bgw::after{background:linear-gradient(90deg,rgba(8,6,11,.78) 0,rgba(8,6,11,.58) 42%,rgba(8,6,11,.34) 100%),linear-gradient(0deg,rgba(8,6,11,.66),transparent 34%),linear-gradient(180deg,rgba(8,6,11,.58),transparent 24%)}
+#win.no-z.wall-soft .bgw-p{filter:saturate(.8) brightness(.42)}
+/* Un bilan : l'image de la carte, seulement floutée et sombre. En Verre et Cannelé, le fond WebGL ne sert pas. */
+#win.is-story .bgi-g .bgi-m{opacity:0;transition-delay:0s}
+#win.is-story #bgi::after{background:rgb(8 6 11/.66)}
+#win[data-bg=verre] #fluid,#win[data-bg=cannele] #fluid{visibility:hidden}
+/* Barre du haut : assez sombre pour rester lisible sur une image claire, sur moins de hauteur */
+.z-top::after{background:linear-gradient(to bottom,var(--tone) 0,var(--tone) 42%,transparent 100%)}
+
+/* Jeu sans image héros : sa jaquette en grand sur l'accueil, nette, en vraies couleurs, assombrie pour garder le titre lisible */
+.bgi-g.is-cover img{object-position:50% 22%}
+#win.is-home:not(.is-story) .bgi-g.is-cover .bgi-u{opacity:0}
+#win.is-home:not(.is-story) .bgi-g.is-cover .bgi-m{filter:brightness(.5) saturate(.85)}
+
+/* Aucun jeu ni image : braise rose ton sur ton, qui part du logo console */
+#bgx{position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .3s var(--e-md),visibility 0s .3s;background:radial-gradient(42% 58% at 74% 48%,rgba(255,92,134,.2),rgba(163,18,63,.1) 46%,transparent 76%),radial-gradient(30% 40% at 96% 100%,rgba(163,18,63,.18),transparent 70%),var(--ink)}
+#win.bg-none #bgx{opacity:calc(var(--bg-k,1)*var(--bg-dim,1));visibility:visible;transition-delay:0s}
+#win.bg-none #bgi{visibility:hidden}
+#bgx .bgx-l{display:block;position:absolute;left:74%;top:48%;width:min(30cqw,46cqh,420px);height:auto;aspect-ratio:1;translate:-50% -50%;opacity:.2;transition:opacity .3s var(--e-md)}
+/* Le grand logo est la place d'un jeu sur l'accueil vide. Ailleurs (Clips, Amis, Stats), il remplissait un vide sans rien dire : seule la braise reste. */
+#win:not(.is-home) #bgx .bgx-l{opacity:0}
+#bgx .bgx-l svg{width:100%;height:100%}
+#win.is-inst #bgx,#win.is-boot #bgx{opacity:0}
+/* Menus (9 novembre) : le même îlot de verre que la barre du bas et le bloc « Jouer » ; au clic droit, ils s'ouvrent au curseur */
+.mn{min-width:240px;padding:6px;border-radius:20px;background:rgba(16,11,18,.78);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),0 24px 48px -16px rgba(0,0,0,.85)}
+.mn button>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* L'action principale : une ligne comme les autres, en gras, avec l'icône dans une pastille rose (plus de gros bouton plein) */
+.mn button.is-main{gap:8px;font-weight:600;color:var(--bone)}
+.mn button.is-main .ic{box-sizing:content-box;width:12px;height:12px;padding:6px;margin-left:-4px;border-radius:50%;background:var(--rose);color:#fff;stroke-width:2.4}
+@media(hover:hover){.mn button.is-main:hover{background:rgba(236,95,124,.14)}}
+.mn hr{margin:4px 10px;border:0;border-top:1px solid var(--hair)}
+.mn-h{display:flex;align-items:center;gap:12px;padding:6px 8px 10px;margin-bottom:4px;border-bottom:1px solid var(--hair)}
+.mn-h img{flex:none;width:30px;height:40px;border-radius:6px;object-fit:cover}
+.mn-h span{min-width:0;display:flex;flex-direction:column}
+.mn-h b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+.mn-h small{font-size:12px;color:var(--t3)}

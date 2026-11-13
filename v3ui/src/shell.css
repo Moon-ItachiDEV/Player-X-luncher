@@ -1,0 +1,18 @@
+/* Exe de test : l'appli remplit une vraie fenêtre Windows. Boutons Windows natifs, comme Player X (titleBarOverlay). */
+html[data-shell] #win{width:100%;height:100%;border-radius:0}
+html[data-shell] #win::after,html[data-shell] #winSh,html[data-shell] #stage::after{display:none}
+html[data-shell] #why{top:52px}
+html[data-shell] .t-ctrl{display:none}
+html[data-shell] body{-webkit-user-select:none;user-select:none}
+html[data-shell] img{-webkit-user-drag:none}
+
+/* Déplacer la fenêtre : la barre du haut. Tout ce qu'on peut cliquer reste cliquable, même sous cette zone. */
+html[data-shell] .tbar{-webkit-app-region:drag}
+html[data-shell] :is(button,a,input,select,textarea,summary,label,[role=tab],[role=button],[tabindex]:not([tabindex="-1"])){-webkit-app-region:no-drag}
+
+/* Rien d'utile sous les boutons Windows */
+html[data-shell] .sh{top:52px}
+html[data-shell] .st-close{top:56px}
+/* En match, le haut de l'image s'assombrit : les boutons Windows restent lisibles, le HUD ne bouge pas */
+
+/* Bouton et menu des scénarios */
