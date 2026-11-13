@@ -66,7 +66,7 @@ h1:focus { outline: none; }
 /* Le halo rose sous la console et le reflet du sol, comme un produit posé sur scène. */
 .halo, .floor, .bloom { position: absolute; left: 50%; pointer-events: none; }
 .halo { top: 50%; width: 760px; height: 520px; translate: -50% -50%; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255, 92, 134, .26), rgba(224, 64, 101, .12) 46%, rgba(163, 18, 63, .04) 72%, transparent);
+  background: radial-gradient(closest-side, rgba(227, 23, 63, .26), rgba(255, 63, 134, .11) 46%, rgba(163, 16, 47, .04) 72%, transparent);
   transition: opacity 1.4s var(--e-soft), scale 1.8s var(--e-soft), filter 1.4s var(--e-soft); }
 .floor { top: calc(100% - 6px); width: 520px; height: 90px; translate: -50% 0; border-radius: 50%;
   background: radial-gradient(closest-side, rgba(255, 157, 181, .14), rgba(255, 92, 134, .05) 60%, transparent);
@@ -95,6 +95,22 @@ h1:focus { outline: none; }
 .logo.dark .l-scr { opacity: 0; }
 @keyframes lgBreath { 0%, 100% { opacity: 0; } 50% { opacity: .14; } }
 @keyframes lgOn { 0% { opacity: 0; } 24% { opacity: .42; } 100% { opacity: .1; } }
+
+/* Chargement façon Blazon : un anneau néon tourne autour du blason et les chevrons montent l'un après l'autre. */
+.ring { position: absolute; left: 50%; top: 50%; width: calc(var(--s) * 500 / 1024); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 60%, #a3102f 75%, #ff3f86 92%, transparent);
+  -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+  mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+  filter: drop-shadow(0 0 6px #e3173f); opacity: 0; scale: .96; transition: opacity .8s var(--e-soft), scale .8s var(--e-soft);
+  animation: pxRing 1.8s linear infinite; }
+.scene.is-busy .ring { opacity: 1; scale: 1; }
+@keyframes pxRing { to { rotate: 1turn; } }
+.logo.busy .l-p polyline { animation: pxClimb 1.6s var(--e-md) infinite; }
+.logo.busy .l-p polyline + polyline { animation-delay: .16s; }
+@keyframes pxClimb { 0% { opacity: .3; translate: 0 4px; } 35% { opacity: 1; translate: 0 0; } 100% { opacity: .3; translate: 0 -1px; } }
+/* À la fin, le blason s'allume comme un tube néon (deux hoquets). */
+.scene.is-done .console .logo svg { animation: pxNeon 1.24s steps(1, end); }
+@keyframes pxNeon { 0% { opacity: 1; } 15% { opacity: .35; } 25% { opacity: 1; } 40% { opacity: .5; } 50% { opacity: 1; } }
 
 /* État de la scène : fin (allumée), erreur (éteinte). */
 .scene.is-done .halo { scale: 1.12; }
@@ -127,13 +143,17 @@ h1:focus { outline: none; }
   -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
   box-shadow: var(--glass-edge), 0 24px 48px -24px rgba(0, 0, 0, .8); }
 .go { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 196px; height: 54px; padding: 0 30px; border-radius: 18px;
-  background: linear-gradient(180deg, #f47995, #df4468); color: var(--on-rose); font: 600 17px/1 var(--f); letter-spacing: .005em;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -2px 0 rgba(110, 8, 38, .28), 0 14px 30px -14px rgba(255, 92, 134, .7);
-  transition: background-color .2s, scale .15s var(--e-out); }
+  /* Style du blason : le même dégradé (rose en bas, rouge carmin en haut), un liseré clair et une lueur néon. */
+  background: linear-gradient(0deg, #ff3f86, #c4123a); color: #fff; font: 600 17px/1 var(--f); letter-spacing: .005em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 0 0 1px rgba(255, 211, 222, .22), inset 0 -2px 0 rgba(90, 4, 24, .3),
+    0 0 20px -4px rgba(227, 23, 63, .65), 0 14px 30px -14px rgba(255, 63, 134, .75);
+  transition: background-color .2s, box-shadow .25s var(--e-md), scale .15s var(--e-out); }
 .go svg { width: 18px; height: 18px; flex: none; }
-.go:hover { background: linear-gradient(180deg, #ff8aa5, #e8507a); }
+.go:hover { background: linear-gradient(0deg, #ff5a98, #d8204a);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .36), inset 0 0 0 1px rgba(255, 211, 222, .32), inset 0 -2px 0 rgba(90, 4, 24, .3),
+    0 0 28px -2px rgba(227, 23, 63, .8), 0 14px 30px -14px rgba(255, 63, 134, .85); }
 .go:active { scale: .98; }
-.go.is-quiet { background: rgba(255, 255, 255, .1); color: var(--bone); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
+.go.is-quiet, .go.is-quiet:hover { background: rgba(255, 255, 255, .1); color: var(--bone); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
 .go.is-quiet:hover { background: rgba(255, 255, 255, .15); }
 .sec { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 54px; padding: 0 18px; border-radius: 18px;
   font: 500 14px/1 var(--f); color: var(--t2); transition: background-color .15s, color .15s; }
@@ -174,12 +194,16 @@ h1:focus { outline: none; }
 /* Installation : le minimum sous la console. La console elle-même montre la progression. */
 .prog { width: 320px; margin-top: 26px; }
 .state { font: 500 16px/24px var(--f); color: var(--bone); }
-.meter { position: relative; height: 4px; margin-top: 18px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.meter { position: relative; height: 4px; margin-top: 18px; border-radius: 2px; background: rgba(255, 255, 255, .08);
+  filter: drop-shadow(0 0 5px rgba(227, 23, 63, .75)); }
 /* Un reflet passe sur la barre tant qu'elle travaille : on voit que ça avance, même entre deux pourcentages */
-.meter::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .35), transparent); translate: -100% 0; animation: pxSweep 1.6s ease-in-out infinite; }
+.meter i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .35), transparent); translate: -100% 0; animation: pxSweep 1.6s ease-in-out infinite; }
 @keyframes pxSweep { to { translate: 100% 0; } }
-@media (prefers-reduced-motion: reduce) { .meter::after { animation: none; opacity: 0; } }
-.meter i { position: absolute; inset: 0; border-radius: inherit; background: var(--rose); transform-origin: left; transform: scaleX(var(--p, 0)); transition: transform .6s var(--e-md); }
+@media (prefers-reduced-motion: reduce) { .meter i::after { animation: none; opacity: 0; } }
+.meter i { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; background: linear-gradient(90deg, #c4123a, #ff3f86); transform-origin: left; transform: scaleX(var(--p, 0)); transition: transform .6s var(--e-md); }
+/* La gemme du blason en tête de barre */
+.meter b { position: absolute; top: 50%; left: calc(var(--p, 0) * 100%); width: 10px; height: 10px; translate: -50% -50%; rotate: 45deg; border-radius: 1px;
+  background: #ffd3de; box-shadow: 0 0 8px 1px rgba(255, 63, 134, .9); transition: left .6s var(--e-md); }
 .meta { display: flex; justify-content: space-between; margin-top: 10px; font: 500 14px/20px var(--f); color: var(--t2); }
 
 /* Fin et erreur. */
@@ -214,6 +238,7 @@ h1.title.is-small { font: 600 22px/30px var(--f); font-stretch: 90%; letter-spac
       <div class="halo"></div>
       <div class="floor"></div>
       <div class="bloom"></div>
+      <div class="ring"></div>
       <div class="console" id="console"><!--__PX_LOGO__--><span class="tag" id="tag" hidden>TEST</span></div>
     </div>
     <!-- Sous la console : un seul écran visible à la fois (accueil, installation, prêt, erreur). -->
@@ -245,7 +270,7 @@ h1.title.is-small { font: 600 22px/30px var(--f); font-stretch: 90%; letter-spac
   <div class="mark keep" aria-hidden="true"></div>
   <div class="prog">
     <h1 class="state" id="title" tabindex="-1"></h1>
-    <div class="meter" aria-hidden="true"><i id="meter"></i></div>
+    <div class="meter" id="meterBox" aria-hidden="true"><i id="meter"></i><b></b></div>
     <p class="meta num" role="status"><span id="step"></span><span id="pct"></span></p>
   </div>
 </template>
@@ -300,6 +325,7 @@ function setConsole(mode, p) {
   const sc = $('scene')
   sc.classList.toggle('is-done', mode === 'done')
   sc.classList.toggle('is-err', mode === 'err')
+  sc.classList.toggle('is-busy', mode === 'busy')
   if (!l) return
   l.classList.toggle('busy', mode === 'busy')
   l.classList.toggle('dark', mode === 'err')
@@ -441,7 +467,7 @@ function progress(p) {
   const pct = Math.max(0, Math.min(100, Number(p.percent) || 0))
   $('pct').textContent = pct + ' %'
   $('step').textContent = STEPS[Math.min(STEPS.length - 1, Number(p.step) || 0)]
-  $('meter').style.setProperty('--p', String(pct / 100))
+  $('meterBox').style.setProperty('--p', String(pct / 100))
   setConsole('busy', pct)
 }
 
@@ -611,11 +637,11 @@ document.addEventListener('contextmenu', (e) => e.preventDefault())
   // Deux images peintes : la fenêtre peut s'afficher sans éclair. La place de la console (son corps rose,
   // sans le vide autour) sert à la vérification --selftest.
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    // Place finale (sans l'agrandissement de l'arrivée en cours). La boîte va des gâchettes (y 290 du dessin 1024)
-    // au bas du corps (724) ; on n'envoie que le corps (322 à 710), sans les gâchettes ni l'ombre.
-    const c = $('console'), r = c.getBoundingClientRect(), w = c.offsetWidth, h = c.offsetHeight
-    const top = r.top + r.height / 2 - h / 2
-    window.pxReady({ x: Math.round(r.left + r.width / 2 - w / 2), y: Math.round(top + (h * 32) / 434), w, h: Math.round((h * 388) / 434) })
+    // Place finale (sans l'agrandissement de l'arrivée en cours). La boîte couvre x 112 à 912 et y 290 à 724 du dessin 1024 ;
+    // on n'envoie que le blason (x 319 à 705, y 274 à 734), sans le vide autour.
+    const c = $('console'), r = c.getBoundingClientRect(), w = c.offsetWidth, h = c.offsetHeight, u = w / 800
+    const left = r.left + r.width / 2 - w / 2, top = r.top + r.height / 2 - h / 2
+    window.pxReady({ x: Math.round(left + 207 * u), y: Math.round(top - 16 * u), w: Math.round(386 * u), h: Math.round(460 * u) })
   }))
 })()
 </script>
