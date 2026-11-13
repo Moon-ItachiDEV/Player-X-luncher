@@ -9,14 +9,45 @@ import pin from '@shared/ffmpegPin.json'
 import type { EditEncoderResult, EditEngine, EditEngineStep, EditEngineTest, EditLastFilm } from '@shared/types'
 import { getKv, setKv } from '../db'
 import { UserError } from '../errors'
-import { gameRunning, newestClipSource } from './clips'
-import { FILM_FORMAT, joinArgs, joinList, progressReader, shotArgs } from './editCompile'
+import { FILM_FORMAT, joinArgs, joinList, progressReader, shotArgs, type ShotSource } from './editCompile'
 import { cleanLastFilm, cleanTest, CLIP_SAMPLE_S, encoderOrder, ENCODERS, gpuText, parseEncoders, parseVersion, pickBest, reportText, SAMPLE, sampleArgs, scrub } from './editEngineRules'
 
 // Le moteur vidéo : FFmpeg, livré tel quel à côté de l'appli (resources/ffmpeg/ffmpeg.exe, avec sa licence et l'adresse de
 // ses sources). Player X le lance comme un programme à part, en priorité basse, sans passer par un interpréteur de commandes,
 // avec des arguments écrits ici (editEngineRules.ts) : la page n'envoie jamais ni chemin ni commande.
 // Rien ne tourne au démarrage de l'appli : le fichier n'est vérifié, puis lancé, que quand on en a besoin.
+
+/** Le dernier clip gardé, tel que l'essai du moteur en a besoin. */
+export interface EngineClip extends ShotSource {
+  durationS: number
+  width: number
+  height: number
+}
+
+/**
+ * Ce que le moteur demande au reste de l'appli, sans l'importer. La capture des clips (clips.ts) lance déjà le moteur : quand
+ * le moteur importait clips.ts en retour, chacun des deux fichiers dépendait de l'autre. Branché au démarrage (index.ts).
+ */
+export interface EngineHost {
+  /** Un jeu tourne : pas d'essai du moteur pendant une partie. */
+  gameRunning(): boolean
+  /** Le dernier clip gardé, pour l'essai sur un vrai clip ; null s'il n'y en a aucun. */
+  newestClipSource(): Promise<EngineClip | null>
+}
+
+let host: EngineHost | null = null
+
+export function setEngineHost(h: EngineHost): void {
+  host = h
+}
+
+/** Un oubli de branchement doit se voir tout de suite : sans ça, l'essai croirait qu'aucun jeu ne tourne. */
+function wired(): EngineHost {
+  if (!host) throw new Error('Moteur vidéo : setEngineHost n’a pas été appelé au démarrage.')
+  return host
+}
+const gameRunning = (): boolean => wired().gameRunning()
+const newestClipSource = (): Promise<EngineClip | null> => wired().newestClipSource()
 
 const TEST_KEY = 'editEngineTest'
 const LAST_FILM_KEY = 'editLastFilm'
@@ -345,7 +376,17 @@ export function spawnCaptureEngine(args: string[], cwd: string): ChildProcess | 
   for (const k of Object.keys(env)) if (/^(FFREPORT|FFMPEG_DATADIR)$/i.test(k)) delete env[k]
   try {
     const p = spawn(file, args, { cwd, env, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
-    app.once('will-quit', () => p.kill())
+    // Player X se ferme : le moteur s'arrête avec lui. L'écoute reste tant que le processus peut encore tourner, et part
+    // quand il est fini (« close »). Avant, il en restait une par lancement (chaque tentative de capture, chaque clip écrit,
+    // chaque vignette), jamais retirée de toute la session.
+    const kill = (): void => void p.kill()
+    app.once('will-quit', kill)
+    p.once('close', () => void app.removeListener('will-quit', kill))
+    // Le programme n'a pas pu démarrer : Node le dit par « error », puis par « close » avec un code négatif, à condition que
+    // quelqu'un écoute « error ». Sans écoute (la vignette d'un clip n'en avait pas), « error » devient une exception et
+    // « close » n'arrive jamais : sur la vraie appli, la vignette ratée ne laissait alors aucune ligne dans le journal.
+    // L'échec n'est pas caché par cette écoute vide : chaque appelant le lit dans « close ».
+    p.on('error', () => {})
     return p
   } catch {
     return null

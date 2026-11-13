@@ -25,7 +25,7 @@
     "test:security": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/trust.test.ts src/main/services/routineRules.test.ts src/main/services/settingsRules.test.ts",
     "test:clips": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/fmp4.test.ts src/main/services/clipsPlan.test.ts src/main/services/cs2Moments.test.ts src/shared/clipPace.test.ts src/main/services/sharePlan.test.ts",
     "test:edit": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/editEngineRules.test.ts src/main/services/editPlan.test.ts src/main/services/editCompile.test.ts src/main/services/editBeats.test.ts src/shared/editShots.test.ts src/main/services/captureTestArgs.test.ts src/main/services/engineCapture.test.ts",
-    "test": "npm run test:launch && npm run test:news && npm run test:bf6 && npm run test:cs2 && npm run test:achievements && npm run test:played && npm run test:friends && npm run test:home && npm run test:ui && npm run test:overlay && npm run test:cs2stats && npm run test:profile && npm run test:ready && npm run test:armory && npm run test:clips && npm run test:edit && npm run test:security",
+    "test": "node scripts/test-all.mjs",
     "dist": "node scripts/dist-v3.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc -p tsconfig.scripts.json",
     "postinstall": "node node_modules/electron/install.js",

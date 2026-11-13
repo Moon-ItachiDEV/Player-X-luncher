@@ -2,8 +2,8 @@
 
 Version d'essai de la nouvelle interface de Player X (« V3 »), installée à part du vrai Player X : autre nom, autre dossier
 (`%LOCALAPPDATA%\Programs\test-v3-player-x`), autres données (`%APPDATA%\Player X V3 Test`), identifiant
-`dev.breezy.playerx.v3test`. Rien de ce dossier n'est publié sur GitHub ; les mises à jour automatiques n'existent pas
-dans cette version.
+`dev.breezy.playerx.v3test`. Le code est dans le dépôt GitHub `Moon-ItachiDEV/player-x-luncher` : rien n'y est poussé sans
+l'ordre « Publier » de Breezydev. Les mises à jour automatiques n'existent pas dans cette version.
 
 - Interface : `v3ui/` (JS et CSS sans framework), assemblée par `python3 v3ui/build.py`.
 - Moteur (processus principal) : `src/main/`, pont `src/preload/`, règles partagées `src/shared/`.
@@ -14,4 +14,6 @@ dans cette version.
 - Montage : « Faire le film » sur la page Clips. Règles et commandes : `src/main/services/editPlan.ts` et
   `editCompile.ts` ; fabrication : `editFilm.ts`.
 
-Reconstruire, contrôler et livrer : voir `NOTES.md`.
+Comment l'appli est construite (couches, démarrage, canaux, garde-fous) : `docs/ARCHITECTURE.md`.
+Contrôler : `npm run typecheck`, puis `npm test` (tous les `*.test.ts` de `src/`, trouvés tout seuls).
+Reconstruire et livrer : voir `NOTES.md`.

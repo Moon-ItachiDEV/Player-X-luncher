@@ -42,7 +42,7 @@ export function registerPlayChannels(d: ChannelDeps): void {
   handle('bf6:search', (_e, name: unknown) => searchBf6(name))
   handle('bf6:playerx', () => playerXBf6())
   handle('bf6:import-playerx', () => importPlayerXBf6())
-  handle('bf6:stats', (_e, account: unknown, refresh?: boolean) => getBf6Stats(account, refresh === true))
+  handle('bf6:stats', (_e, account: unknown, refresh?: unknown) => getBf6Stats(account, refresh === true))
   handle('bf6:art', () => getBf6Art())
   handle('bf6:tracked', () => getBf6Tracked())
   handle('bf6:set-tracked', (_e, tracked: unknown) => setBf6Tracked(tracked))
