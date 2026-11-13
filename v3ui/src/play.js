@@ -22,7 +22,7 @@ const Play = (() => {
         <h1 class="ht-title" id="htTitle"></h1>
         <p class="ht-meta" id="htMeta"></p>
         <div class="ht-acts">
-          <button class="play-btn" id="htPlay"><span class="pb-ring" aria-hidden="true"></span><span class="pb-in">${ic('play')}<span id="htPlayL">Jouer</span></span></button>
+          <button class="play-btn" id="htPlay"><span class="pb-ring" aria-hidden="true"></span><span class="pb-in">${ic('play')}<span id="htPlayL">Jouer</span><span class="pb-chev" aria-hidden="true"><b>›</b><b>›</b><b>›</b></span></span></button>
           <button class="dk-b" id="htMore">${ic('info')}<span>Voir la fiche</span></button>
           <button class="dk-b dk-i" id="htFav" aria-label="Favori" aria-pressed="false" data-tip="Ajouter aux favoris"><span class="ic-swap"><span class="a">${ic('star')}</span><span class="b">${ic('starf')}</span></span></button>
         </div>
@@ -214,6 +214,8 @@ const Play = (() => {
     const t = $('#htTitle', el), kick = $('#htKick', el), meta = $('#htMeta', el), ready = $('#htReady', el), fav = $('#htFav', el), more = $('#htMore', el), pl = $('#htPlayL', el)
     const isAll = g.id === '__all'
     t.dataset.len = g.name.length > 20 ? 'l' : g.name.length > 14 ? 'm' : 's'
+    // Le style du jeu d'abord : le titre en dépend (lettrage Player X ou police du style)
+    if (!same || first || refresh) applyStyle(g)
     if (!same || first) titleIn(t, g.name, first, burst)
     kick.innerHTML = `${isAll ? '<span class="ht-k">Bibliothèque</span>' : ''}${g.tag ? `<span class="ht-tag tone-${g.tagTone}"><i></i>${esc(g.tag)}</span>` : ''}`
     meta.textContent = isAll ? (GAMES.length ? `${GAMES.filter((x) => x.installed).length} installés, ${GAMES.filter((x) => !x.installed).length} sur ton compte` : 'Installe un jeu Steam, Epic ou EA, ou relance la recherche.') : [g.time ? `${g.time} de jeu` : 'Jamais lancé ici', g.running ? 'en cours' : g.last ? `dernière partie ${g.last}` : ''].filter(Boolean).join(', ')
@@ -226,11 +228,23 @@ const Play = (() => {
     $$('[data-go]', ready).forEach((b) => b.onclick = () => openReady(b.dataset.go))
     if (!same || first) { ready.classList.remove('r-in'); void ready.offsetWidth; ready.classList.add('r-in') }
   }
+  // Boutons caméléon : le style vient de la jaquette et des tags Steam du jeu (style.js). Jaquette pas encore lue : l'ancien style reste le temps de la lire.
+  function applyStyle(g) {
+    const s = GameStyle.now(g)
+    if (s) return setStyle(g, s)
+    GameStyle.of(g).then((r) => { if (focused() === g) setStyle(g, r, true) })
+  }
+  function setStyle(g, s, late) {
+    const changed = GameStyle.paint(el, s)
+    // Arrivé après coup sur un autre style : le titre change de lettrage dans un fondu
+    if (changed && late && !launching) { const t = $('#htTitle', el); if (!t.classList.contains('is-wait')) titleIn(t, g.name, false, false) }
+  }
+  GameStyle.onChange(() => { if (el) { shown = null; paintText(false) } })
   // Le titre entre en vraie largeur (116 % → 88 %) une fois la pile arrêtée. Pendant la molette, il change sans animation.
   function titleIn(t, name, first, burst) {
     t.removeAttribute('aria-label'); t.classList.remove('is-in', 'is-fade', 'is-wait'); t.style.animationDelay = ''
     // Le titre dessiné en lettrage Player X (comme le mot du logo) ; un caractère inconnu : texte normal
-    const px = PxType.ok(name)
+    const px = PxType.ok(name) && !GameStyle.styled(el)
     t.classList.toggle('is-px', px)
     if (px) t.innerHTML = PxType.html(name); else t.textContent = name
     if (burst && !reduced()) { t.classList.add('is-wait'); titleWait = true; return }

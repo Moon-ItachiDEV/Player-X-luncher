@@ -15,7 +15,7 @@
     "test:achievements": "node --experimental-strip-types --test src/main/services/achievementsFormat.test.ts",
     "test:played": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/played.test.ts src/main/services/demo.test.ts",
     "test:friends": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/discordMembers.test.ts src/main/services/steamProfile.test.ts src/main/services/chromiumCrypt.test.ts src/shared/view/friendView.test.ts src/shared/view/voice.test.ts",
-    "test:home": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/view/pick.test.ts src/shared/view/around.test.ts",
+    "test:home": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/view/pick.test.ts src/shared/view/around.test.ts src/shared/view/gameStyle.test.ts",
     "test:ui": "node --experimental-strip-types --test src/renderer/src/styles/*.test.ts",
     "test:overlay": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/hotkey.test.ts src/renderer/src/overlay/view.test.ts",
     "test:profile": "node --experimental-strip-types --test src/shared/profile.test.ts src/shared/steamApps.test.ts",

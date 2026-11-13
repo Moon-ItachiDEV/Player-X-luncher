@@ -653,7 +653,8 @@ const Settings = (() => {
     const v = s(), live = v.cs2Live !== false
     b.innerHTML = `${d}
       <section class="sg" id="r-fond"><h2>Fond de l’accueil</h2><div class="sg-l"><div class="sb"><div class="fd" role="group" aria-label="Fond de l’accueil">${Fluid.modes.map((m) => `<button class="fd-b" data-fond="${m.k}" aria-pressed="${m.k === Fluid.current()}" data-tip="${esc(fondHelp(m.k))}"><i class="fd-p fd-${m.k}" style="${esc(fondThumb(m.k))}" aria-hidden="true"></i><b>${m.t}</b></button>`).join('')}</div></div>
-        ${row('r-motion', 'Fond qui suit la souris', '', sw('iFluid', fluidOn(), 'Fond qui suit la souris'))}</div></section>
+        ${row('r-motion', 'Fond qui suit la souris', '', sw('iFluid', fluidOn(), 'Fond qui suit la souris'))}
+        ${row('r-gstyle', 'Boutons au style du jeu', 'Couleur et lettrage tirés de la jaquette et des tags Steam', sw('iGStyle', GameStyle.on(), 'Boutons au style du jeu'))}</div></section>
       ${group('Alertes', `${row('r-fr', 'Amis Steam et PlayStation', '', `<select class="sel" id="iFr" aria-label="Alertes d’amis Steam et PlayStation"><option value="all" ${v.friendAlerts === 'all' ? 'selected' : ''}>Quand ils se connectent ou jouent</option><option value="games" ${v.friendAlerts === 'games' ? 'selected' : ''}>Quand ils lancent un jeu</option><option value="off" ${v.friendAlerts === 'off' ? 'selected' : ''}>Jamais</option></select><button class="btn sm" id="iFrT" data-tip="Envoie une alerte d’exemple">Essayer</button>`)}
         ${row('r-ready', 'Jeu prêt après une mise à jour Steam', '', sw('iReady', v.gameReadyAlert, 'Jeu prêt après une mise à jour Steam'))}`)}
       ${group('Matchs', `${row('r-live', 'Suivre mes matchs de Counter-Strike 2', 'Score en direct, bilan et clips automatiques', sw('iLive', v.cs2Live, 'Suivre mes matchs de Counter-Strike 2'))}
@@ -666,6 +667,7 @@ const Settings = (() => {
     const openRow = () => { const on = s().cs2Live !== false, r = $('#r-cs2open', b); r.classList.toggle('rc-dim', !on); r.toggleAttribute('inert', !on); $('#iOpenS', b).textContent = on ? (s().cs2RecapOpen ? '' : 'Sinon, une notification') : 'Demande le suivi des matchs' }
     openRow()
     $$('[data-fond]', b).forEach((x) => x.onclick = () => { Fluid.mode(x.dataset.fond); $$('[data-fond]', b).forEach((y) => y.setAttribute('aria-pressed', y === x)); saved() })
+    ON('iGStyle', (x) => { GameStyle.set(x); saved() })
     ON('iFluid', (x) => { try { localStorage.setItem(FLUID, x ? '0' : '1') } catch { /* gardé pour cette session */ } Fluid.freeze(!x); saved() })
     ON('iWin', (x) => save({ startWithWindows: x }).then(startup)); ON('iReady', (x) => save({ gameReadyAlert: x })); ON('iBf', (x) => save({ bf6Recap: x }))
     ON('iLive', (x) => save({ cs2Live: x }).then(openRow)); ON('iOpen', (x) => save({ cs2RecapOpen: x }).then(openRow))
