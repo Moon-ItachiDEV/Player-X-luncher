@@ -211,8 +211,9 @@ le moteur est refusé avec la raison. La capture des clips lance son propre FFmp
   demandent `npm run build` avant. Une compilation réussie ne prouve pas la stabilité : après un changement du moteur, ce sont
   eux qui comptent.
 - Lire la sortie d'un scénario, pas seulement son code de sortie : un scénario `a*` qui attrape une panne écrit « ECHEC » et
-  rend quand même 0. Au 13/11/2026, six scénarios ne vont plus au bout sur `main` : a4, a8, a9, a10 et a12 sont en retard sur
-  l'interface, t1-basics appelle un outil absent du dépôt (`tools/clipslab/dump.cjs`).
+  rend quand même 0. Au 14/11/2026, sept scénarios ne vont plus au bout sur `main` : a4, a8, a9, a10 et a12 sont en retard sur
+  l'interface, a16 appelle sur l'appli empaquetée un outil d'essai qu'elle n'a jamais (`pxClipsTest`), t1-basics appelle un
+  outil absent du dépôt (`tools/clipslab/dump.cjs`).
 
 ## Construire
 
@@ -230,5 +231,5 @@ principales, dans l'ordre proposé :
 3. Les services n'ont pas d'arrêt propre (douze minuteries, la fermeture de l'appli gérée à six endroits dans cinq fichiers).
 4. L'interface V3 : 21 fichiers dans un seul espace global, sans contrôle de types.
 5. La base n'a pas de numéro de version de schéma.
-6. Six scénarios de la vraie appli ne vont plus au bout, et un scénario qui échoue rend quand même 0 : à remettre à jour, avec
+6. Sept scénarios de la vraie appli ne vont plus au bout, et un scénario qui échoue rend quand même 0 : à remettre à jour, avec
    un code de sortie qui dit la vérité.
