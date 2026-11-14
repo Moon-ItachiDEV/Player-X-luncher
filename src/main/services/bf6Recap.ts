@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, Notification } from 'electron'
 import { isBf6Name } from '@shared/text'
 import type { Bf6Account, Bf6Recap, Bf6RecapEvent, Bf6RecapState, Bf6Stats, Bf6Tracked } from '@shared/types'
+import { logError } from '../crashLog'
 import { deleteKv, getKv, lastSeenAt, listGames, setKv } from '../db'
 import { recapLine, sessionNumbers } from './bf6Diff'
 import { getSettings } from './settings'
@@ -74,7 +75,7 @@ let queue: Promise<void> = Promise.resolve()
 
 /** Une étape à la fois : un relevé peut prendre 15 s, et le jeu peut se fermer pendant ce temps. */
 function enqueue(step: () => Promise<void> | void): void {
-  queue = queue.then(step).catch((e) => console.warn('[bf6-recap]', e))
+  queue = queue.then(step).catch((e) => logError('bilan Battlefield 6', e))
 }
 
 const keyOf = (a: Bf6Account): string => `${a.platform}:${a.personaId ?? a.name.toLowerCase()}`

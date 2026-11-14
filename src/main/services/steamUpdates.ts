@@ -10,6 +10,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { hasPending, parseUpdatingReg, readAppManifest, updateActive, updateOf, type AppManifestFacts } from '@shared/steamUpdate'
 import type { SteamUpdates } from '@shared/types'
+import { logError } from '../crashLog'
 import { broadcast } from '../windows'
 import { steamLibraryDirs } from './games'
 
@@ -141,7 +142,7 @@ function rescan(): Promise<void> {
     return scanning
   }
   scanning = scan()
-    .catch((e) => console.warn('[steam-updates]', e))
+    .catch((e) => logError('mises à jour Steam', e))
     .finally(() => {
       scanning = null
       if (again) {

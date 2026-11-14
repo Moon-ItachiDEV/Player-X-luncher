@@ -2,6 +2,7 @@ import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, Menu, Notification, Tray } from 'electron'
 import type { StartupState } from '@shared/types'
+import { logError } from '../crashLog'
 import { getKv, setKv } from '../db'
 import { getSettings, saveSettings } from './settings'
 import { mainWindow } from '../windows'
@@ -95,9 +96,9 @@ function syncJumpList(): void {
         iconIndex: 0
       }))
     const result = app.setJumpList(items.length ? [{ type: 'custom', name: 'Jeux récents', items }] : null)
-    if (result !== 'ok') console.warn('[jump-list]', result)
+    if (result !== 'ok') logError('liste de raccourcis', result)
   } catch (e) {
-    console.warn('[jump-list]', e)
+    logError('liste de raccourcis', e)
   }
 }
 
@@ -151,7 +152,7 @@ export function applyInstallOptions(): void {
     const o = JSON.parse(readFileSync(file, 'utf8')) as { startWithWindows?: unknown }
     if (typeof o.startWithWindows === 'boolean') saveSettings({ startWithWindows: o.startWithWindows })
   } catch (e) {
-    console.warn('[install-options]', e)
+    logError('choix de l’installeur', e)
   }
   try {
     unlinkSync(file)
@@ -183,7 +184,7 @@ export function startTray(): void {
     tray = new Tray(join(app.getAppPath(), 'resources', 'tray.png'))
   } catch (e) {
     // Pas de zone de notification (certains bureaux Linux) : la croix ferme Player X, comme avant.
-    console.warn('[tray]', e)
+    logError('icône près de l’horloge', e)
     return
   }
   tray.on('click', showMainWindow)

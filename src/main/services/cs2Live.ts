@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { app, Notification } from 'electron'
 import { CS2_GAME_ID, cs2RecapLine } from '@shared/cs2'
 import type { Cs2Config, Cs2Recap, Cs2RecapEvent, Cs2State } from '@shared/types'
+import { logError } from '../crashLog'
 import { deleteKv, getKv, listGames, setKv } from '../db'
 import { BASE_PORT, cfgDir, cfgText, GSI_FILE, isToken, MAX_BODY, PORT_TRIES, refuse, tokenMatches } from './cs2Gsi'
 import { expire, liveOf, readPayload, recapOf, sameMatch, step, type EndReason, type MatchState, type Snapshot } from './cs2Match'
@@ -126,7 +127,7 @@ function silenceTick(): void {
     }
     watchSilence()
   } catch (e) {
-    console.warn('[cs2]', e)
+    logError('cs2 : fin de match', e)
   }
 }
 
@@ -280,7 +281,7 @@ function emitMoments(snap: Snapshot): void {
     momentsState = r.state
     for (const m of r.moments) for (const cb of momentListeners) cb(m)
   } catch (e) {
-    console.warn('[cs2]', e)
+    logError('cs2 : moments', e)
   }
 }
 
@@ -352,7 +353,7 @@ function listen(at: number): Promise<Server | null> {
         try {
           onPayload(body)
         } catch (e) {
-          console.warn('[cs2]', e)
+          logError('cs2 : envoi du jeu', e)
         }
       })
     })
@@ -410,7 +411,7 @@ async function writeCfg(at: number): Promise<Cs2Config> {
     // UTF-8 sans BOM : CS2 ignore un fichier qui en a un.
     await writeFile(file, text, 'utf8')
   } catch (e) {
-    console.warn('[cs2] config', e)
+    logError('cs2 : fichier de liaison', e)
     return 'blocked'
   }
   // Écrit pendant que CS2 tourne : il ne le lira qu'à son prochain démarrage (cs2State dit alors « Relance CS2 »).
@@ -458,7 +459,7 @@ async function doSync(): Promise<void> {
 
 /** Réglage changé, bibliothèque relue (CS2 installé, déplacé) : serveur et fichier remis d'accord. Une passe à la fois. */
 export function syncCs2(): Promise<void> {
-  syncing = syncing.then(doSync).catch((e) => console.warn('[cs2]', e))
+  syncing = syncing.then(doSync).catch((e) => logError('cs2 : liaison', e))
   return syncing
 }
 
@@ -502,7 +503,7 @@ function setRunning(now: boolean): void {
     try {
       cb(now)
     } catch (e) {
-      console.error('[cs2] overlay :', e)
+      logError('cs2 : overlay', e)
     }
   }
   if (now) return

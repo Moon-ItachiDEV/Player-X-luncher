@@ -57,10 +57,11 @@ export function registerAccountChannels(d: ChannelDeps): void {
   })
   // Les clés et jetons ne quittent jamais le processus principal : l'interface ne voit que leurs 4 derniers caractères.
   handle('settings:get', () => publicSettings(getSettings()))
-  handle('settings:save', (_e, patch: Partial<Settings>) => {
+  handle('settings:save', (_e, patch: unknown) => {
     const before = getSettings()
     const wasDemo = before.demoMode
-    const next = saveSettings(patch)
+    // Ce que la page envoie n'a aucun type garanti : saveSettings n'en garde que les réglages connus, du bon type (cleanPatch).
+    const next = saveSettings(patch as Partial<Settings>)
     if (next.psnNpsso !== before.psnNpsso) resetPsn()
     if (next.startWithWindows !== before.startWithWindows) syncStartup()
     if (next.bf6Recap !== before.bf6Recap) syncBf6Recaps()

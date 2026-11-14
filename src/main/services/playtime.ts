@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { powerMonitor } from 'electron'
 import type { Game, Store } from '@shared/types'
 import { lastPlayedOf } from '@shared/played'
+import { logError } from '../crashLog'
 import { lastSeenByGame, listGames, openSession, playtimeByGame, touchSessions } from '../db'
 import { steamLastPlayed, steamMinutes } from './steamLibrary'
 import { coalesce, exeName, GENERIC_EXE, matchGames, memoAsync, parseProcLines, usableDir, watchNames, type Matchable, type RunningProcess } from './tracking'
@@ -34,7 +35,7 @@ function onChange(): void {
     try {
       cb()
     } catch (e) {
-      console.error('[playtime]', e)
+      logError('temps de jeu : abonné', e)
     }
   }
 }
@@ -148,7 +149,7 @@ async function poll(): Promise<boolean> {
  */
 export const pollNow = coalesce(() =>
   poll().catch((e) => {
-    console.error('[playtime]', e)
+    logError('temps de jeu : relevé', e)
     return false
   })
 )

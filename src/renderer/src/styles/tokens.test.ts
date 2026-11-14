@@ -7,7 +7,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const RENDERER = fileURLToPath(new URL('../', import.meta.url))
-const MAIN_INDEX = fileURLToPath(new URL('../../../main/index.ts', import.meta.url))
+// Le fichier qui crée la fenêtre principale : sa couleur de fond et celles de sa barre de titre y sont écrites en dur.
+const MAIN_WINDOW = fileURLToPath(new URL('../../../main/mainWindow.ts', import.meta.url))
 
 const files = (ext: RegExp): string[] =>
   (readdirSync(RENDERER, { recursive: true }) as string[]).filter((f) => ext.test(f)).map((f) => join(RENDERER, f))
@@ -102,11 +103,13 @@ test('contrastes : textes 1 à 3 ≥ 4,5 sur tous les fonds, pastilles de store 
 
 test("couleurs d'avant la 0.7.4 : plus aucune en dur hors de tokens.css", () => {
   const STALE = ['#06101c', '#09192a', '#040b15', '#071322', '#0b2036', '#0c1f33', '#0f2236', '#24456b', 'rgba(8, 26, 46', 'rgba(18, 40, 63', 'rgba(24, 52, 86', 'rgba(32, 68, 110', 'rgb(9 25 42', 'rgb(4 11 21', 'rgba(4, 11, 21']
-  const sources = [...CSS.filter((f) => !f.path.endsWith('styles/tokens.css')), { path: MAIN_INDEX, text: readFileSync(MAIN_INDEX, 'utf8') }]
+  const sources = [...CSS.filter((f) => !f.path.endsWith('styles/tokens.css')), { path: MAIN_WINDOW, text: readFileSync(MAIN_WINDOW, 'utf8') }]
+  // Garde-fou du garde-fou : si la fenêtre change de fichier, ce test doit le suivre au lieu de ne plus rien regarder.
+  assert.match(readFileSync(MAIN_WINDOW, 'utf8'), /backgroundColor:/, 'main/mainWindow.ts ne crée plus la fenêtre principale')
   const found: string[] = []
   for (const { path, text } of sources) {
     const low = text.toLowerCase()
-    for (const s of STALE) if (low.includes(s)) found.push(`${path.endsWith('index.ts') ? 'main/index.ts' : rel(path)} : ${s}`)
+    for (const s of STALE) if (low.includes(s)) found.push(`${path === MAIN_WINDOW ? 'main/mainWindow.ts' : rel(path)} : ${s}`)
   }
   assert.deepEqual(found, [])
 })
