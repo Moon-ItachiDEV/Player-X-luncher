@@ -1,4 +1,4 @@
-const { start, shot } = require('./h.cjs')
+const { start, shot, done, failed } = require('./h.cjs')
 ;(async () => {
   const { app, p, errs } = await start({ name: 'a1', env: { PX_NEWS_SIM: 'auto', PX_READY_SIM: 'auto', PX_SERVERS_SIM: 'normal' } })
   try {
@@ -12,7 +12,7 @@ const { start, shot } = require('./h.cjs')
     await p.click('.b-tab[data-go=friends]'); await p.waitForTimeout(900); await shot(p, 'a1-friends')
     await p.click('.b-tab[data-go=stats]'); await p.waitForTimeout(1200); await shot(p, 'a1-stats')
     await p.click('.b-tab[data-go=clips]'); await p.waitForTimeout(800); await shot(p, 'a1-clips')
-    console.log('ERREURS', errs.length); errs.slice(0, 20).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n')[0]); console.log(errs.slice(0, 20).join('\n')) }
+    done(errs)
+  } catch (e) { failed(e, errs) }
   await app.close()
 })()

@@ -1,4 +1,4 @@
-const { start, shot, settle, go } = require('./h.cjs')
+const { start, shot, settle, go, done, failed } = require('./h.cjs')
 // Le service de stats n'est pas joignable d'ici : ses réponses sont imitées au niveau de l'IPC, le reste est le vrai code
 const row = (name, kills, extra = {}) => ({ id: name, name, kills, deaths: Math.round(kills / 1.6), killDeath: 1.6, kpm: .9, accuracy: 24.5, matches: Math.round(kills / 12), winPercent: 52, secondsPlayed: kills * 40, ...extra })
 const stats = (name, platform, kd, kills) => ({ account: { name, platform }, kills, deaths: Math.round(kills / kd), killDeath: kd, killsPerMinute: .85 + kd / 10, wins: 120, losses: 100, winPercent: 54.5, accuracy: 21, headshots: 900, assists: 400, revives: 210, matches: 220, secondsPlayed: 500000, weapons: [row('M433', 1204), row('CZ3A1', 880), row('AK-205', 640), row('All', 9999)], vehicles: [], classes: [row('Assault', 2000), row('Engineer', 900), row('Support', 500), row('Recon', 100)], modes: [row('Conquest', 2000), row('Breakthrough', 800)], maps: [row('Empire State', 1500), row('Mirak Valley', 700), row('All', 4000)] })
@@ -35,7 +35,7 @@ const stats = (name, platform, kd, kills) => ({ account: { name, platform }, kil
     await p.click('#rkRefresh'); await p.waitForTimeout(1600)
     await p.click('.sp-tabs [data-t=overview]'); await p.waitForTimeout(1500); await shot(p, 'a7-over2')
     await p.click('#spLast .mt'); await p.waitForTimeout(1800); await shot(p, 'a7-recap1'); await p.keyboard.press('ArrowRight'); await p.waitForTimeout(1200); await shot(p, 'a7-recap2'); await p.keyboard.press('Escape'); await p.waitForTimeout(600)
-    console.log('ERREURS', errs.length); errs.slice(0, 20).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n').slice(0, 3).join(' ')); console.log(errs.slice(0, 20).join('\n')) }
+    done(errs)
+  } catch (e) { failed(e, errs) }
   await app.close()
 })()

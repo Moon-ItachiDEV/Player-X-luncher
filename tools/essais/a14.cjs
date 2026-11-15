@@ -1,5 +1,5 @@
 // Passage d'audit : chaque écran à la plus petite fenêtre (1024 x 640) et à 1280 x 800. Débordements, tailles de texte, cibles.
-const { start, shot, settle, go } = require('./h.cjs')
+const { start, shot, settle, go, done, failed } = require('./h.cjs')
 const probe = () => {
   const doc = document.documentElement
   const vis = (e) => { const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return null; const s = getComputedStyle(e); if (s.visibility === 'hidden' || s.display === 'none' || +s.opacity === 0) return null; return r }
@@ -40,7 +40,7 @@ const probe = () => {
     for (const s of ['rec', 'overlay', 'routine', 'library', 'general', 'keys', 'accounts', 'about']) { await p.evaluate((x) => Settings.go(x), s); await settle(p, 500); await report('set-' + s) }
     await p.evaluate(() => Settings.close()); await settle(p, 500)
     await p.keyboard.press('Control+k'); await settle(p, 500); await report('palette'); await p.keyboard.press('Escape')
-    console.log('ERREURS', errs.length); errs.slice(0, 12).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n').slice(0, 2).join(' ')); console.log(errs.slice(0, 12).join('\n')) }
+    done(errs, 12)
+  } catch (e) { failed(e, errs, 12) }
   await app.close()
 })()

@@ -1,5 +1,5 @@
 // Le vrai raccourci Alt C pendant l'enregistrement : la pastille à l'écran, puis le clip.
-const { start, shot } = require('./h.cjs')
+const { start, shot, done, failed } = require('./h.cjs')
 const { execFileSync } = require('child_process')
 ;(async () => {
   const { app, p, errs } = await start({ name: 'a17', w: 1240, h: 720, env: { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '640x360' } })
@@ -17,7 +17,7 @@ const { execFileSync } = require('child_process')
     log('apres', await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.getTitle())))
     for (let i = 0; i < 20; i++) { await p.waitForTimeout(1000); if (await p.evaluate(async () => (await API.clipsList()).length)) break }
     log('clips', await p.evaluate(async () => (await API.clipsList()).map((c) => [c.title, c.kind, c.durationS])))
-    log('ERREURS', errs.length); errs.slice(0, 10).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n').slice(0, 2).join(' ')); console.log(errs.slice(0, 10).join('\n')) }
+    done(errs, 10)
+  } catch (e) { failed(e, errs, 10) }
   const t0 = Date.now(); await app.close(); log('fermeture', Date.now() - t0)
 })()

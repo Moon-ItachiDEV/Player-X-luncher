@@ -36,6 +36,7 @@ const OUT = path.join(__dirname, 'shots')
     fs.copyFileSync(thumb, path.join(OUT, 'thumb-live.jpg'))
     console.log(H.ffprobe(file, '-select_streams', 'v', '-show_entries', 'stream=avg_frame_rate,nb_read_frames', '-count_frames').streams[0])
     console.log((await L('clipsLogTail')).split('\n').slice(-8).join('\n'))
-  } catch (e) { console.log('ÉCHEC', e); console.log(logs.join('').split('\n').filter((l) => /clips/.test(l)).slice(-20).join('\n')) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
-  process.exit(0)
+  } catch (e) { process.exitCode = 1; console.log('ÉCHEC', e); console.log(logs.join('').split('\n').filter((l) => /clips/.test(l)).slice(-20).join('\n')) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
+  // 0 seulement si rien n'a échoué en route
+  process.exit(process.exitCode || 0)
 })()

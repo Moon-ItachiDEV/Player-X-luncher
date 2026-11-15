@@ -12,9 +12,11 @@ dist-*/
 *.pem
 # Installeur V3 Test : dossier entièrement refait par scripts/build-installer-v3test.mjs (contient un setup de 121 Mo)
 build/installer-v3test/
-# Captures et données des scénarios d'essai
+# Captures, sorties et données des scénarios d'essai
 tools/essais/shots/
+tools/essais/sorties/
 tools/essais*/data-*
+tools/essais-clips/shots/
 tools/essais-clips/work/
 .env.*
 !.env.example

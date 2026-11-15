@@ -1,6 +1,7 @@
-const { start, shot, settle, go } = require('./h.cjs')
+const { start, shot, settle, go, check, done, failed } = require('./h.cjs')
 ;(async () => {
-  const { app, p, errs } = await start({ name: 'a9b', w: 1240, h: 720, env: { PX_LAUNCH_SIM: 'ok', PX_LAUNCH_SIM_FAST: '1' } })
+  // Les annonces Steam sont simulées, comme dans a1, a2 et a14 : la fiche d'un jeu ne dépend pas d'Internet
+  const { app, p, errs } = await start({ name: 'a9b', w: 1240, h: 720, env: { PX_LAUNCH_SIM: 'ok', PX_LAUNCH_SIM_FAST: '1', PX_NEWS_SIM: 'auto' } })
   try {
     // Loadout : créer, retrouver après rechargement
     await p.evaluate(() => { S.statsGame = 'bf6'; S.statsTab = 'loadouts'; go('stats') }); await settle(p, 900)
@@ -18,18 +19,24 @@ const { start, shot, settle, go } = require('./h.cjs')
     await p.keyboard.press('Escape')
     // Routine réelle
     await p.evaluate(() => Settings.open('routine')); await p.waitForTimeout(700)
+    // Le menu « Ajouter une étape » : l'appli l'ouvre elle-même juste après la création, et le referme après chaque étape ajoutée
+    const menu = async () => { if (await p.evaluate(() => document.querySelector('#rtMenu').hidden)) await p.click('#rtAdd'); await p.waitForTimeout(250) }
     await p.fill('#rtN', 'Soirée test'); await p.click('#rtForm button[type=submit]'); await p.waitForTimeout(700)
-    await p.click('#rtAdd'); await p.waitForTimeout(300); await shot(p, 'a9-rt-menu'); await p.click('[data-add=wait]'); await p.waitForTimeout(300); await p.fill('#rtV', '200'); await p.keyboard.press('Tab'); await p.waitForTimeout(200); await shot(p, 'a9-rt-err'); await p.fill('#rtV', '2'); await p.click('#rtAddF button[type=submit]'); await p.waitForTimeout(500)
-    await p.click('#rtAdd'); await p.waitForTimeout(200); await p.click('[data-add=minimize]'); await p.waitForTimeout(400)
-    await p.click('#rtAdd'); await p.waitForTimeout(200); await p.click('[data-add=link]'); await p.fill('#rtV', 'ftp://x'); await p.click('#rtAddF button[type=submit]'); await p.waitForTimeout(200); await p.fill('#rtV', 'https://example.com/a'); await p.click('#rtAddF button[type=submit]'); await p.waitForTimeout(500); await shot(p, 'a9-rt')
+    check('routine créée : le menu des étapes est déjà ouvert', await p.evaluate(() => !document.querySelector('#rtMenu').hidden))
+    await menu(); await shot(p, 'a9-rt-menu'); await p.click('[data-add=wait]'); await p.waitForTimeout(300); await p.fill('#rtV', '200'); await p.keyboard.press('Tab'); await p.waitForTimeout(200); await shot(p, 'a9-rt-err'); await p.fill('#rtV', '2'); await p.click('#rtAddF button[type=submit]'); await p.waitForTimeout(500)
+    await menu(); await p.click('[data-add=minimize]'); await p.waitForTimeout(400)
+    await menu(); await p.click('[data-add=link]'); await p.fill('#rtV', 'ftp://x'); await p.click('#rtAddF button[type=submit]'); await p.waitForTimeout(200); await p.fill('#rtV', 'https://example.com/a'); await p.click('#rtAddF button[type=submit]'); await p.waitForTimeout(500); await shot(p, 'a9-rt')
     await p.waitForTimeout(400)
-    console.log(JSON.stringify(await p.evaluate(async () => API.getRoutines())))
+    const routines = await p.evaluate(async () => API.getRoutines())
+    console.log(JSON.stringify(routines))
+    const soiree = routines.find((r) => r.name === 'Soirée test')
+    check('routine enregistrée : attendre 2 s, réduire, ouvrir le lien, puis le jeu', !!soiree && soiree.steps.map((x) => x.kind + (x.value ? ' ' + x.value : '')).join(' | ') === 'wait 2 | minimize | link https://example.com/a | game', soiree && soiree.steps.map((x) => [x.kind, x.value]))
     console.log(await p.evaluate(() => { const g = GAMES.find((x) => x.routine); return g && { g: g.name, r: g.routine, steps: ROUTINES[g.routine].steps.map((s) => s.t) } }))
     await p.keyboard.press('Escape'); await p.waitForTimeout(500)
     await go(p, 'play'); await p.waitForTimeout(500); await shot(p, 'a9-play-rt')
     // Palette
     await p.keyboard.press('Control+k'); await p.waitForTimeout(300); await shot(p, 'a9-pal'); await p.keyboard.type('m433'); await p.waitForTimeout(300); await shot(p, 'a9-pal2'); await p.keyboard.press('Escape')
-    console.log('ERREURS', errs.length); errs.slice(0, 20).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n').slice(0, 2).join(' ')); console.log(errs.slice(0, 20).join('\n')) }
+    done(errs)
+  } catch (e) { failed(e, errs) }
   await app.close()
 })()

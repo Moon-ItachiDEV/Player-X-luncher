@@ -207,13 +207,18 @@ le moteur est refusé avec la raison. La capture des clips lance son propre FFmp
   « clips ». Les scripts `test:launch`, `test:clips`… restent pour lancer un groupe.
 - Garde-fous qui lisent le code : `architecture.test.ts` (couches, boucles), `ipcContract.test.ts` (canaux),
   `src/renderer/src/styles/tokens.test.ts` (thème).
-- La vraie appli : `tools/essais` (a1 à a18, la fenêtre sous Xvfb) et `tools/essais-clips` (capture, clips, films). Ils
-  demandent `npm run build` avant. Une compilation réussie ne prouve pas la stabilité : après un changement du moteur, ce sont
-  eux qui comptent.
-- Lire la sortie d'un scénario, pas seulement son code de sortie : un scénario `a*` qui attrape une panne écrit « ECHEC » et
-  rend quand même 0. Au 14/11/2026, sept scénarios ne vont plus au bout sur `main` : a4, a8, a9, a10 et a12 sont en retard sur
-  l'interface, a16 appelle sur l'appli empaquetée un outil d'essai qu'elle n'a jamais (`pxClipsTest`), t1-basics appelle un
-  outil absent du dépôt (`tools/clipslab/dump.cjs`).
+- La vraie appli : `tools/essais` (a1 à a18, la fenêtre) et `tools/essais-clips` (t0 à t15 : capture, clips, films, partage).
+  Les scénarios lancent l'appli construite, sous Linux seulement (Xvfb, ffmpeg), en mode démo. Une compilation réussie ne
+  prouve pas la stabilité : après un changement du moteur, ce sont eux qui comptent.
+- Tout lancer : `npm run build`, puis `node tools/essais/tous.cjs` (une demi-heure). Les scénarios passent un par un, chacun
+  sur un écran et un dossier de données neufs. `node tools/essais/tous.cjs a8 t1` n'en lance que deux. Une ligne par
+  scénario, un bilan à la fin, les sorties complètes dans `tools/essais/sorties/`. a16 demande l'appli empaquetée
+  (`A16_BIN=<binaire>`) : sans elle il est sauté, et le bilan le dit.
+- Le code de sortie dit la vérité : 0 seulement si le scénario est allé au bout sans contrôle « NON ». Les scénarios de la
+  fenêtre comptent aussi les erreurs de la page. Un scénario arrêté en route écrit « ECHEC », avec ce qu'il attendait, et
+  rend 1. Le lanceur rend 1 dès qu'un scénario a raté.
+- Un changement d'interface qui casse un scénario se corrige avec lui, dans le même commit : un scénario en retard ne
+  vérifie plus rien.
 
 ## Construire
 
@@ -231,5 +236,5 @@ principales, dans l'ordre proposé :
 3. Les services n'ont pas d'arrêt propre (douze minuteries, la fermeture de l'appli gérée à six endroits dans cinq fichiers).
 4. L'interface V3 : 21 fichiers dans un seul espace global, sans contrôle de types.
 5. La base n'a pas de numéro de version de schéma.
-6. Sept scénarios de la vraie appli ne vont plus au bout, et un scénario qui échoue rend quand même 0 : à remettre à jour, avec
-   un code de sortie qui dit la vérité.
+6. Rien ne lance les contrôles à ta place : `npm test` et les scénarios de la vraie appli se lancent à la main. Un contrôle
+   automatique sur GitHub à chaque PR les garderait à jour.

@@ -72,8 +72,16 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol
     // --- tampon borné : before 5 + after 0 + marge 10 → 15 s
     await L('clipsSaveSettings', { before: 5, after: 0 })
     await sleep(26000)
-    const b = await test(app, 'info')
-    const onDisk = listDir(b.bufferRoot).reduce((n, d) => n + listDir(path.join(b.bufferRoot, d)).length, 0)
+    // L'index puis le disque, lus l'un après l'autre : un fragment en cours d'écriture, ou retiré de l'index et pas encore
+    // effacé, compte d'un côté et pas de l'autre. On relit jusqu'à les voir d'accord ; un fragment oublié sur le disque,
+    // lui, serait en trop à chaque lecture.
+    let b, onDisk
+    for (let i = 0; i < 8; i++) {
+      b = await test(app, 'info')
+      onDisk = listDir(b.bufferRoot).reduce((n, d) => n + listDir(path.join(b.bufferRoot, d)).length, 0)
+      if (onDisk === b.fragments) break
+      await sleep(200)
+    }
     const span = b.list.length ? (b.list[b.list.length - 1].endWall - b.list[0].startWall) / 1000 : 0
     check('tampon borné : les vieux fragments partent du disque', span <= 19 && onDisk === b.fragments && b.recorders <= 2, { span, onDisk, fragments: b.fragments, enregistreurs: b.recorders, octets: b.bytes, dossiers: listDir(b.bufferRoot).length })
     console.log((await L('clipsLogTail')).split('\n').slice(-24).join('\n'))

@@ -25,7 +25,8 @@ const { start, sleep, until, launcher, test, simRunning, probe, ffprobe, clockAt
         console.log('  fragments', info.list.slice(-5).map((f) => [+((f.startWall - E) / 1000).toFixed(2), +((f.endWall - E) / 1000).toFixed(2)]))
         await sleep(1500)
       }
-    } catch (e) { console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
+    } catch (e) { process.exitCode = 1; console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
   }
-  process.exit(0)
+  // 0 seulement si rien n'a échoué en route
+  process.exit(process.exitCode || 0)
 })()

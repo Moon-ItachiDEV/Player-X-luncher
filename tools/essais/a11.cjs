@@ -1,7 +1,9 @@
-const { start, shot, settle, go } = require('./h.cjs')
+const { start, shot, settle, go, done, failed } = require('./h.cjs')
 ;(async () => {
   const { app, p, errs } = await start({ name: 'a9b', w: 1240, h: 720, env: { PX_LAUNCH_SIM: 'ok' } })
   try {
+    // a11 lance la routine qu'a9 enregistre : même dossier de données (« a9b »), a9 d'abord
+    if (!(await p.evaluate(() => GAMES.some((g) => g.routine)))) throw new Error('aucun jeu n’a de routine : lance a9 juste avant, avec le même SUF (node tools/essais/tous.cjs a11 le fait)')
     await p.evaluate(() => Play.focusGame(GAMES.find((g) => g.routine).id)); await p.waitForTimeout(600)
     await p.click('#htPlay')
     let last = ''
@@ -12,7 +14,7 @@ const { start, shot, settle, go } = require('./h.cjs')
       if (i === 8) await shot(p, 'a11-run')
       if (s.s === 'game') { await p.waitForTimeout(1200); await shot(p, 'a11-game'); break }
     }
-    console.log('ERREURS', errs.length); errs.slice(0, 20).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n').slice(0, 2).join(' ')); console.log(errs.slice(0, 20).join('\n')) }
+    done(errs)
+  } catch (e) { failed(e, errs) }
   await app.close()
 })()

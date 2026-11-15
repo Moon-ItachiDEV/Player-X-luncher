@@ -1,5 +1,5 @@
 // Jaquettes des jeux EA qui arrivent après le scan, par le vrai signal games:changed : 7 jeux, comme chez Breezydev, puis 10, 2, et une image cassée.
-const { start, shot, settle } = require('./h.cjs')
+const { start, shot, settle, done, failed } = require('./h.cjs')
 ;(async () => {
   const { app, p, errs } = await start({ name: 'a18', demo: false, setupDone: true, w: 1600, h: 940 })
   const log = (...a) => console.log(...a.map((x) => (typeof x === 'string' ? x : String(JSON.stringify(x)).slice(0, 900))))
@@ -54,7 +54,7 @@ const { start, shot, settle } = require('./h.cjs')
     // Une image qui ne charge pas : le nom du jeu, pas un trou
     await setList(seven.map((n, i) => game(n, i, { ...urls, 'Counter-Strike 2': 'file:///introuvable.jpg', 'Age of Empires IV': 'data:image/jpeg;base64,AAAA' }, isEa(n))))
     await p.waitForTimeout(1500); log('image cassee', await p.evaluate(() => [...document.querySelectorAll('.card-all .ca-in img')].map((x) => [x.dataset.name, x.getAttribute('src').slice(0, 22), x.dataset.fb, x.naturalWidth])))
-    log('ERREURS', errs.length); errs.slice(0, 10).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n').slice(0, 2).join(' ')); console.log(errs.slice(0, 10).join('\n')) }
+    done(errs, 10)
+  } catch (e) { failed(e, errs, 10) }
   await app.close()
 })()
