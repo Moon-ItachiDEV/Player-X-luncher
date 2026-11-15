@@ -1,7 +1,7 @@
 import { execFile, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { copyFile as copyOnDisk, mkdir, open, readdir, rename, rm, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises'
+import { copyFile as copyOnDisk, mkdir, open, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app, BrowserWindow, clipboard, ClipboardItem, desktopCapturer, dialog, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, shell, type IpcMainEvent, type Session, type WebContents } from 'electron'
 import { cleanGamePace, cleanPace, gamePace, gamePaceLine, paceLog, paceOf, rateBetween, type ClipPace, type GamePace } from '@shared/clipPace'
@@ -37,12 +37,13 @@ import {
   type ClipMoment,
   type PendingClip
 } from './clipsPlan'
+import { freeName, readMoov, shareSource, writePlan } from './clipsFiles'
 import { errText, log, logFlushed, logTail } from './clipsLog'
 import { registerClipProtocol } from './clipsProtocol'
 import { cleanShareCopies, dropShareCopies, lightCopy } from './clipsShare'
 import { showClipToast } from './clipsToast'
 import { cs2IsRunning, cs2MomentContext, onCs2Moment, onCs2Running } from './cs2Live'
-import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFlat, parseFragment, parseInit, readBoxes, type ClipTrack, type FlatPlan, type FragmentInfo, type InitInfo } from './fmp4'
+import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFlat, parseFragment, parseInit, type ClipTrack, type FlatPlan, type FragmentInfo, type InitInfo } from './fmp4'
 import { getSettings } from './settings'
 import { gameExeRegex } from './captureTestArgs'
 import { thumbArgs } from './editCompile'
@@ -54,6 +55,7 @@ import { DISCORD_MB, type ShareSource } from './sharePlan'
 // les encode en MP4 fragmenté et chaque fragment (2 s) part dans un tampon circulaire sur le disque. Sur un kill de CS2 ou le
 // raccourci, le clip est écrit en vrai fichier MP4, sans réencodage. Rien ne tourne quand aucun jeu ne tourne.
 // Les calculs purs sont dans fmp4.ts (boîtes MP4), clipsPlan.ts (fenêtres, fusion, rétention) et cs2Moments.ts.
+// Les lectures et écritures des fichiers MP4 (écrire un clip, relire son index) sont dans clipsFiles.ts.
 // La fenêtre de capture a sa propre session : la session des pages de l'appli continue de tout refuser (lockDown).
 
 const SCHEME = 'pxclip'
@@ -840,47 +842,6 @@ function finalize(p: PendingClip): void {
     })
 }
 
-async function writeAll(fh: FileHandle, buf: Buffer, length: number): Promise<void> {
-  let done = 0
-  while (done < length) done += (await fh.write(buf, done, length - done)).bytesWritten
-}
-
-/** En-tête, puis données recopiées depuis leurs sources (fragments du tampon, ou l'ancien fichier pour une découpe). */
-async function writePlan(plan: FlatPlan, sources: string[], out: string): Promise<void> {
-  const fh = await open(out, 'w')
-  let srcFile: FileHandle | null = null
-  let srcIndex = -1
-  const block = Buffer.allocUnsafe(1024 * 1024)
-  try {
-    await writeAll(fh, plan.head, plan.head.length)
-    for (const r of plan.ranges) {
-      if (r.src !== srcIndex) {
-        await srcFile?.close()
-        srcFile = await open(sources[r.src], 'r')
-        srcIndex = r.src
-      }
-      let pos = r.pos
-      let left = r.size
-      while (left > 0) {
-        const { bytesRead } = await srcFile!.read(block, 0, Math.min(left, block.length), pos)
-        if (!bytesRead) throw new Error('source du clip plus courte que prévu')
-        await writeAll(fh, block, bytesRead)
-        pos += bytesRead
-        left -= bytesRead
-      }
-    }
-  } finally {
-    await srcFile?.close().catch(() => {})
-    await fh.close().catch(() => {})
-  }
-}
-
-function freeName(folder: string, base: string): string {
-  let file = join(folder, `${base}.mp4`)
-  for (let n = 2; existsSync(file) || existsSync(`${file}.part`); n++) file = join(folder, `${base} (${n}).mp4`)
-  return file
-}
-
 /** Le dossier des réglages, sinon celui par défaut (clé USB retirée, droits). */
 async function usableFolder(): Promise<string> {
   const wanted_ = folderOf(current)
@@ -1232,28 +1193,6 @@ export function addFilm(f: { part: string; file: string; thumb?: string; title: 
   })
 }
 
-/** La boîte moov d'un clip : elle est devant les données. */
-async function readMoov(fh: FileHandle): Promise<Buffer> {
-  const { size } = await fh.stat()
-  let pos = 0
-  const head = Buffer.alloc(16)
-  while (pos + 8 <= size) {
-    await fh.read(head, 0, 16, pos)
-    let boxSize = head.readUInt32BE(0)
-    if (boxSize === 1) boxSize = Number(head.readBigUInt64BE(8))
-    else if (boxSize === 0) boxSize = size - pos
-    if (boxSize < 8 || pos + boxSize > size) throw new Error('fichier abîmé')
-    if (head.toString('latin1', 4, 8) === 'moov') {
-      const moov = Buffer.alloc(boxSize)
-      await fh.read(moov, 0, boxSize, pos)
-      readBoxes(moov)
-      return moov
-    }
-    pos += boxSize
-  }
-  throw new Error('fichier sans index (moov)')
-}
-
 /** Une découpe devient un nouveau clip, juste au-dessus de l'original : rien n'est perdu si la coupe est ratée. */
 function trimClip(id: unknown, startS: unknown, endS: unknown): Promise<Clip> {
   const meta = needClip(id)
@@ -1407,18 +1346,6 @@ function shareLimit(): { mb: number; bytes: number } {
   const dev = app.isPackaged ? Number.NaN : Number(process.env.PX_CLIP_TEST_SHARE_MB)
   const mb = dev > 0 && dev <= 500 ? dev : DISCORD_MB[current.discord]
   return { mb, bytes: Math.round(mb * 1_000_000) }
-}
-
-/** Ce que le fichier est vraiment (relu dans son index, pas dans sa fiche) : durée, taille de l'image, images par seconde, son. */
-async function shareSource(file: string, sizeBytes: number): Promise<ShareSource> {
-  const fh = await open(file, 'r')
-  const tracks = parseFlat(await readMoov(fh).finally(() => fh.close()))
-  const video = tracks.find((t) => t.kind === 'video' && t.samples.length)
-  if (!video) throw new Error('pas d’image')
-  const seconds = (t: ClipTrack): number => t.samples.reduce((n, x) => n + x.dur, 0) / t.timescale
-  const videoS = seconds(video)
-  const durationS = Math.max(videoS, ...tracks.filter((t) => t.kind === 'audio').map(seconds))
-  return { sizeBytes, durationS, width: video.width, height: video.height, fps: videoS > 0 ? video.samples.length / videoS : 0, hasAudio: tracks.some((t) => t.kind === 'audio' && t.samples.length > 0) }
 }
 
 /**
@@ -1951,19 +1878,8 @@ export async function captureTestContext(): Promise<{ folder: string; game: { id
   return { folder: await usableFolder(), game: capture?.game ?? null, quality: { maxWidth: q.maxWidth, maxHeight: q.maxHeight, fps: q.fps, videoBps: q.videoBps }, screen: size }
 }
 
-/**
- * Bêta 46 : la taille de l'image d'une vidéo MP4, relue dans son index (pour l'essai de capture : la vidéo d'essai dit si la
- * réduction a eu lieu). null : fichier illisible.
- */
-export async function videoSizeOf(file: string): Promise<{ width: number; height: number } | null> {
-  try {
-    const fh = await open(file, 'r')
-    const video = parseFlat(await readMoov(fh).finally(() => fh.close())).find((t) => t.kind === 'video')
-    return video && video.width > 0 && video.height > 0 ? { width: video.width, height: video.height } : null
-  } catch {
-    return null
-  }
-}
+/** La taille de l'image d'une vidéo MP4, pour l'essai de capture (captureTest.ts) : la fonction est dans clipsFiles.ts. */
+export { videoSizeOf } from './clipsFiles'
 
 /** Une ligne du journal des clips, pour l'essai de capture. */
 export function clipsLogLine(text: string): void {
