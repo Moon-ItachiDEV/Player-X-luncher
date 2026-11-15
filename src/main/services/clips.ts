@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { copyFile as copyOnDisk, mkdir, open, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { app, BrowserWindow, clipboard, ClipboardItem, desktopCapturer, dialog, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, shell, type IpcMainEvent, type Session, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, ClipboardItem, desktopCapturer, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, shell, type IpcMainEvent, type Session, type WebContents } from 'electron'
 import { cleanGamePace, cleanPace, gamePace, gamePaceLine, paceLog, paceOf, rateBetween, type ClipPace, type GamePace } from '@shared/clipPace'
 import { CS2_GAME_ID } from '@shared/cs2'
 import { cleanName, isBf6Name } from '@shared/text'
@@ -11,7 +11,7 @@ import type { Clip, ClipDisplay, ClipSettings, ClipShareResult, ClipShareStep, C
 import { getKv, setKv } from '../db'
 import { hotkeyRefusal } from '../hotkeys'
 import { handle } from '../ipc'
-import { appWindows, broadcast, markOverlay, mainWindow } from '../windows'
+import { appWindows, broadcast, markOverlay } from '../windows'
 import {
   CLIP_ID,
   canMerge,
@@ -22,7 +22,6 @@ import {
   clipTitle,
   cleanClipSettings,
   cleanTitle,
-  DEFAULT_CLIP_SETTINGS,
   keepFrom,
   mergePending,
   openPending,
@@ -40,6 +39,7 @@ import {
 import { freeName, readMoov, shareSource, writePlan } from './clipsFiles'
 import { errText, log, logFlushed, logTail } from './clipsLog'
 import { registerClipProtocol } from './clipsProtocol'
+import { chooseFolder, clipSettings, folderOf, loadClipSettings, resolved, storeClipSettings, usableFolder } from './clipsSettings'
 import { cleanShareCopies, dropShareCopies, lightCopy } from './clipsShare'
 import { showClipToast } from './clipsToast'
 import { cs2IsRunning, cs2MomentContext, onCs2Moment, onCs2Running } from './cs2Live'
@@ -56,6 +56,7 @@ import { DISCORD_MB, type ShareSource } from './sharePlan'
 // raccourci, le clip est écrit en vrai fichier MP4, sans réencodage. Rien ne tourne quand aucun jeu ne tourne.
 // Les calculs purs sont dans fmp4.ts (boîtes MP4), clipsPlan.ts (fenêtres, fusion, rétention) et cs2Moments.ts.
 // Les lectures et écritures des fichiers MP4 (écrire un clip, relire son index) sont dans clipsFiles.ts.
+// Les réglages et le dossier des clips sont dans clipsSettings.ts : ici, ils se lisent par clipSettings().
 // La fenêtre de capture a sa propre session : la session des pages de l'appli continue de tout refuser (lockDown).
 
 const SCHEME = 'pxclip'
@@ -64,7 +65,6 @@ const SCHEME = 'pxclip'
 // Un autre protocole privilégié devra s'ajouter à cette même liste.
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }])
 
-const SETTINGS_KEY = 'clipsSettings'
 const INDEX_KEY = 'clipsIndex'
 /** Bêta 46 : le rythme des clips de la dernière partie finie. */
 const LAST_GAME_KEY = 'clipsLastGame'
@@ -173,7 +173,6 @@ let libraryRunning: RunningGame[] = []
 /** Développement : jeux marqués comme lancés par les essais (globalThis.pxClipsTest). */
 let testRunning: RunningGame[] = []
 
-let current: ClipSettings = DEFAULT_CLIP_SETTINGS
 let index: ClipMeta[] = []
 
 const recorders = new Map<string, Recorder>()
@@ -198,16 +197,6 @@ let captureSession: Session | null = null
 const userData = (...p: string[]): string => join(app.getPath('userData'), ...p)
 const bufferRoot = (): string => userData('clips-buffer')
 const thumbPath = (id: string): string => userData('clips-thumbs', `${id}.jpg`)
-function defaultFolder(): string {
-  try {
-    return join(app.getPath('videos'), 'Player X V3 Test')
-  } catch {
-    // Dossier Vidéos introuvable sur ce PC.
-    return userData('Clips')
-  }
-}
-const folderOf = (s: ClipSettings): string => s.folder || defaultFolder()
-const resolved = (s: ClipSettings): ClipSettings => ({ ...s, folder: folderOf(s) })
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 // ---------- état ----------
@@ -220,7 +209,7 @@ function bufferSeconds(rec: Recorder | null): number {
 
 function stateNow(): ClipsState {
   const last = lastGame ? { lastGame } : {}
-  if (!current.enabled) return { status: 'off', ...last }
+  if (!clipSettings().enabled) return { status: 'off', ...last }
   if (!capture) return { status: 'idle', ...(lastProblem ? { error: lastProblem } : {}), ...last }
   const c = capture
   const rec = c.rec
@@ -275,7 +264,7 @@ function fromRecorder(e: IpcMainEvent): boolean {
 /** Écran à capturer : celui des réglages, sinon l'écran principal. */
 function targetDisplayId(): number {
   const all = screen.getAllDisplays()
-  return all.find((d) => d.id === current.display)?.id ?? screen.getPrimaryDisplay().id
+  return all.find((d) => d.id === clipSettings().display)?.id ?? screen.getPrimaryDisplay().id
 }
 
 /** Session de la fenêtre de capture : la seule où l'écran et le micro peuvent être accordés, et seulement à sa page. */
@@ -382,7 +371,7 @@ function launchRecorder(c: Capture): void {
   if (c.engMode === undefined) return
   const audioOnly = c.engMode === true
   // Le moteur filme l'image et aucun son n'est voulu : la page n'enregistre rien.
-  if (audioOnly && !current.gameAudio && !current.mic) return
+  if (audioOnly && !clipSettings().gameAudio && !clipSettings().mic) return
   const id = `r${Date.now().toString(36)}${randomBytes(2).toString('hex')}`
   const now = Date.now()
   const rec: Recorder = {
@@ -393,7 +382,7 @@ function launchRecorder(c: Capture): void {
     anchor: now,
     startedAt: now,
     lastDataAt: now,
-    wantedFps: QUALITY[current.quality].fps,
+    wantedFps: QUALITY[clipSettings().quality].fps,
     seq: 0,
     queued: 0,
     writes: mkdir(join(bufferRoot(), id), { recursive: true }).then(
@@ -406,8 +395,8 @@ function launchRecorder(c: Capture): void {
   }
   recorders.set(id, rec)
   c.rec = rec
-  send(c, { type: 'start', recId: id, quality: QUALITY[current.quality], gameAudio: current.gameAudio, mic: current.mic, mimeFrom: c.mimeFrom, test: testSource(), testMime: audioOnly ? null : testMime(), audioOnly })
-  log(`Enregistreur ${id} demandé (${audioOnly ? 'son seulement, image par le moteur' : current.quality}, son du jeu : ${current.gameAudio ? 'oui' : 'non'}, micro : ${current.mic ? 'oui' : 'non'}).`)
+  send(c, { type: 'start', recId: id, quality: QUALITY[clipSettings().quality], gameAudio: clipSettings().gameAudio, mic: clipSettings().mic, mimeFrom: c.mimeFrom, test: testSource(), testMime: audioOnly ? null : testMime(), audioOnly })
+  log(`Enregistreur ${id} demandé (${audioOnly ? 'son seulement, image par le moteur' : clipSettings().quality}, son du jeu : ${clipSettings().gameAudio ? 'oui' : 'non'}, micro : ${clipSettings().mic ? 'oui' : 'non'}).`)
   syncHotkey()
   emitState()
 }
@@ -465,7 +454,7 @@ const mannerOf = (a: EngineAttempt): string => `${a.encoder}/${a.mode}`
 /** Au début de la partie : le moteur filme-t-il l'image ? Puis il démarre, et la page avec lui (son seulement). */
 async function decideEngine(c: Capture): Promise<void> {
   const dev = engineDevAttempts()
-  let on = current.capture === 'engine' && (!!dev || (!testSource() && process.platform === 'win32'))
+  let on = clipSettings().capture === 'engine' && (!!dev || (!testSource() && process.platform === 'win32'))
   if (on) on = await captureEngineReady().catch(() => false)
   if (capture !== c || c.stopping) return
   c.engMode = on
@@ -480,7 +469,7 @@ async function decideEngine(c: Capture): Promise<void> {
     c.engRound = 0
     c.engStart = Date.now()
     startEngine(c)
-  } else log(current.capture === 'engine' ? 'Moteur vidéo indisponible : image et son par Chrome.' : 'Capture par Chrome (réglage).')
+  } else log(clipSettings().capture === 'engine' ? 'Moteur vidéo indisponible : image et son par Chrome.' : 'Capture par Chrome (réglage).')
   launchRecorder(c)
   emitState()
 }
@@ -493,7 +482,7 @@ function startEngine(c: Capture): void {
   if (!attempt) return engineGiveUp(c, 'aucune manière n’a marché')
   let args: string[]
   try {
-    args = recordArgs(attempt, QUALITY[current.quality])
+    args = recordArgs(attempt, QUALITY[clipSettings().quality])
   } catch (e) {
     log(`Moteur : ${errText(e)}`)
     c.engIdx++
@@ -511,7 +500,7 @@ function startEngine(c: Capture): void {
     anchor: now + ENGINE_LATE_MS,
     startedAt: now,
     lastDataAt: now,
-    wantedFps: QUALITY[current.quality].fps,
+    wantedFps: QUALITY[clipSettings().quality].fps,
     seq: 0,
     queued: 0,
     writes: mkdir(join(bufferRoot(), id), { recursive: true }).then(
@@ -713,7 +702,7 @@ function onChunk(rec: Recorder, chunk: Uint8Array): void {
 /** Retire les fragments qui ne servent plus à rien : ni à un événement à venir, ni à un clip en cours. */
 function pruneBuffer(): void {
   const inUse = [...[...pendings.values()].map((p) => p.start), ...writing.values()]
-  const from = keepFrom(Date.now(), current, inUse)
+  const from = keepFrom(Date.now(), clipSettings(), inUse)
   // Le son en PCM : les morceaux finis avant le début utile.
   for (const r of recorders.values()) {
     if (!r.pcm?.length) continue
@@ -749,7 +738,7 @@ function onMoment(m: ClipMoment, gameId?: string): boolean {
   const c = capture
   const game = currentGame(gameId)
   if (!c || !game || c.stopping || (!c.rec && !c.eng && !frags.length)) return false
-  const w = { before: current.before, after: current.after, merge: current.merge }
+  const w = { before: clipSettings().before, after: clipSettings().after, merge: clipSettings().merge }
   for (const p of pendings.values()) {
     if (canMerge(p, game.id, m, w)) {
       pendings.set(p.id, mergePending(p, m, w))
@@ -842,20 +831,6 @@ function finalize(p: PendingClip): void {
     })
 }
 
-/** Le dossier des réglages, sinon celui par défaut (clé USB retirée, droits). */
-async function usableFolder(): Promise<string> {
-  const wanted_ = folderOf(current)
-  try {
-    await mkdir(wanted_, { recursive: true })
-    return wanted_
-  } catch (e) {
-    log(`Dossier ${wanted_} inutilisable : ${errText(e)}`)
-    const fallback = defaultFolder()
-    await mkdir(fallback, { recursive: true })
-    return fallback
-  }
-}
-
 /**
  * Bêta 42 : le son d'un clip filmé par le moteur, en PCM, pris dans l'enregistreur « son seulement » qui couvre le mieux
  * [fromWall ; fromWall + durS]. null : rien pour cette fenêtre.
@@ -902,9 +877,9 @@ function engineOnce(args: string[], timeoutMs: number): Promise<{ code: number |
  * son pour ce moment, ou si l'assemblage rate, le clip garde l'image seule. Rend la taille du fichier écrit.
  */
 async function writeEngineClip(p: PendingClip, plan: FlatPlan, sources: string[], firstWall: number, out: string): Promise<number> {
-  const audio = current.gameAudio || current.mic ? pcmForWindow(firstWall, plan.durationS) : null
+  const audio = clipSettings().gameAudio || clipSettings().mic ? pcmForWindow(firstWall, plan.durationS) : null
   if (!audio) {
-    if (current.gameAudio || current.mic) log(`Clip ${p.id} : pas de son dans le tampon pour ce moment, clip sans son.`)
+    if (clipSettings().gameAudio || clipSettings().mic) log(`Clip ${p.id} : pas de son dans le tampon pour ce moment, clip sans son.`)
     await writePlan(plan, sources, out)
     return plan.size
   }
@@ -915,7 +890,7 @@ async function writeEngineClip(p: PendingClip, plan: FlatPlan, sources: string[]
   try {
     await writePlan(plan, sources, video)
     await writeFile(pcm, audio.pcm)
-    const r = await engineOnce(muxArgs(video, pcm, out, QUALITY[current.quality].audioBps), MUX_TIMEOUT_MS)
+    const r = await engineOnce(muxArgs(video, pcm, out, QUALITY[clipSettings().quality].audioBps), MUX_TIMEOUT_MS)
     if (r.code === 0 && existsSync(out)) return (await stat(out)).size
     log(`Clip ${p.id} : assemblage du son raté (code ${r.code}), clip sans son.`)
     for (const l of r.err.split(/\r?\n/).filter((x) => x.trim()).slice(-4)) log(`  ${l.replace(/([A-Za-z]:[\\/]+Users[\\/]+)[^\\/"':\r\n]+/gi, '$1…').slice(0, 300)}`)
@@ -996,7 +971,7 @@ async function writeClip(p: PendingClip): Promise<void> {
   lastProblem = undefined
   await applyRetention(p.id)
   // Image du moteur : la vignette vient du clip (vers le moment gardé, avant les secondes « après »).
-  if (rec.engine) engineThumb(p.id, file, Math.max(0, plan.durationS - current.after - 0.5))
+  if (rec.engine) engineThumb(p.id, file, Math.max(0, plan.durationS - clipSettings().after - 0.5))
   else if (!existsSync(thumbPath(p.id))) requestThumb(p.id)
   emitChanged()
   emitState()
@@ -1025,13 +1000,13 @@ async function deleteFiles(meta: ClipMeta): Promise<void> {
 
 /** Au-delà de la limite : les plus vieux non épinglés partent. Le clip qui vient d'arriver reste. */
 async function applyRetention(keepId?: string): Promise<void> {
-  const ids = clipsToPurge(index, current.limitGb * 1024 ** 3, keepId)
+  const ids = clipsToPurge(index, clipSettings().limitGb * 1024 ** 3, keepId)
   if (!ids.length) return
   const gone = index.filter((c) => ids.includes(c.id))
   index = index.filter((c) => !ids.includes(c.id))
   saveIndex()
   for (const c of gone) await deleteFiles(c)
-  log(`Limite de ${current.limitGb} Go : ${gone.length} ancien(s) clip(s) supprimé(s).`)
+  log(`Limite de ${clipSettings().limitGb} Go : ${gone.length} ancien(s) clip(s) supprimé(s).`)
   emitChanged()
 }
 
@@ -1131,7 +1106,7 @@ export async function newestClipSource(): Promise<(FilmSource & { width: number;
 
 /** Le réglage « après le moment » : là où tombe le dernier kill d'un clip qui ne note pas ses événements. */
 export function clipAfterSetting(): number {
-  return current.after
+  return clipSettings().after
 }
 
 /** Où écrire un film : dans le sous-dossier Films du dossier des clips, d'abord en « .part », sous un nom libre. */
@@ -1344,7 +1319,7 @@ async function copyFile(id: unknown): Promise<boolean> {
  */
 function shareLimit(): { mb: number; bytes: number } {
   const dev = app.isPackaged ? Number.NaN : Number(process.env.PX_CLIP_TEST_SHARE_MB)
-  const mb = dev > 0 && dev <= 500 ? dev : DISCORD_MB[current.discord]
+  const mb = dev > 0 && dev <= 500 ? dev : DISCORD_MB[clipSettings().discord]
   return { mb, bytes: Math.round(mb * 1_000_000) }
 }
 
@@ -1393,7 +1368,7 @@ function displays(): ClipDisplay[] {
 
 /** Raccourci d'un jeu seulement : pris pendant que le tampon tourne, rendu dès qu'il s'arrête. */
 function syncHotkey(): void {
-  const want = capture?.rec && !capture.stopping ? current.hotkey : null
+  const want = capture?.rec && !capture.stopping ? clipSettings().hotkey : null
   if (want === hotkeyNow) return
   if (hotkeyNow) globalShortcut.unregister(hotkeyNow)
   hotkeyNow = null
@@ -1441,14 +1416,13 @@ function restartRecorder(reason: string): void {
 }
 
 function saveClipSettings(patch: unknown): ClipSettings {
-  const before = current
+  const before = clipSettings()
   const p: Record<string, unknown> = patch && typeof patch === 'object' && !Array.isArray(patch) ? { ...(patch as Record<string, unknown>) } : {}
   // Le dossier vient de la fenêtre native (clipsChooseFolder) ; la page peut seulement revenir à celui par défaut.
   if (p.folder !== '') delete p.folder
   if ('hotkey' in p && p.hotkey !== before.hotkey) checkHotkey(p.hotkey)
-  current = cleanClipSettings(p, before)
-  setKv(SETTINGS_KEY, current)
-  if (current.capture !== before.capture && capture && !stopping) {
+  storeClipSettings(cleanClipSettings(p, before))
+  if (clipSettings().capture !== before.capture && capture && !stopping) {
     // Moteur ↔ Chrome : la capture repart de zéro avec l'autre méthode.
     // La partie continue : pas de bilan de rythme ici.
     stopping = stopCapture('méthode de capture changée', false)
@@ -1457,33 +1431,22 @@ function saveClipSettings(patch: unknown): ClipSettings {
         stopping = null
         sync()
       })
-  } else if (current.quality !== before.quality || current.mic !== before.mic || current.gameAudio !== before.gameAudio || current.display !== before.display) restartRecorder('réglages changés')
+  } else if (clipSettings().quality !== before.quality || clipSettings().mic !== before.mic || clipSettings().gameAudio !== before.gameAudio || clipSettings().display !== before.display) restartRecorder('réglages changés')
   syncHotkey()
   sync()
-  if (current.limitGb < before.limitGb) void serial(() => applyRetention()).catch((e) => log(`Rétention : ${errText(e)}`))
+  if (clipSettings().limitGb < before.limitGb) void serial(() => applyRetention()).catch((e) => log(`Rétention : ${errText(e)}`))
   emitState()
-  return resolved(current)
-}
-
-async function chooseFolder(): Promise<ClipSettings | null> {
-  const parent = mainWindow()
-  const options: Electron.OpenDialogOptions = { title: 'Dossier des clips', defaultPath: folderOf(current), properties: ['openDirectory', 'createDirectory'] }
-  const res = await (parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options))
-  if (res.canceled || !res.filePaths[0]) return null
-  current = { ...current, folder: res.filePaths[0] }
-  setKv(SETTINGS_KEY, current)
-  log('Dossier des clips changé.')
-  return resolved(current)
+  return resolved(clipSettings())
 }
 
 // ---------- démarrage et arrêt de la capture ----------
 
 function wanted(): RunningGame | null {
-  if (!started || quitting || suspended || windowsGone || !current.enabled) return null
+  if (!started || quitting || suspended || windowsGone || !clipSettings().enabled) return null
   const all = [...libraryRunning, ...testRunning]
   // CS2 vu par sa liaison (simulateur compris), même si la bibliothèque ne l'a pas encore en cours.
   if (cs2IsRunning() && !all.some((g) => g.id === CS2_GAME_ID)) all.push({ id: CS2_GAME_ID, name: 'Counter-Strike 2' })
-  const list = current.games === 'all' ? all : all.filter((g) => g.id === CS2_GAME_ID || isBf6Name(g.name))
+  const list = clipSettings().games === 'all' ? all : all.filter((g) => g.id === CS2_GAME_ID || isBf6Name(g.name))
   return list.find((g) => g.id === CS2_GAME_ID) ?? list[0] ?? null
 }
 
@@ -1736,7 +1699,7 @@ function registerApi(): void {
   handle('clips:share', (_e, id: unknown) => shareClip(id))
   handle('clips:trim', (_e, id: unknown, startS: unknown, endS: unknown) => trimClip(id, startS, endS))
   handle('clips:state', () => stateNow())
-  handle('clips:settings-get', () => resolved(current))
+  handle('clips:settings-get', () => resolved(clipSettings()))
   handle('clips:settings-save', (_e, patch: unknown) => saveClipSettings(patch))
   handle('clips:choose-folder', () => chooseFolder())
   handle('clips:displays', () => displays())
@@ -1746,7 +1709,7 @@ function registerApi(): void {
 /** Fichiers laissés par une fermeture brutale : le tampon et les clips à moitié écrits. */
 async function cleanLeftovers(): Promise<void> {
   await rm(bufferRoot(), { recursive: true, force: true }).catch(() => {})
-  const folder = folderOf(current)
+  const folder = folderOf(clipSettings())
   // Les clips à la racine du dossier, les films dans leur sous-dossier.
   for (const dir of [folder, join(folder, FILMS_DIR)]) {
     const names = await readdir(dir).catch(() => [] as string[])
@@ -1762,7 +1725,7 @@ async function cleanLeftovers(): Promise<void> {
 /** Après l'ouverture de la base. */
 export function startClips(): void {
   if (started) return
-  current = cleanClipSettings(getKv<unknown>(SETTINGS_KEY, {}))
+  loadClipSettings()
   index = getKv<ClipMeta[]>(INDEX_KEY, []).filter((c) => c && typeof c.id === 'string' && CLIP_ID.test(c.id) && typeof c.file === 'string')
   lastGame = cleanGamePace(getKv<unknown>(LAST_GAME_KEY, null))
   registerClipProtocol(SCHEME, (id) => {
@@ -1777,7 +1740,7 @@ export function startClips(): void {
   onCs2Running(sync)
   onCs2Moment((m) => {
     try {
-      if (!current.triggers[m.kind]) return
+      if (!clipSettings().triggers[m.kind]) return
       onMoment(
         { kind: m.kind, at: m.at, kills: m.kills, headshots: m.headshots, roundKills: m.roundKills, map: m.map, mode: m.mode, round: m.round, ...(m.score ? { score: m.score } : {}) },
         CS2_GAME_ID
@@ -1857,7 +1820,7 @@ export function startClips(): void {
         pendings: [...pendings.values()],
         hotkey: hotkeyNow,
         hotkeyRegistered: hotkeyNow ? globalShortcut.isRegistered(hotkeyNow) : false,
-        folder: folderOf(current),
+        folder: folderOf(clipSettings()),
         bufferRoot: bufferRoot(),
         // Bêta 46 : le dernier fichier « copié » (PX_CLIP_TEST_COPY=1).
         copied: testCopied
@@ -1872,7 +1835,7 @@ export function startClips(): void {
  * l'essai filme (monitor 0) : elle dit s'il y a de quoi essayer une capture réduite.
  */
 export async function captureTestContext(): Promise<{ folder: string; game: { id: string; name: string } | null; quality: { maxWidth: number; maxHeight: number; fps: number; videoBps: number }; screen: { width: number; height: number } | null }> {
-  const q = QUALITY[current.quality]
+  const q = QUALITY[clipSettings().quality]
   const d = screen.getAllDisplays()[0]
   const size = d ? { width: Math.round(d.bounds.width * d.scaleFactor), height: Math.round(d.bounds.height * d.scaleFactor) } : null
   return { folder: await usableFolder(), game: capture?.game ?? null, quality: { maxWidth: q.maxWidth, maxHeight: q.maxHeight, fps: q.fps, videoBps: q.videoBps }, screen: size }
