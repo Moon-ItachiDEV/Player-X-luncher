@@ -3,6 +3,7 @@
 //    celle du clip, l'écart son/image, le film rangé avec les clips, les refus, l'arrêt, un jeu qui démarre.
 // B. Un moteur qui rate tout : le film est dit raté, avec un texte à copier sans aucun chemin.
 // C. Des encodeurs qui ne marchent pas sur ce PC : le suivant prend le relais, et il est retenu pour le film d'après.
+// D. L'appli relancée : les films rangés sont toujours dans la liste, avec leurs fichiers.
 // Sous Linux, c'est le ffmpeg de la machine qui joue le moteur (PX_FFMPEG) et libx264 l'encodeur (PX_FFMPEG_ENCODER) : le
 // moteur Windows livré (FFmpeg 9.0.2) n'est jamais lancé ici.
 const H = require('./h.cjs')
@@ -239,6 +240,7 @@ async function partC(dirs, A) {
   const fake = fakeEngine(dirs.base, 'faux-relais.cjs', `const i = args.indexOf('-c:v')\nconst enc = i >= 0 ? args[i + 1] : ''\nrequire('fs').appendFileSync(${JSON.stringify(journal)}, (enc || 'autre') + '\\n')\nif (/^h264_(nvenc|amf|qsv|mf)$/.test(enc)) { process.stderr.write('[' + enc + ' @ 0x1] Cannot load the encoder library\\nError while opening encoder\\n'); process.exit(1) }\nif (enc === 'libopenh264') args[i + 1] = 'libx264'\npass(args)`)
   const { app, p, errs } = await start(dirs, { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '640x360', PX_FFMPEG: fake })
   const L = (...a) => launcher(p, ...a)
+  let made = null
   try {
     await until(() => app.evaluate(() => !!globalThis.pxCs2Sim && !!globalThis.pxClipsTest), 15000, 'prêt')
     await filmEvents(p)
@@ -258,8 +260,24 @@ async function partC(dirs, A) {
     check('le film suivant commence par l’encodeur qui a marché', end2.status === 'done' && used2.join() === 'libopenh264,libopenh264,libopenh264,copy,autre', used2)
     const films = (await L('clipsList')).filter((c) => c.kind === 'film')
     check('deux films rangés, deux fichiers dans Films, aux noms distincts', films.length === 2 && listDir(path.join(A.folder, 'Films')).length === 2 && new Set(listDir(path.join(A.folder, 'Films'))).size === 2, listDir(path.join(A.folder, 'Films')))
+    made = films
   } catch (e) { fail++; console.log('ECHEC', e.message.split('\n')[0]) } finally { await app.close().catch(() => {}) }
   check('C : aucune erreur dans la page', errs.length === 0, errs.slice(0, 3))
+  return made
+}
+
+async function partD(dirs, A, films) {
+  console.log('--- D. L’appli relancée : les films rangés sont toujours là')
+  const { app, p, errs } = await start(dirs, { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '640x360' })
+  const L = (...a) => launcher(p, ...a)
+  try {
+    await until(() => app.evaluate(() => !!globalThis.pxCs2Sim && !!globalThis.pxClipsTest), 15000, 'prêt')
+    const list = await L('clipsList')
+    const byId = (l) => JSON.stringify([...l].sort((a, b) => (a.id < b.id ? -1 : 1)))
+    const back = list.filter((c) => c.kind === 'film')
+    check('après une relance : les deux films sont toujours dans la liste, tels quels, avec les trois clips', byId(back) === byId(films) && back.length === 2 && list.length === 5 && listDir(path.join(A.folder, 'Films')).length === 2, list.map((c) => [c.kind, c.title]))
+  } catch (e) { fail++; console.log('ECHEC', e.message.split('\n')[0]) } finally { await app.close().catch(() => {}) }
+  check('D : aucune erreur dans la page', errs.length === 0, errs.slice(0, 3))
 }
 
 ;(async () => {
@@ -267,8 +285,10 @@ async function partC(dirs, A) {
   const A = await partA(dirs)
   if (A) {
     await partB(dirs, A)
-    await partC(dirs, A)
-  } else console.log('Parties B et C sautées : la partie A n’a pas fini.')
+    const films = await partC(dirs, A)
+    if (films) await partD(dirs, A, films)
+    else console.log('Partie D sautée : la partie C n’a pas fini.')
+  } else console.log('Parties B, C et D sautées : la partie A n’a pas fini.')
   console.log(`\n${pass} réussis, ${fail} ratés`)
   process.exit(fail ? 1 : 0)
 })()

@@ -6,6 +6,8 @@ import { parseRange } from './clipsPlan'
 
 // Protocole pxclip:// : la balise video et les vignettes de la page Clips lisent les fichiers par lui.
 
+/** Le nom du protocole : clips.ts le déclare au démarrage, clipsIndex.ts écrit avec lui les adresses des clips. */
+export const SCHEME = 'pxclip'
 
 function notFound(): Response {
   return new Response('Introuvable', { status: 404 })
