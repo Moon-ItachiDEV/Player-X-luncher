@@ -37,7 +37,8 @@ const { start, sleep, until, launcher, test, simPost, simRunning, payload, probe
     const file = path.join(folder, names.find((n) => n.endsWith('.mp4')))
     console.log('ffprobe', JSON.stringify(probe(file)))
     console.log('décodage', decodeCheck(file))
-    H.execFileSync('node', [path.join(__dirname, '../clipslab/dump.cjs'), file], { stdio: ['ignore', 'pipe', 'inherit'] }).toString().split('\n').filter((l) => /^\S/.test(l) || /elst|stsd/.test(l)).forEach((l) => console.log('  ', l.slice(0, 120)))
+    // Les boîtes du fichier : premier niveau, puis le codec et la liste de montage de chaque piste
+    H.mp4Boxes(file).forEach((l) => console.log('  ', l.slice(0, 160)))
     // Horloge peinte dans l'image : la fenêtre est-elle la bonne ?
     const first = clockAt(file, 0), last = clockAt(file, c.durationS - 0.1)
     console.log('horloge', { début: (first - killAt) / 1000, fin: (last - killAt) / 1000, durée: c.durationS })

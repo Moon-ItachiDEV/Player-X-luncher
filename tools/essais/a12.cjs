@@ -1,4 +1,4 @@
-const { start, shot, settle, go } = require('./h.cjs')
+const { start, shot, settle, go, check, done, failed } = require('./h.cjs')
 ;(async () => {
   const { app, p, errs } = await start({ name: 'a12c', w: 1240, h: 720, env: { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '640x360' } })
   const log = (...a) => console.log(...a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x).slice(0, 700))))
@@ -27,8 +27,10 @@ const { start, shot, settle, go } = require('./h.cjs')
     await p.waitForTimeout(4000)
     log(await p.evaluate(() => CLIPS.map((c) => ({ t: c.title, d: c.durationS, s: c.sizeBytes, w: c.width, k: c.kind, kills: c.kills, hs: c.headshots, r: c.round, m: c.map }))))
     if (await p.$('.toast-a')) { await p.evaluate(() => { [...document.querySelectorAll('.toast-a')].find((x) => /bilan/.test(x.textContent))?.click() }); await p.waitForTimeout(1500) }
-    await p.evaluate(() => Story.step(1)); await p.waitForTimeout(200); await p.evaluate(() => Story.step(1)); await p.waitForTimeout(1500); await shot(p, 'a12-best')
-    await p.evaluate(() => Story.step(1)); await p.waitForTimeout(1500); await shot(p, 'a12-keep')
+    // Le bilan avance tout seul ou à la flèche droite : on va jusqu'à la page voulue, sans dépasser la dernière
+    const page = async (cls) => { for (let i = 0; i < 6 && !(await p.$(`#stBody .${cls}`)) && !(await p.evaluate(() => document.querySelector('#stNext').hidden)); i++) { await p.keyboard.press('ArrowRight'); await p.waitForTimeout(250) } return !!(await p.$(`#stBody .${cls}`)) }
+    check('bilan : la page du meilleur moment', await page('sl-best'), await p.evaluate(() => document.querySelector('#stBody .sl-h2')?.textContent)); await p.waitForTimeout(1500); await shot(p, 'a12-best')
+    check('bilan : la dernière page, les clips à partager', await page('sl-keep'), await p.evaluate(() => document.querySelector('#stBody .sl-h2')?.textContent)); await p.waitForTimeout(1500); await shot(p, 'a12-keep')
     await p.evaluate(() => Story.close()); await p.waitForTimeout(800)
     await p.evaluate(() => { go('clips') }); await settle(p, 1500); await shot(p, 'a12-list')
     await p.click('.ct-tile'); await settle(p, 2500); await shot(p, 'a12-player')
@@ -59,7 +61,7 @@ const { start, shot, settle, go } = require('./h.cjs')
     const n0 = await near(); await p.click('#meName'); await p.waitForTimeout(150); const n1 = await near(); await shot(p, 'a12-me-edit'); await p.keyboard.press('Escape'); await p.waitForTimeout(300)
     log('pseudo sans bouger', JSON.stringify(n0) === JSON.stringify(n1), n0, n1, await p.evaluate(() => document.activeElement?.id))
     await p.evaluate(() => Settings.close()); await settle(p, 300)
-    log('ERREURS', errs.length); errs.slice(0, 20).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n').slice(0, 2).join(' ')); console.log(errs.slice(0, 20).join('\n')) }
+    done(errs)
+  } catch (e) { failed(e, errs) }
   await app.close()
 })()

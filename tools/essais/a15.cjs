@@ -1,5 +1,5 @@
 // Clip à la main, coupe au plus près, coupe trop petite, renommer le pseudo sans rien bouger.
-const { start, shot, settle, go } = require('./h.cjs')
+const { start, shot, settle, go, done, failed } = require('./h.cjs')
 ;(async () => {
   const { app, p, errs } = await start({ name: 'a15', w: 1240, h: 720, env: { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '640x360' } })
   const log = (...a) => console.log(...a.map((x) => (typeof x === 'string' ? x : String(JSON.stringify(x)).slice(0, 700))))
@@ -33,7 +33,7 @@ const { start, shot, settle, go } = require('./h.cjs')
     const near = () => p.evaluate(() => { const r = document.querySelector('#r-me .sr-t>span').getBoundingClientRect(); const c = document.querySelector('#meCell').getBoundingClientRect(); const b = document.querySelector('#r-me .sr-c').getBoundingClientRect(); return [+r.top.toFixed(1), +r.left.toFixed(1), +c.height.toFixed(1), +b.left.toFixed(1)] })
     const n0 = await near(); await p.click('#meName'); await p.waitForTimeout(250); const n1 = await near(); await shot(p, 'a15-me'); await p.keyboard.press('Escape'); await p.waitForTimeout(300)
     log('pseudo sans bouger', JSON.stringify(n0) === JSON.stringify(n1), n0, n1, await p.evaluate(() => document.activeElement?.id))
-    log('ERREURS', errs.length); errs.slice(0, 12).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n').slice(0, 2).join(' ')); console.log(errs.slice(0, 12).join('\n')) }
+    done(errs, 12)
+  } catch (e) { failed(e, errs, 12) }
   await app.close()
 })()

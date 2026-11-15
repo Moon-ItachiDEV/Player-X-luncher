@@ -221,8 +221,9 @@ async function partB(dirs, A) {
     const rep = end.report || ''
     console.log(rep.split('\n').map((l) => '    | ' + l).join('\n'))
     const lines = rep.split('\n')
-    check('le texte : appli, moteur, PC, film, puis les essais ratés de chaque encodeur', /^Player X V3 Test \S+ : film raté le \d\d\/\d\d\/\d{4} à \d\d h \d\d$/.test(lines[0]) && /^Moteur : FFmpeg /.test(lines[1]) && /^PC : /.test(lines[2]) && /^Film : 3 plans, [\d,]+ s, 1920 × 1080 à 60 images\/s$/.test(lines[3]) && lines.slice(4).length >= 2 && lines.slice(4).every((l) => /^- \S+, plan \d sur 3 : /.test(l)), lines.slice(3))
-    check('le texte : deux plans ratés de suite par encodeur, dans l’ordre (libx264 d’abord)', lines[4].startsWith('- libx264, plan 1 sur 3') && lines[5].startsWith('- libx264, plan 2 sur 3') && lines[6].startsWith('- h264_nvenc, plan 1 sur 3'), lines.slice(4, 8))
+    check('le texte : appli, moteur, PC, film, puis les essais ratés de chaque encodeur', /^Player X V3 Test \S+ : film raté le \d\d\/\d\d\/\d{4} à \d\d h \d\d$/.test(lines[0]) && /^Moteur : FFmpeg /.test(lines[1]) && /^PC : /.test(lines[2]) && /^Film : 3 plans, [\d,]+ s, 1920 × 1080 à 60 images\/s$/.test(lines[3]) && lines.slice(4).length >= 2 && lines.slice(4).every((l) => /^- \S+, morceau \d sur 3 : /.test(l)), lines.slice(3))
+    // L'appli compte en morceaux (« morceau 1 sur 3 », editFilm.ts) : un plan du film est fabriqué en un morceau
+    check('le texte : deux morceaux ratés de suite par encodeur, dans l’ordre (libx264 d’abord)', lines[4].startsWith('- libx264, morceau 1 sur 3') && lines[5].startsWith('- libx264, morceau 2 sur 3') && lines[6].startsWith('- h264_nvenc, morceau 1 sur 3'), lines.slice(4, 8))
     check('le texte ne dit ni le dossier des clips, ni le dossier de session, ni le dossier temporaire', !rep.includes(A.folder) && !rep.includes(dirs.home) && !rep.includes(os.tmpdir() + '/px-film-') && /Error opening input file ….*\.mp4|Error opening input file …/.test(rep), rep.length)
     check('après l’échec : aucun film, rien dans Films, dossier de travail effacé', (await L('clipsList')).length === 3 && listDir(path.join(A.folder, 'Films')).length === 0 && workDirs().length === 0, { films: listDir(path.join(A.folder, 'Films')), dirs: workDirs() })
     check('un nouveau film peut être demandé juste après', (await refusal(L('editFilmStart', A.ids))) === null)

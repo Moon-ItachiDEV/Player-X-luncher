@@ -27,7 +27,8 @@ const { start, sleep, until, launcher, test, simRunning, probe, ffprobe, clockAt
         await sleep(1500)
       }
       console.log((await L('clipsLogTail')).split('\n').slice(-22).join('\n'))
-    } catch (e) { console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
+    } catch (e) { process.exitCode = 1; console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
   }
-  process.exit(0)
+  // 0 seulement si rien n'a échoué en route
+  process.exit(process.exitCode || 0)
 })()

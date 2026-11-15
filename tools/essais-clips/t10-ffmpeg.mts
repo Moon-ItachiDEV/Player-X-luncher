@@ -3,13 +3,17 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, openSync, readFileSync, readSync, writeFileSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
-import { buildFlat, collectTracks, cutTracks, Fmp4Splitter, parseFlat, parseFragment, parseInit, readBoxes, type FragmentInfo, type InitInfo } from '../v3real/src/main/services/fmp4.ts'
+import { buildFlat, collectTracks, cutTracks, Fmp4Splitter, parseFlat, parseFragment, parseInit, readBoxes, type FragmentInfo, type InitInfo } from '../../src/main/services/fmp4.ts'
 
 const W = join(import.meta.dirname, 'work', 'ffmpeg')
 mkdirSync(W, { recursive: true })
 const SRC = join(W, 'src.mp4')
 // 12 s, GOP de 2 s, images B, AAC.
 execFileSync('/usr/bin/ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-t', '12', '-c:v', 'libx264', '-preset', 'veryfast', '-bf', '2', '-g', '60', '-keyint_min', '60', '-sc_threshold', '0', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', 'empty_moov+default_base_moof+frag_keyframe', SRC])
+
+// Une comparaison d'images qui ne tombe pas juste donne le code de sortie 1
+let fail = 0
+const same = (ok: boolean): boolean => { if (!ok) fail++; return ok }
 
 const all = readFileSync(SRC)
 console.log('source', readBoxes(all).reduce<Record<string, number>>((m, b) => ((m[b.type] = (m[b.type] ?? 0) + 1), m), {}))
@@ -38,7 +42,7 @@ const whole = buildFlat(cutTracks(tracks, 0, 1e9)!)
 const WHOLE = join(W, 'flat-whole.mp4')
 assemble(whole, frags.map((f) => f.data), WHOLE)
 const a = md5s(SRC), b = md5s(WHOLE)
-console.log('tout le flux : images', a.length, b.length, 'identiques', a.length === b.length && a.every((x, i) => x === b[i]))
+console.log('tout le flux : images', a.length, b.length, 'identiques', same(a.length === b.length && a.every((x, i) => x === b[i])))
 const probe = (f: string): unknown => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration,format_name:stream=codec_name,duration,nb_read_packets,start_time', '-count_packets', '-of', 'json', f], { encoding: 'utf8' }))
 console.log(JSON.stringify(probe(WHOLE)))
 const pv = packets(WHOLE, 'v')
@@ -52,7 +56,7 @@ assemble(plan, frags.map((f) => f.data), MID)
 console.log('passage :', plan.durationS, JSON.stringify(probe(MID)))
 const m = md5s(MID)
 const start = a.indexOf(m[0])
-console.log('passage : images', m.length, 'à partir de l’image', start, 'attendue vers', 60, 'suite identique', m.every((x, i) => x === a[start + i]))
+console.log('passage : images', m.length, 'à partir de l’image', start, 'attendue vers', 60, 'suite identique', same(start >= 0 && m.every((x, i) => x === a[start + i])))
 // Copie sans réencodage et lecture avec avance rapide par ffmpeg
 const r = spawnSync('/usr/bin/ffmpeg', ['-v', 'warning', '-ss', '2.5', '-i', MID, '-frames:v', '10', '-f', 'null', '-'], { encoding: 'utf8' })
 console.log('avance rapide : erreurs', JSON.stringify(r.stderr.slice(0, 300)))
@@ -71,4 +75,5 @@ const AGAIN = join(W, 'flat-again.mp4')
 assemble(again, [readFileSync(MID)], AGAIN)
 const c = md5s(AGAIN)
 const s2 = a.indexOf(c[0])
-console.log('redécoupe :', again.durationS, 'images', c.length, 'depuis', s2, 'suite identique', c.every((x, i) => x === a[s2 + i]), JSON.stringify(probe(AGAIN)))
+console.log('redécoupe :', again.durationS, 'images', c.length, 'depuis', s2, 'suite identique', same(s2 >= 0 && c.every((x, i) => x === a[s2 + i])), JSON.stringify(probe(AGAIN)))
+if (fail) { console.log(`ÉCHEC ${fail} comparaison${fail > 1 ? 's' : ''} d’images sur 3`); process.exitCode = 1 }

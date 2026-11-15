@@ -5,13 +5,20 @@ let pass = 0, fail = 0
 const check = (name, ok, extra) => { if (ok) pass++; else fail++; console.log(`${ok ? 'OK ' : 'NON'} ${name}${extra !== undefined ? ' : ' + (typeof extra === 'string' ? extra : JSON.stringify(extra)) : ''}`) }
 const OUT = path.join(__dirname, 'shots'); fs.mkdirSync(OUT, { recursive: true })
 
-async function real(quality, want) {
+// La taille attendue du clip est celle de l'écran capturé : donnée en arguments (largeur hauteur), sinon lue sur l'écran
+// que voit l'appli (1280 × 1024 sous le Xvfb par défaut). Avant, 1920 × 1080 était attendu d'office, et l'essai était rouge
+// sur tout autre écran. « balanced » et « light » ne dépassent pas 1920 × 1080.
+const GIVEN = process.argv[3] ? [+process.argv[3], +(process.argv[4] || 1080)] : null
+async function real(quality) {
   console.log(`\n--- vraie capture, qualité ${quality}`)
   const dirs = freshDirs('t5' + quality)
   const { app, p, logs, proc, errs } = await start(dirs, { PX_CS2_SIM: 'manual' })
   const L = (...a) => launcher(p, ...a)
   try {
     await until(() => app.evaluate(() => !!globalThis.pxCs2Sim && !!globalThis.pxClipsTest), 15000, 'prêt')
+    const screen = GIVEN || await app.evaluate(({ screen }) => { const d = screen.getPrimaryDisplay(); return [Math.round(d.size.width * d.scaleFactor), Math.round(d.size.height * d.scaleFactor)] })
+    const want = quality !== 'high' && screen[0] > 1920 ? [1920, 1080] : screen
+    console.log('écran', screen, GIVEN ? '(donné en arguments)' : '(lu sur l’appli)')
     await L('clipsSaveSettings', { before: 6, after: 2, merge: 0, quality })
     await simRunning(app, true)
     await until(async () => { const s = await L('clipsState'); return s.encoder && s.audio ? s : null }, 15000, 'enregistreur')
@@ -95,12 +102,11 @@ async function micTest() {
 
 ;(async () => {
   const which = process.argv[2] || 'all'
-  const W = +(process.argv[3] || 1920), Hh = +(process.argv[4] || 1080)
   if (which === 'all' || which === 'real') {
-    await real('balanced', W > 1920 ? [1920, 1080] : [W, Hh])
-    await real('high', [W, Hh])
+    await real('balanced')
+    await real('high')
   }
-  if (which === 'light') await real('light', W > 1920 ? [1920, 1080] : [W, Hh])
+  if (which === 'light') await real('light')
   if (which === 'all' || which === 'mic') await micTest()
   console.log(`\n${pass} OK, ${fail} NON`)
   process.exit(fail ? 1 : 0)

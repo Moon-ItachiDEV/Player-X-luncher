@@ -1,4 +1,4 @@
-const { start, shot, settle, go } = require('./h.cjs')
+const { start, shot, settle, go, done, failed } = require('./h.cjs')
 ;(async () => {
   const { app, p, errs } = await start({ name: 'a6', env: { PX_CS2_SIM: 'manual' } })
   try {
@@ -18,7 +18,7 @@ const { start, shot, settle, go } = require('./h.cjs')
     for (let i = 2; i <= 4; i++) { const has = await p.evaluate(() => !document.querySelector('#stNext').hidden); if (!has) break; await p.keyboard.press('ArrowRight'); await p.waitForTimeout(1500); await shot(p, 'a6-r' + i) }
     await p.keyboard.press('Escape'); await p.waitForTimeout(800)
     await p.evaluate(() => { S.statsGame = 'cs2'; S.statsTab = 'matches'; go('stats') }); await settle(p, 1200); await shot(p, 'a6-matches')
-    console.log('ERREURS', errs.length); errs.slice(0, 20).forEach((e) => console.log(e))
-  } catch (e) { console.log('ECHEC', e.message.split('\n')[0]); console.log(errs.slice(0, 20).join('\n')) }
+    done(errs)
+  } catch (e) { failed(e, errs) }
   await app.close()
 })()

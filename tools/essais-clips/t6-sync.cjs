@@ -29,7 +29,8 @@ const { start, sleep, until, launcher, test, simRunning, probe, ffprobe, freshDi
       const st = await test(app, 'info')
       const c = st.list.slice(-3).map((f) => [f.startS.toFixed(2), f.endS.toFixed(2)])
       console.log('derniers fragments', c)
-    } catch (e) { console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
+    } catch (e) { process.exitCode = 1; console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
   }
-  process.exit(0)
+  // 0 seulement si rien n'a échoué en route
+  process.exit(process.exitCode || 0)
 })()

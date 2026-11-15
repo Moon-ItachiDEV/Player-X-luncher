@@ -33,6 +33,13 @@ const inJournal = (dirs, what, ms = 4000) => until(() => (typeof what === 'strin
 /** La limite (en Mo, 3 décimales) qui laisse ce débit, son compris, à chacun de ces clips : la règle de l'appli, refaite ici. */
 const limitAt = (clips, bps) => Math.floor(Math.min(...clips.map((c) => (bps * Math.max(1, c.durationS)) / 8 / 0.94)) / 1000) / 1000
 const useLimit = async (app, mb) => { await setEnv(app, 'PX_CLIP_TEST_SHARE_MB', mb === null ? null : String(mb)); return mb === null ? null : Math.round(mb * 1e6) }
+/**
+ * La même limite, mais qui n'a encore jamais servi à ce clip : une copie déjà faite pour ce clip et cette limite resservirait
+ * sans que le moteur soit appelé, et l'étape ne vérifierait plus rien. Deux étapes peuvent tomber sur la même valeur : en B6,
+ * deux copies sont demandées à la fois et l'appli fait celle qui arrive la première, b1 ou b2 (vu le 14/11/2026 : celle de
+ * b2, à la limite que C2 reprenait pour b2 seul). On descend alors de 0,001 Mo, jusqu'à une limite neuve.
+ */
+const freshLimit = (root, clip, bps) => { let mb = limitAt([clip], bps); while (fs.existsSync(path.join(root, `${clip.id}-${Math.round(mb * 1e6)}`))) mb = Math.round(mb * 1000 - 1) / 1000; return mb }
 /** Le plus long clip de 640 × 360 à 30 images/s qui tient sous cette limite : 680 kb/s pour l'image, 96 kb/s pour le son. */
 const maxSAt = (limit) => Math.floor((limit * 0.94 * 8) / (680_000 + 96_000))
 
@@ -63,6 +70,9 @@ const bytesText = (p, n) => p.evaluate((x) => Shared.steamUpdate.formatBytes(x),
 
 async function openPlayer(p, id) {
   await p.evaluate(() => { if (Settings && document.querySelector('[data-modal]:not([hidden])')) Settings.close(); if (Clips.isOpen()) Clips.close() })
+  // Le lecteur se ferme dans une transition de vue, lente sous Xvfb (jusqu'à une seconde) : on attend sa fin. Ouvrir un autre
+  // clip avant, c'est laisser la fin de la fermeture vider le nouveau lecteur (vu au passage complet du 14/11/2026).
+  await until(() => p.evaluate(() => !document.documentElement.matches(':active-view-transition')), 20000, 'fin de la fermeture du lecteur', 100)
   await sleep(500)
   await p.evaluate((x) => Clips.open(x), id)
   await until(() => p.evaluate(() => !!document.getElementById('cpShare') && Clips.isOpen()), 8000, 'lecteur ouvert', 150)
@@ -383,7 +393,7 @@ async function partC(dirs, A, B) {
     const wB2 = await bytesText(p, fs.statSync(A.files[b2.id]).size)
     // ----- C1. le moteur vidéo manque
     await setEnv(app, 'PX_FFMPEG', path.join(dirs.base, 'absent', 'ffmpeg'))
-    const mb1 = limitAt([b2], 1_200_000), lim1 = await useLimit(app, mb1)
+    const mb1 = freshLimit(root, b2, 1_200_000), lim1 = await useLimit(app, mb1)
     const r1 = await L('clipsShare', b2.id)
     check('moteur absent : pas de copie, rien dans le presse-papiers', r1.status === 'unmade' && r1.reason === 'engine' && r1.limitMb === mb1 && r1.sizeBytes === fs.statSync(A.files[b2.id]).size && (await info(app)).copied === null && !fs.existsSync(path.join(root, `${b2.id}-${lim1}`)), r1)
     await openPlayer(p, b2.id)
@@ -401,7 +411,7 @@ async function partC(dirs, A, B) {
     // ----- C2. aucun encodeur ne marche
     const rate = fakeEngine(dirs.base, 'faux-rate.cjs', fj, `fs.appendFileSync(J, enc + '\\n')\nconst input = (args.find((a) => a.startsWith('file:')) || 'file:?').slice(5)\nprocess.stderr.write('[' + enc + ' @ 0x1] Error while opening encoder for ' + input + '\\n')\nprocess.exit(1)`)
     await setEnv(app, 'PX_FFMPEG', rate)
-    const mb2 = limitAt([b2], 1_150_000), lim2 = await useLimit(app, mb2)
+    const mb2 = freshLimit(root, b2, 1_150_000), lim2 = await useLimit(app, mb2)
     fs.writeFileSync(fj, '')
     const before2 = (await info(app)).copied
     const r2 = await L('clipsShare', b2.id)
@@ -414,7 +424,7 @@ async function partC(dirs, A, B) {
     // ----- C3. un encodeur qui marche, mais trop lourd deux fois de suite
     const gros = fakeEngine(dirs.base, 'faux-gros.cjs', fj, `const bi = args.indexOf('-b:v')\nfs.appendFileSync(J, enc + ' ' + (bi >= 0 ? args[bi + 1] : '?') + '\\n')\nconst out = args[args.length - 1].slice(5)\nconst r = spawnSync(REAL, args, { stdio: 'inherit' })\nif (r.status === 0) fs.appendFileSync(out, Buffer.alloc(3000000))\nprocess.exit(r.status === null ? 1 : r.status)`)
     await setEnv(app, 'PX_FFMPEG', gros)
-    const mb3 = limitAt([b2], 1_100_000), lim3 = await useLimit(app, mb3)
+    const mb3 = freshLimit(root, b2, 1_100_000), lim3 = await useLimit(app, mb3)
     fs.writeFileSync(fj, '')
     const r3 = await L('clipsShare', b2.id)
     const used3 = lines(fj).map((l) => l.split(' '))
@@ -441,13 +451,13 @@ async function partC(dirs, A, B) {
     await setEnv(app, 'PX_FFMPEG', relais)
     await setEnv(app, 'PX_FFMPEG_ENCODER', null)
     // 920 et 880 kb/s : deux limites qui n'ont encore jamais servi à ce clip (sinon la copie déjà faite resservirait).
-    const mb5 = limitAt([b2], 920_000)
+    const mb5 = freshLimit(root, b2, 920_000)
     await useLimit(app, mb5)
     fs.writeFileSync(fj, '')
     const r5 = await L('clipsShare', b2.id)
     const used5 = lines(fj)
     check('les encodeurs de la carte graphique ratent : le suivant fait la copie', r5.status === 'copied' && !!r5.reduced && used5.join() === 'h264_nvenc,h264_amf,h264_qsv,h264_mf,libopenh264', { r5, used5 })
-    await useLimit(app, limitAt([b2], 880_000))
+    await useLimit(app, freshLimit(root, b2, 880_000))
     fs.writeFileSync(fj, '')
     const r6 = await L('clipsShare', b2.id)
     check('la copie suivante commence par celui qui a marché', r6.status === 'copied' && lines(fj).join() === 'libopenh264', lines(fj))

@@ -20,5 +20,5 @@ const { start, sleep, until, launcher, test, simPost, simRunning, payload, clock
     const file = path.join(folder, listDir(folder)[0])
     for (const at of [0, 1, 5, 10, 20, list[0].durationS - 0.2]) console.log('m', at, 'horloge-E', (clockAt(file, at) - E) / 1000)
     console.log((await launcher(p, 'clipsLogTail')).split('\n').slice(-8).join('\n'))
-  } catch (e) { console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
+  } catch (e) { process.exitCode = 1; console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
 })()

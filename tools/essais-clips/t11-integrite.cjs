@@ -55,7 +55,8 @@ function frameClocks(file, W, Hh) {
         v.remove(); return { d, seekable, seeks, size: [v.videoWidth, v.videoHeight] }
       }, c.videoUrl)
       console.log('balise video', JSON.stringify(v))
-    } catch (e) { console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
+    } catch (e) { process.exitCode = 1; console.log('ÉCHEC', e) } finally { await Promise.race([app.close(), sleep(8000)]); try { proc.kill('SIGKILL') } catch {} }
   }
-  process.exit(0)
+  // 0 seulement si rien n'a échoué en route
+  process.exit(process.exitCode || 0)
 })()

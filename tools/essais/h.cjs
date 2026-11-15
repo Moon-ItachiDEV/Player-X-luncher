@@ -28,4 +28,23 @@ const shot = async (p, n) => { await p.waitForTimeout(80); await p.screenshot({ 
 // La vue a fini de changer (le rendu logiciel de Xvfb est lent)
 const settle = async (p, extra = 500) => { await p.waitForTimeout(120); await p.waitForFunction(() => !document.documentElement.matches(':active-view-transition'), null, { timeout: 15000 }).catch(() => {}); await p.waitForTimeout(extra) }
 const go = async (p, v) => { await p.click(`.b-tab[data-go=${v}]`); await settle(p) }
-module.exports = { start, shot, settle, go, OUT, ROOT }
+
+// La fin d'un scénario dit la vérité par son code de sortie : 0 seulement s'il est allé au bout, sans erreur dans la page
+// et sans contrôle raté. Avant, un scénario arrêté en route écrivait « ECHEC » et sortait quand même avec 0.
+let pass = 0, fail = 0
+// Un contrôle : une ligne « OK  … » ou « NON … », comme dans tools/essais-clips.
+const check = (name, ok, extra) => { if (ok) pass++; else fail++; console.log(`${ok ? 'OK ' : 'NON'} ${name}${extra !== undefined ? ' : ' + (typeof extra === 'string' ? extra : JSON.stringify(extra)) : ''}`); return !!ok }
+// Le scénario est allé au bout : le compte des contrôles s'il y en a, puis les erreurs vues dans la page.
+const done = (errs, max = 20) => {
+  if (pass + fail) console.log(`${pass} OK, ${fail} NON`)
+  console.log('ERREURS', errs.length); errs.slice(0, max).forEach((e) => console.log(e))
+  if (errs.length || fail) process.exitCode = 1
+}
+// Le scénario s'arrête en route : « ECHEC », avec ce que Playwright attendait (le sélecteur), puis les erreurs de la page.
+const failed = (e, errs = [], max = 20) => {
+  const lines = String((e && e.message) || e).replace(/\u001b\[[0-9;]*m/g, '').split('\n').map((l) => l.trim()).filter((l) => l && l !== 'Call log:')
+  console.log('ECHEC', lines.slice(0, 2).join(' '))
+  if (errs.length) console.log(errs.slice(0, max).join('\n'))
+  process.exitCode = 1
+}
+module.exports = { start, shot, settle, go, check, done, failed, OUT, ROOT }
