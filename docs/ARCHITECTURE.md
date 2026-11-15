@@ -77,14 +77,14 @@ Règles tenues par `src/main/architecture.test.ts` (elles lisent les imports des
 
 Deux façons d'écrire un service cohabitent. À préférer pour tout nouveau code : la première.
 
-- **Règles pures** (34 fichiers sur 73 dans `services/`) : elles ne touchent jamais Electron, même par ricochet ; tout ce dont le
+- **Règles pures** (34 fichiers sur 74 dans `services/`) : elles ne touchent jamais Electron, même par ricochet ; tout ce dont le
   fichier a besoin lui est passé. Elles se testent en quelques secondes avec `npm test` (31 ont leur fichier de tests). Modèle
   à suivre : `launches.ts` (il reçoit `LaunchDeps`), `clipsPlan.ts`, `fmp4.ts`, `settingsRules.ts`. L'un de ces fichiers,
   `clipsFiles.ts`, lit et écrit de vrais fichiers : ses tests travaillent dans le dossier temporaire. Un autre,
   `clipsQueue.ts`, garde un état sans Electron (la file d'attente des fichiers des clips) : ses tests ouvrent eux-mêmes
   chaque travail, aucun ne dépend d'une durée.
-- **Services branchés sur Electron** (39 fichiers) : ils gardent leur état dans des variables du fichier et se démarrent par
-  `startXxx()`. Ils ne se vérifient que sur la vraie appli (`tools/essais`). Le plus gros est `clips.ts` (1 544 lignes).
+- **Services branchés sur Electron** (40 fichiers) : ils gardent leur état dans des variables du fichier et se démarrent par
+  `startXxx()`. Ils ne se vérifient que sur la vraie appli (`tools/essais`). Le plus gros est `clips.ts` (1 457 lignes).
   Quand plusieurs fichiers lisent le même état, un seul le garde et l'écrit ; les autres le lisent par une fonction
   (`getSettings()`, `clipSettings()`, `clipIndex()`), jamais par une variable exportée.
 
@@ -128,7 +128,8 @@ Les services, par domaine :
 - **Lancement et temps de jeu** : `launches.ts`, `launchWatch.ts`, `launchWatchParse.ts`, `tracking.ts`, `playtime.ts`.
 - **Clips** : `clips.ts`, `clipsIndex.ts` (la liste des clips), `clipsQueue.ts`, `clipsFiles.ts`, `clipsSettings.ts`,
   `clipsPlan.ts`, `fmp4.ts`, `engineCapture.ts`, `cs2Moments.ts`, `clipsProtocol.ts`, `clipsToast.ts`, `clipsLog.ts`,
-  `clipsShare.ts`, `sharePlan.ts`, `captureTest.ts`.
+  `clipsCopy.ts` (copier un clip : le presse-papiers, « Copier pour Discord »), `clipsShare.ts`, `sharePlan.ts`,
+  `captureTest.ts`.
 - **Films** : `editFfmpeg.ts` (le moteur vidéo), `editFilm.ts`, `editPlan.ts`, `editCompile.ts`, `editBeats.ts`, `editMusic.ts`,
   `editEngineRules.ts`.
 - **Counter-Strike 2** : `cs2Live.ts`, `cs2Match.ts`, `cs2Gsi.ts`, `cs2Overlay.ts`, `cs2Lifetime.ts`.
@@ -193,8 +194,9 @@ Page Clips (sélection) → éditeur `edit.js` (musique, rythme, déplacer, rale
 `editShots` → `shotArgs` + `joinArgs` → `editFilm` lance FFmpeg. Limites : 48 plans, 10 minutes.
 
 Le moteur des films (`filmEngine` dans `editFfmpeg.ts`) ne fait qu'un travail à la fois : un film, un essai du moteur, ou la
-copie légère d'un clip pour Discord (`clipsShare.ts`, règles dans `sharePlan.ts`). Celui qui arrive pendant qu'un autre tient
-le moteur est refusé avec la raison. La capture des clips lance son propre FFmpeg, à part (`spawnCaptureEngine`).
+copie légère d'un clip pour Discord (`clipsShare.ts`, règles dans `sharePlan.ts`, demandée par `clipsCopy.ts`). Celui qui
+arrive pendant qu'un autre tient le moteur est refusé avec la raison. La capture des clips lance son propre FFmpeg, à
+part (`spawnCaptureEngine`).
 
 ## Données
 
@@ -213,10 +215,10 @@ le moteur est refusé avec la raison. La capture des clips lance son propre FFmp
   « clips ». Les scripts `test:launch`, `test:clips`… restent pour lancer un groupe.
 - Garde-fous qui lisent le code : `architecture.test.ts` (couches, boucles), `ipcContract.test.ts` (canaux),
   `src/renderer/src/styles/tokens.test.ts` (thème).
-- La vraie appli : `tools/essais` (a1 à a18, la fenêtre) et `tools/essais-clips` (t0 à t15, t17 à t19 : capture, clips,
-  films, partage, lecteur, dossier des clips, liste des clips ; t16 est dans la source de la 0.6, pas encore ici). Les
-  scénarios lancent l'appli construite, sous Linux seulement (Xvfb, ffmpeg), en mode démo. Une compilation réussie ne
-  prouve pas la stabilité : après un changement du moteur, ce sont eux qui comptent.
+- La vraie appli : `tools/essais` (a1 à a18, la fenêtre) et `tools/essais-clips` (t0 à t15, t17 à t20 : capture, clips,
+  films, partage, lecteur, dossier des clips, liste des clips, copie d'un clip ; t16 est dans la source de la 0.6, pas
+  encore ici). Les scénarios lancent l'appli construite, sous Linux seulement (Xvfb, ffmpeg), en mode démo. Une
+  compilation réussie ne prouve pas la stabilité : après un changement du moteur, ce sont eux qui comptent.
 - Tout lancer : `npm run build`, puis `node tools/essais/tous.cjs` (une demi-heure). Les scénarios passent un par un, chacun
   sur un écran et un dossier de données neufs. `node tools/essais/tous.cjs a8 t1` n'en lance que deux. Une ligne par
   scénario, un bilan à la fin, les sorties complètes dans `tools/essais/sorties/`. a16 demande l'appli empaquetée
@@ -241,7 +243,8 @@ principales, dans l'ordre proposé :
    fois : les lectures et écritures des fichiers MP4 sont dans `clipsFiles.ts`, avec leurs tests ; les réglages et le
    dossier des clips sont dans `clipsSettings.ts`, surveillés par le scénario t18 ; la liste des clips est dans
    `clipsIndex.ts`, surveillée par le scénario t19, et la file d'attente des fichiers dans `clipsQueue.ts`, avec ses
-   tests. Il lui reste 1 544 lignes (1 971 avant) : le partage, puis le cœur de la capture.
+   tests ; la copie d'un clip (le presse-papiers, « Copier pour Discord ») est dans `clipsCopy.ts`, surveillée par les
+   scénarios t15 et t20. Il lui reste 1 457 lignes (1 971 avant) : le cœur de la capture.
 2. Un appel s'écrit encore à la main à trois endroits (`types/api.ts`, pont, récepteur) : une seule table typée suffirait.
 3. Les services n'ont pas d'arrêt propre (douze minuteries, la fermeture de l'appli gérée à six endroits dans cinq fichiers).
 4. L'interface V3 : 21 fichiers dans un seul espace global, sans contrôle de types.
