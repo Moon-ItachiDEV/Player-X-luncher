@@ -1,13 +1,13 @@
 import { execFile, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { copyFile as copyOnDisk, mkdir, open, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { app, BrowserWindow, clipboard, ClipboardItem, desktopCapturer, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, shell, type IpcMainEvent, type Session, type WebContents } from 'electron'
-import { cleanGamePace, cleanPace, gamePace, gamePaceLine, paceLog, paceOf, rateBetween, type ClipPace, type GamePace } from '@shared/clipPace'
+import { app, BrowserWindow, clipboard, ClipboardItem, desktopCapturer, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, type IpcMainEvent, type Session, type WebContents } from 'electron'
+import { cleanGamePace, cleanPace, gamePace, gamePaceLine, paceLog, rateBetween, type GamePace } from '@shared/clipPace'
 import { CS2_GAME_ID } from '@shared/cs2'
 import { cleanName, isBf6Name } from '@shared/text'
-import type { Clip, ClipDisplay, ClipSettings, ClipShareResult, ClipShareStep, ClipsState, Game } from '@shared/types'
+import type { ClipDisplay, ClipSettings, ClipShareResult, ClipShareStep, ClipsState, Game } from '@shared/types'
 import { getKv, setKv } from '../db'
 import { hotkeyRefusal } from '../hotkeys'
 import { handle } from '../ipc'
@@ -18,32 +18,30 @@ import {
   clipBaseName,
   clipEvents,
   clipKills,
-  clipsToPurge,
   clipTitle,
   cleanClipSettings,
-  cleanTitle,
   keepFrom,
   mergePending,
   openPending,
   pickRecorder,
   QUALITY,
   restartDelayMs,
-  safeFileName,
   selectFragments,
-  trimEvents,
   withNeighbours,
   type BufferedFragment,
   type ClipMoment,
   type PendingClip
 } from './clipsPlan'
-import { freeName, readMoov, shareSource, writePlan } from './clipsFiles'
+import { freeName, shareSource, writePlan } from './clipsFiles'
+import { addClip, applyRetention, clipById, clipIndex, deleteClip, emitChanged, FILMS_DIR, listClips, loadClipIndex, needClip, openFolder, paceOfTracks, pinClip, renameClip, thumbPath, trimClip, type ClipMeta } from './clipsIndex'
 import { errText, log, logFlushed, logTail } from './clipsLog'
-import { registerClipProtocol } from './clipsProtocol'
+import { registerClipProtocol, SCHEME } from './clipsProtocol'
+import { filesBusy, filesDone, forgetFiles, serial } from './clipsQueue'
 import { chooseFolder, clipSettings, folderOf, loadClipSettings, resolved, storeClipSettings, usableFolder } from './clipsSettings'
-import { cleanShareCopies, dropShareCopies, lightCopy } from './clipsShare'
+import { cleanShareCopies, lightCopy } from './clipsShare'
 import { showClipToast } from './clipsToast'
 import { cs2IsRunning, cs2MomentContext, onCs2Moment, onCs2Running } from './cs2Live'
-import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFlat, parseFragment, parseInit, type ClipTrack, type FlatPlan, type FragmentInfo, type InitInfo } from './fmp4'
+import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFragment, parseInit, type FlatPlan, type FragmentInfo, type InitInfo } from './fmp4'
 import { getSettings } from './settings'
 import { gameExeRegex } from './captureTestArgs'
 import { thumbArgs } from './editCompile'
@@ -57,15 +55,14 @@ import { DISCORD_MB, type ShareSource } from './sharePlan'
 // Les calculs purs sont dans fmp4.ts (boîtes MP4), clipsPlan.ts (fenêtres, fusion, rétention) et cs2Moments.ts.
 // Les lectures et écritures des fichiers MP4 (écrire un clip, relire son index) sont dans clipsFiles.ts.
 // Les réglages et le dossier des clips sont dans clipsSettings.ts : ici, ils se lisent par clipSettings().
+// La liste des clips et ce qui la change (renommer, épingler, découper, supprimer, les films) sont dans clipsIndex.ts :
+// ici, elle se lit par clipIndex(). Les travaux sur les fichiers passent un à la fois par la file de clipsQueue.ts.
 // La fenêtre de capture a sa propre session : la session des pages de l'appli continue de tout refuser (lockDown).
-
-const SCHEME = 'pxclip'
 
 // Doit être appelé une seule fois, avant que l'appli soit prête : d'où ici, au chargement du module (index.ts l'importe).
 // Un autre protocole privilégié devra s'ajouter à cette même liste.
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }])
 
-const INDEX_KEY = 'clipsIndex'
 /** Bêta 46 : le rythme des clips de la dernière partie finie. */
 const LAST_GAME_KEY = 'clipsLastGame'
 const PARTITION = 'px-clips-capture'
@@ -89,9 +86,6 @@ interface RunningGame {
   id: string
   name: string
 }
-
-/** Fiche d'un clip, en base. Le chemin ne sort jamais du processus principal. */
-type ClipMeta = Omit<Clip, 'videoUrl' | 'thumbUrl'> & { file: string }
 
 /** Un enregistreur (MediaRecorder) : son en-tête ne vaut que pour ses propres fragments. */
 interface Recorder {
@@ -173,16 +167,11 @@ let libraryRunning: RunningGame[] = []
 /** Développement : jeux marqués comme lancés par les essais (globalThis.pxClipsTest). */
 let testRunning: RunningGame[] = []
 
-let index: ClipMeta[] = []
-
 const recorders = new Map<string, Recorder>()
 let frags: BufFrag[] = []
 const pendings = new Map<string, PendingClip>()
 /** Fenêtres des clips en cours d'écriture : leurs fragments restent. */
 const writing = new Map<string, number>()
-/** Écritures, découpes, renommages : un à la fois. */
-let fileQueue: Promise<unknown> = Promise.resolve()
-let fileBusy = 0
 const thumbAllowed = new Set<string>()
 let tickTimer: ReturnType<typeof setInterval> | undefined
 let hotkeyNow: string | null = null
@@ -196,7 +185,6 @@ let captureSession: Session | null = null
 
 const userData = (...p: string[]): string => join(app.getPath('userData'), ...p)
 const bufferRoot = (): string => userData('clips-buffer')
-const thumbPath = (id: string): string => userData('clips-thumbs', `${id}.jpg`)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 // ---------- état ----------
@@ -234,8 +222,6 @@ function emitState(): void {
   lastStateJson = json
   broadcast('clips:state', s)
 }
-
-const emitChanged = (): void => broadcast('clips:changed')
 
 // ---------- fenêtre de capture ----------
 
@@ -801,20 +787,6 @@ function ensureTick(): void {
 
 // ---------- écriture d'un clip ----------
 
-function serial<T>(job: () => Promise<T>): Promise<T> {
-  fileBusy++
-  const run = fileQueue.then(job, job)
-  fileQueue = run.then(
-    () => {
-      fileBusy--
-    },
-    () => {
-      fileBusy--
-    }
-  )
-  return run
-}
-
 function finalize(p: PendingClip): void {
   pendings.delete(p.id)
   writing.set(p.id, p.start)
@@ -902,12 +874,6 @@ async function writeEngineClip(p: PendingClip, plan: FlatPlan, sources: string[]
   }
 }
 
-/** Bêta 46 : le rythme réel d'un clip (clipPace.ts), d'après les images de sa piste vidéo. undefined : pas assez d'images pour le dire. */
-function paceOfTracks(tracks: ClipTrack[], durationS: number, wantedFps: number): ClipPace | undefined {
-  const video = tracks.find((t) => t.kind === 'video' && t.samples.length)
-  return (video && paceOf(video.samples.map((s) => (s.dts + s.cto) / video.timescale), durationS, wantedFps)) || undefined
-}
-
 async function writeClip(p: PendingClip): Promise<void> {
   // L'image : un enregistreur qui en a (le moteur, ou la page quand elle filme tout), jamais celui du son seul.
   const vfrags = frags.filter((f) => !recorders.get(f.recId)?.audioOnly)
@@ -965,8 +931,7 @@ async function writeClip(p: PendingClip): Promise<void> {
     ...(pace ? { pace } : {}),
     file
   }
-  index = [meta, ...index]
-  saveIndex()
+  addClip(meta)
   log(`Clip ${p.id} écrit : « ${title} », ${plan.durationS.toFixed(1)} s, ${(size / 1e6).toFixed(1)} Mo, ${kills} élim., ${p.headshots} HS, ${paceLog(pace)}.`)
   lastProblem = undefined
   await applyRetention(p.id)
@@ -975,78 +940,6 @@ async function writeClip(p: PendingClip): Promise<void> {
   else if (!existsSync(thumbPath(p.id))) requestThumb(p.id)
   emitChanged()
   emitState()
-}
-
-function saveIndex(): void {
-  setKv(INDEX_KEY, index)
-}
-
-async function deleteFiles(meta: ClipMeta): Promise<void> {
-  // Sous Windows, le fichier peut être encore ouvert un instant par la lecture dans l'interface.
-  for (let i = 0; i < 5; i++) {
-    try {
-      await unlink(meta.file)
-      break
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') break
-      if (i === 4) log(`Suppression de ${meta.id} : ${errText(e)}`)
-      else await sleep(200)
-    }
-  }
-  await unlink(thumbPath(meta.id)).catch(() => {})
-  // Bêta 46 : ses copies légères pour Discord partent avec lui.
-  await dropShareCopies(meta.id).catch(() => {})
-}
-
-/** Au-delà de la limite : les plus vieux non épinglés partent. Le clip qui vient d'arriver reste. */
-async function applyRetention(keepId?: string): Promise<void> {
-  const ids = clipsToPurge(index, clipSettings().limitGb * 1024 ** 3, keepId)
-  if (!ids.length) return
-  const gone = index.filter((c) => ids.includes(c.id))
-  index = index.filter((c) => !ids.includes(c.id))
-  saveIndex()
-  for (const c of gone) await deleteFiles(c)
-  log(`Limite de ${clipSettings().limitGb} Go : ${gone.length} ancien(s) clip(s) supprimé(s).`)
-  emitChanged()
-}
-
-// ---------- liste et actions ----------
-
-function publicClip({ file: _file, pace: rawPace, ...meta }: ClipMeta): Clip {
-  // Le rythme est relu de la base : sa structure est vérifiée avant de partir vers la page.
-  const pace = cleanPace(rawPace)
-  return { ...meta, ...(pace ? { pace } : {}), videoUrl: `${SCHEME}://video/${meta.id}`, thumbUrl: `${SCHEME}://thumb/${meta.id}` }
-}
-
-function clipById(id: unknown): ClipMeta | undefined {
-  return typeof id === 'string' && CLIP_ID.test(id) ? index.find((c) => c.id === id) : undefined
-}
-
-function needClip(id: unknown): ClipMeta {
-  const c = clipById(id)
-  if (!c) throw new Error('Clip inconnu.')
-  return c
-}
-
-/** Fichier disparu : retiré. Dossier entier absent (disque débranché) : gardé mais pas listé, il reviendra avec le disque. */
-async function listClips(): Promise<Clip[]> {
-  const shown: ClipMeta[] = []
-  const gone: string[] = []
-  const isDir = (p: string): Promise<boolean> => stat(p).then((s) => s.isDirectory(), () => false)
-  await Promise.all(
-    index.map(async (c) => {
-      if (await stat(c.file).then((s) => s.isFile(), () => false)) shown.push(c)
-      // Un film est dans le sous-dossier Films : ce sous-dossier supprimé à la main, le film a disparu lui aussi.
-      else if ((await isDir(dirname(c.file))) || (c.kind === 'film' && (await isDir(dirname(dirname(c.file)))))) gone.push(c.id)
-    })
-  )
-  if (gone.length) {
-    index = index.filter((c) => !gone.includes(c.id))
-    for (const id of gone) void unlink(thumbPath(id)).catch(() => {})
-    saveIndex()
-    log(`${gone.length} clip(s) retiré(s) de la liste : fichier disparu.`)
-  }
-  return shown.sort((a, b) => b.at - a.at).map(publicClip)
 }
 
 // ---------- pour le moteur vidéo (services/editFfmpeg.ts) : lecture seule, rien ne change dans les clips ----------
@@ -1058,214 +951,15 @@ export function gameRunning(): boolean {
 
 // ---------- pour la fabrication des films (services/editFilm.ts) ----------
 
-const FILMS_DIR = 'Films'
-
-/** Un clip tel que la fabrication d'un film en a besoin : sa fiche, son fichier, et s'il a du son. Ne quitte pas le processus principal. */
-export type FilmSource = Pick<ClipMeta, 'id' | 'gameId' | 'gameName' | 'kind' | 'at' | 'kills' | 'durationS' | 'events' | 'map' | 'mode' | 'sessionId' | 'file'> & { hasAudio: boolean }
-
-/**
- * Les clips demandés qui peuvent entrer dans un film : connus, pas eux-mêmes des films, fichier présent et lisible, avec une
- * image. `skipped` compte les autres. La page n'envoie que des identifiants ; les fichiers sont relus ici (lecture seule).
- */
-export async function filmSources(ids: unknown): Promise<{ sources: FilmSource[]; skipped: number }> {
-  const wantedIds = Array.isArray(ids) ? [...new Set(ids.filter((x): x is string => typeof x === 'string' && CLIP_ID.test(x)))].slice(0, 500) : []
-  const sources: FilmSource[] = []
-  let skipped = 0
-  for (const id of wantedIds) {
-    const c = clipById(id)
-    if (!c || c.kind === 'film') {
-      skipped++
-      continue
-    }
-    try {
-      const fh = await open(c.file, 'r')
-      const tracks = parseFlat(await readMoov(fh).finally(() => fh.close()))
-      if (!tracks.some((t) => t.kind === 'video' && t.samples.length)) throw new Error('pas d’image')
-      const { id: cid, gameId, gameName, kind, at, kills, durationS, events, map, mode, sessionId, file } = c
-      sources.push({ id: cid, gameId, gameName, kind, at, kills, durationS, events, map, mode, sessionId, file, hasAudio: tracks.some((t) => t.kind === 'audio' && t.samples.length > 0) })
-    } catch (e) {
-      skipped++
-      log(`Film : clip ${id} laissé de côté : ${errText(e)}`)
-    }
-  }
-  return { sources, skipped }
-}
-
-/**
- * Le clip le plus récent qui peut entrer dans un film (pas un film, fichier présent et lisible), pour l'essai du moteur :
- * il passe par le même chemin qu'un film. Son chemin ne quitte pas le processus principal.
- */
-export async function newestClipSource(): Promise<(FilmSource & { width: number; height: number }) | null> {
-  for (const c of [...index].sort((a, b) => b.at - a.at)) {
-    if (c.kind === 'film') continue
-    const { sources } = await filmSources([c.id])
-    if (sources[0]) return { ...sources[0], width: c.width, height: c.height }
-  }
-  return null
-}
+/** Les clips qui entrent dans un film, l'endroit où écrire un film et son rangement dans la liste : ces fonctions sont dans clipsIndex.ts. */
+export { addFilm, filmSources, filmTarget, newestClipSource, type FilmSource } from './clipsIndex'
 
 /** Le réglage « après le moment » : là où tombe le dernier kill d'un clip qui ne note pas ses événements. */
 export function clipAfterSetting(): number {
   return clipSettings().after
 }
 
-/** Où écrire un film : dans le sous-dossier Films du dossier des clips, d'abord en « .part », sous un nom libre. */
-export async function filmTarget(gameName: string, title: string, at: number): Promise<{ file: string; part: string }> {
-  const folder = join(await usableFolder(), FILMS_DIR)
-  await mkdir(folder, { recursive: true })
-  const file = freeName(folder, clipBaseName(gameName, at, safeFileName(title)))
-  return { file, part: `${file}.part` }
-}
-
-/**
- * Range un film fini avec les clips : son fichier « .part » prend son nom, sa vignette est copiée, sa fiche entre dans la liste.
- * Un film ne compte pas dans la limite de place et ne part jamais tout seul (clipsToPurge).
- */
-export function addFilm(f: { part: string; file: string; thumb?: string; title: string; gameId: string; gameName: string; at: number; shots: number; durationS: number; width: number; height: number; map?: string; mode?: string; sessionId: string }): Promise<Clip> {
-  return serial(async () => {
-    // Sous Windows, un antivirus peut tenir un instant le fichier que le moteur vient de fermer.
-    for (let i = 0; ; i++) {
-      try {
-        await rename(f.part, f.file)
-        break
-      } catch (e) {
-        if (i === 9 || !['EPERM', 'EBUSY', 'EACCES'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e
-        await sleep(300)
-      }
-    }
-    const { size } = await stat(f.file)
-    const id = randomBytes(8).toString('hex')
-    if (f.thumb) {
-      await mkdir(dirname(thumbPath(id)), { recursive: true })
-        .then(() => copyOnDisk(f.thumb as string, thumbPath(id)))
-        .catch((e) => log(`Vignette du film ${id} : ${errText(e)}`))
-    }
-    const meta: ClipMeta = {
-      id,
-      gameId: f.gameId,
-      gameName: f.gameName,
-      kind: 'film',
-      title: cleanTitle(f.title) ?? 'Film',
-      kills: 0,
-      headshots: 0,
-      at: f.at,
-      shots: f.shots,
-      durationS: f.durationS,
-      sizeBytes: size,
-      width: f.width,
-      height: f.height,
-      pinned: false,
-      ...(f.map ? { map: f.map } : {}),
-      ...(f.mode ? { mode: f.mode } : {}),
-      sessionId: f.sessionId,
-      file: f.file
-    }
-    index = [meta, ...index]
-    saveIndex()
-    log(`Film ${id} rangé : « ${meta.title} », ${f.shots} plan(s), ${f.durationS.toFixed(1)} s, ${(size / 1e6).toFixed(1)} Mo.`)
-    emitChanged()
-    return publicClip(meta)
-  })
-}
-
-/** Une découpe devient un nouveau clip, juste au-dessus de l'original : rien n'est perdu si la coupe est ratée. */
-function trimClip(id: unknown, startS: unknown, endS: unknown): Promise<Clip> {
-  const meta = needClip(id)
-  const from = typeof startS === 'number' && Number.isFinite(startS) ? Math.max(0, startS) : NaN
-  const to = typeof endS === 'number' && Number.isFinite(endS) ? endS : NaN
-  if (!Number.isFinite(from) || !Number.isFinite(to) || to - from < 0.5) throw new Error('Découpe invalide : choisis au moins une demi-seconde.')
-  return serial(async () => {
-    const c = needClip(meta.id)
-    // La coupe sans réencodage connaît les fichiers de l'enregistreur, pas ceux du moteur vidéo.
-    if (c.kind === 'film') throw new Error('Un film ne se coupe pas ici. Refais-le depuis ses clips.')
-    const fh = await open(c.file, 'r').catch(() => {
-      throw new Error('Le fichier de ce clip a disparu.')
-    })
-    const moov = await readMoov(fh).finally(() => fh.close())
-    const cut = cutTracks(parseFlat(moov), from, to, 'nearest')
-    if (!cut) throw new Error('Rien à garder dans cette découpe.')
-    const plan = buildFlat(cut, { createdAtMs: c.at })
-    // Sans réencodage, le début se cale sur une image clé, toutes les 2 s.
-    if (plan.durationS > c.durationS - 0.1) throw new Error('Trop peu à couper : le début d’un clip se cale toutes les 2 secondes. Déplace la poignée un peu plus.')
-    const newId = randomBytes(8).toString('hex')
-    const title = cleanTitle(`${c.title.replace(/ \(coupé\)$/, '').slice(0, 70)} (coupé)`) ?? c.title
-    const file = freeName(dirname(c.file), clipBaseName(c.gameName, c.at, safeFileName(title)))
-    const part = `${file}.part`
-    try {
-      await writePlan(plan, [c.file], part)
-      await rename(part, file)
-    } catch (e) {
-      await unlink(part).catch(() => {})
-      throw e
-    }
-    // Les événements qui restent dans la partie gardée suivent, recalés sur la nouvelle première image.
-    const events = trimEvents(c.events, firstFrameS(cut), plan.durationS)
-    // Bêta 46 : la coupe a son propre rythme (celui de la partie gardée), jamais celui du clip entier.
-    const { pace: wholePace, ...rest } = c
-    const wantedFps = cleanPace(wholePace)?.wanted
-    const pace = wantedFps ? paceOfTracks(cut, plan.durationS, wantedFps) : undefined
-    const made: ClipMeta = { ...rest, id: newId, title, at: c.at + 1, durationS: plan.durationS, sizeBytes: plan.size, pinned: false, file, ...(events ? { events } : {}), ...(pace ? { pace } : {}) }
-    await copyOnDisk(thumbPath(c.id), thumbPath(newId)).catch(() => {})
-    index = [made, ...index]
-    saveIndex()
-    log(`Clip ${c.id} coupé dans ${newId} : ${from.toFixed(1)} à ${to.toFixed(1)} s, ${plan.durationS.toFixed(1)} s.`)
-    await applyRetention(newId)
-    emitChanged()
-    return publicClip(made)
-  })
-}
-
-function renameClip(id: unknown, name: unknown): Promise<Clip> {
-  const meta = needClip(id)
-  const title = cleanTitle(name)
-  if (!title) throw new Error('Donne un nom à ce clip.')
-  return serial(async () => {
-    const c = needClip(meta.id)
-    c.title = title
-    const base = clipBaseName(c.gameName, c.at, safeFileName(title))
-    if (join(dirname(c.file), `${base}.mp4`) !== c.file) {
-      const target = freeName(dirname(c.file), base)
-      // Fichier occupé : le titre change quand même, le nom du fichier reste.
-      await rename(c.file, target).then(
-        () => {
-          c.file = target
-        },
-        (e) => log(`Fichier de ${c.id} non renommé : ${errText(e)}`)
-      )
-    }
-    saveIndex()
-    emitChanged()
-    return publicClip(c)
-  })
-}
-
-function deleteClip(id: unknown): Promise<boolean> {
-  const meta = clipById(id)
-  if (!meta) return Promise.resolve(false)
-  return serial(async () => {
-    index = index.filter((c) => c.id !== meta.id)
-    saveIndex()
-    await deleteFiles(meta)
-    log(`Clip ${meta.id} supprimé.`)
-    emitChanged()
-    return true
-  })
-}
-
-function pinClip(id: unknown, on: unknown): Clip {
-  const c = needClip(id)
-  c.pinned = on === true
-  saveIndex()
-  emitChanged()
-  return publicClip(c)
-}
-
-async function openFolder(id: unknown): Promise<void> {
-  if (id !== undefined && id !== null) return shell.showItemInFolder(needClip(id).file)
-  const folder = await usableFolder()
-  const err = await shell.openPath(folder)
-  if (err) throw new Error('Impossible d’ouvrir le dossier des clips.')
-}
+// ---------- copier le fichier d'un clip ----------
 
 /**
  * Presse-papiers de Windows : le fichier, à coller dans Discord ou l'Explorateur. Il faut un vrai CF_HDROP (c'est ce que lit
@@ -1509,7 +1203,7 @@ async function stopCapture(reason: string, gameOver = true): Promise<void> {
   emitState()
   await Promise.all([...recorders.values()].map((r) => r.writes.catch(() => {})))
   for (const p of [...pendings.values()]) finalize(p)
-  await fileQueue
+  await filesDone()
   await clearBuffer()
   if (gameOver) noteGamePace(c)
 }
@@ -1520,7 +1214,7 @@ async function stopCapture(reason: string, gameOver = true): Promise<void> {
  */
 function noteGamePace(c: Capture): void {
   try {
-    lastGame = gamePace(index.filter((x) => x.sessionId === c.sessionId && x.kind !== 'film').map((x) => ({ pace: cleanPace(x.pace), durationS: x.durationS })), c.game.name, Date.now())
+    lastGame = gamePace(clipIndex().filter((x) => x.sessionId === c.sessionId && x.kind !== 'film').map((x) => ({ pace: cleanPace(x.pace), durationS: x.durationS })), c.game.name, Date.now())
     setKv(LAST_GAME_KEY, lastGame)
     log(lastGame.clips ? `${gamePaceLine(lastGame)} (${String(lastGame.fps).replace('.', ',')} images/s sur ${lastGame.clips} clip(s), ${c.game.name}).` : `Partie finie sans clip dont le rythme est connu (${c.game.name}).`)
     emitState()
@@ -1715,18 +1409,18 @@ async function cleanLeftovers(): Promise<void> {
     const names = await readdir(dir).catch(() => [] as string[])
     for (const n of names) if (n.endsWith('.mp4.part')) await unlink(join(dir, n)).catch(() => {})
   }
-  const known = new Set(index.map((c) => `${c.id}.jpg`))
+  const known = new Set(clipIndex().map((c) => `${c.id}.jpg`))
   const thumbs = await readdir(dirname(thumbPath('x'))).catch(() => [] as string[])
   for (const n of thumbs) if (!known.has(n)) await unlink(join(dirname(thumbPath('x')), n)).catch(() => {})
   // Bêta 46 : les copies légères pour Discord dont le clip a disparu, ou qui n'ont pas servi depuis 7 jours.
-  await cleanShareCopies(new Set(index.map((c) => c.id))).catch(() => {})
+  await cleanShareCopies(new Set(clipIndex().map((c) => c.id))).catch(() => {})
 }
 
 /** Après l'ouverture de la base. */
 export function startClips(): void {
   if (started) return
   loadClipSettings()
-  index = getKv<ClipMeta[]>(INDEX_KEY, []).filter((c) => c && typeof c.id === 'string' && CLIP_ID.test(c.id) && typeof c.file === 'string')
+  loadClipIndex()
   lastGame = cleanGamePace(getKv<unknown>(LAST_GAME_KEY, null))
   registerClipProtocol(SCHEME, (id) => {
     const c = clipById(id)
@@ -1771,14 +1465,14 @@ export function startClips(): void {
   // L'appli ne quitte qu'une fois les derniers clips écrits (8 s au plus).
   app.on('before-quit', (e) => {
     quitting = true
-    if (!capture && !stopping && !pendings.size && !fileBusy) return
+    if (!capture && !stopping && !pendings.size && !filesBusy()) return
     e.preventDefault()
     if (quitRun) return
     const finish = async (): Promise<void> => {
       sync()
       while (capture || stopping) await (stopping ?? sleep(50))
       for (const p of [...pendings.values()]) finalize(p)
-      await fileQueue
+      await filesDone()
       await clearBuffer()
     }
     quitRun = Promise.race([finish(), sleep(QUIT_WAIT_MS)])
@@ -1789,11 +1483,11 @@ export function startClips(): void {
         capture = null
         stopping = null
         pendings.clear()
-        fileBusy = 0
+        forgetFiles()
         app.quit()
       })
   })
-  log(`Service démarré : ${index.length} clip(s).`)
+  log(`Service démarré : ${clipIndex().length} clip(s).`)
 
   // Développement : essais sous Linux, sans le jeu ni Windows. Jamais dans la version installée.
   if (!app.isPackaged) {
