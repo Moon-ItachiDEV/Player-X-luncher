@@ -207,9 +207,10 @@ le moteur est refusé avec la raison. La capture des clips lance son propre FFmp
   « clips ». Les scripts `test:launch`, `test:clips`… restent pour lancer un groupe.
 - Garde-fous qui lisent le code : `architecture.test.ts` (couches, boucles), `ipcContract.test.ts` (canaux),
   `src/renderer/src/styles/tokens.test.ts` (thème).
-- La vraie appli : `tools/essais` (a1 à a18, la fenêtre) et `tools/essais-clips` (t0 à t15 : capture, clips, films, partage).
-  Les scénarios lancent l'appli construite, sous Linux seulement (Xvfb, ffmpeg), en mode démo. Une compilation réussie ne
-  prouve pas la stabilité : après un changement du moteur, ce sont eux qui comptent.
+- La vraie appli : `tools/essais` (a1 à a18, la fenêtre) et `tools/essais-clips` (t0 à t15 et t17 : capture, clips, films,
+  partage, lecteur ; t16 est dans la source de la 0.6, pas encore ici). Les scénarios lancent l'appli construite, sous
+  Linux seulement (Xvfb, ffmpeg), en mode démo. Une compilation réussie ne prouve pas la stabilité : après un changement
+  du moteur, ce sont eux qui comptent.
 - Tout lancer : `npm run build`, puis `node tools/essais/tous.cjs` (une demi-heure). Les scénarios passent un par un, chacun
   sur un écran et un dossier de données neufs. `node tools/essais/tous.cjs a8 t1` n'en lance que deux. Une ligne par
   scénario, un bilan à la fin, les sorties complètes dans `tools/essais/sorties/`. a16 demande l'appli empaquetée

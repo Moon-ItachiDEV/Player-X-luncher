@@ -425,6 +425,8 @@ const Clips = (() => {
     if (ret) { const r = ret; ret = null; onLeaveNow(); return Pages.openGame(r.game, null, { tab: 'clips', prev: r.prev }) }
     leavePlayer()
     vt(() => {
+      // Un autre clip a été ouvert pendant la fermeture (Clips.open) : son lecteur est déjà peint, on ne le vide pas
+      if (player) return
       $('#cp', el).hidden = true; $('#cp', el).innerHTML = ''; $('#clipScroll', el).style.visibility = ''
       leaveBar()
       Fluid.set(['#150c1c', '#47123a', '#c21c55', '#3b1a66'])
