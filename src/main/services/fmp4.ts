@@ -3,7 +3,7 @@
 // sont réécrits, les données des images sont recopiées telles quelles.
 // Pourquoi pas un MP4 fragmenté en sortie : le Lecteur multimédia de Windows le lit comme un direct (ni durée ni avance
 // rapide) et l'Explorateur n'en montre pas la durée, même avec les bonnes boîtes. Le MP4 classique marche partout.
-// Module pur, sans Electron ni disque (les lectures et écritures sont dans clips.ts) : testé par `npm run test:clips`.
+// Module pur, sans Electron ni disque (les lectures et écritures sont dans clipsFiles.ts) : testé par `npm run test:clips`.
 
 export interface BoxRef {
   type: string

@@ -77,11 +77,12 @@ Règles tenues par `src/main/architecture.test.ts` (elles lisent les imports des
 
 Deux façons d'écrire un service cohabitent. À préférer pour tout nouveau code : la première.
 
-- **Règles pures** (32 fichiers sur 69 dans `services/`) : elles ne touchent jamais Electron, même par ricochet ; tout ce dont le
-  fichier a besoin lui est passé. Elles se testent en quelques secondes avec `npm test` (29 ont leur fichier de tests). Modèle
-  à suivre : `launches.ts` (il reçoit `LaunchDeps`), `clipsPlan.ts`, `fmp4.ts`, `settingsRules.ts`.
+- **Règles pures** (33 fichiers sur 70 dans `services/`) : elles ne touchent jamais Electron, même par ricochet ; tout ce dont le
+  fichier a besoin lui est passé. Elles se testent en quelques secondes avec `npm test` (30 ont leur fichier de tests). Modèle
+  à suivre : `launches.ts` (il reçoit `LaunchDeps`), `clipsPlan.ts`, `fmp4.ts`, `settingsRules.ts`. L'un de ces fichiers,
+  `clipsFiles.ts`, lit et écrit de vrais fichiers : ses tests travaillent dans le dossier temporaire.
 - **Services branchés sur Electron** (37 fichiers) : ils gardent leur état dans des variables du fichier et se démarrent par
-  `startXxx()`. Ils ne se vérifient que sur la vraie appli (`tools/essais`). Le plus gros est `clips.ts` (1 971 lignes).
+  `startXxx()`. Ils ne se vérifient que sur la vraie appli (`tools/essais`). Le plus gros est `clips.ts` (1 887 lignes).
 
 ## Le démarrage, dans l'ordre
 
@@ -121,8 +122,8 @@ Les services, par domaine :
 - **Bibliothèque** : `library.ts` (les jeux vus par toute l'appli, le scan, « quels jeux tournent »), `games.ts` (Steam, Epic, EA,
   GOG), `gogInfo.ts`, `artwork.ts`, `steamLibrary.ts`, `steamUpdates.ts`, `shelves.ts`, `recentGames.ts`, `demo.ts`.
 - **Lancement et temps de jeu** : `launches.ts`, `launchWatch.ts`, `launchWatchParse.ts`, `tracking.ts`, `playtime.ts`.
-- **Clips** : `clips.ts`, `clipsPlan.ts`, `fmp4.ts`, `engineCapture.ts`, `cs2Moments.ts`, `clipsProtocol.ts`, `clipsToast.ts`,
-  `clipsLog.ts`, `captureTest.ts`.
+- **Clips** : `clips.ts`, `clipsFiles.ts`, `clipsPlan.ts`, `fmp4.ts`, `engineCapture.ts`, `cs2Moments.ts`, `clipsProtocol.ts`,
+  `clipsToast.ts`, `clipsLog.ts`, `clipsShare.ts`, `sharePlan.ts`, `captureTest.ts`.
 - **Films** : `editFfmpeg.ts` (le moteur vidéo), `editFilm.ts`, `editPlan.ts`, `editCompile.ts`, `editBeats.ts`, `editMusic.ts`,
   `editEngineRules.ts`.
 - **Counter-Strike 2** : `cs2Live.ts`, `cs2Match.ts`, `cs2Gsi.ts`, `cs2Overlay.ts`, `cs2Lifetime.ts`.
@@ -231,8 +232,9 @@ le moteur est refusé avec la raison. La capture des clips lance son propre FFmp
 Classées et chiffrées dans la revue d'architecture du 13/11/2026 (document « Player X : revue d'architecture »). Les
 principales, dans l'ordre proposé :
 
-1. `clips.ts` fait au moins onze métiers en 1 971 lignes (1 824 avant la bêta 46) et ne se vérifie que sur la vraie appli : à
-   découper, une pièce à la fois.
+1. `clips.ts` fait au moins onze métiers et ne se vérifie que sur la vraie appli. Sa découpe a commencé, une pièce à la
+   fois : les lectures et écritures des fichiers MP4 sont dans `clipsFiles.ts`, avec leurs tests. Il lui reste 1 887 lignes
+   (1 971 avant).
 2. Un appel s'écrit encore à la main à trois endroits (`types/api.ts`, pont, récepteur) : une seule table typée suffirait.
 3. Les services n'ont pas d'arrêt propre (douze minuteries, la fermeture de l'appli gérée à six endroits dans cinq fichiers).
 4. L'interface V3 : 21 fichiers dans un seul espace global, sans contrôle de types.
