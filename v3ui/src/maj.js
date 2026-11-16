@@ -110,8 +110,10 @@ const Maj = (() => {
       default: return null
     }
   }
+  let instEnd = 0
   function paintCap() {
     const k = capKind(st)
+    if (k !== 'inst') instEnd = 0
     if (!k) { capKey = ''; capEl.hidden = true; capEl.innerHTML = ''; cancelAnimationFrame(raf); return }
     const key = `${k}|${st.version}|${st.status}|${st.reason || ''}`
     if (key !== capKey) {
@@ -130,7 +132,7 @@ const Maj = (() => {
     if (k === 'verif') return `<span class="mj-scan">${SHIELD}</span><b>Vérification du fichier</b><span class="mj-track"><i></i></span><span class="mj-sub">SHA-256</span><span style="width:6px"></span>`
     if (k === 'prete') return `<span class="mj-badge good">${ICO.ok}</span><b>${v} est prête</b><span class="mj-sub opt">10 à 20 s</span><span class="mj-sp"></span><button class="mj-pill sm pri" id="mjRs">${ICO.rs}Redémarrer</button><button class="mj-pill sm" id="mjLt">Plus tard</button>`
     if (k === 'inst') return `<span class="mj-cdw"><span class="mj-cd" data-f="cd"></span><span data-f="cdn">3</span></span><b>Installation de ${v}</b><span class="mj-sub opt">Player X se ferme et revient sur cette page</span><span class="mj-sp"></span><button class="mj-lnk" id="mjNo" style="margin-right:10px">Annuler</button>`
-    if (k === 'err') return `<span class="mj-badge bad">${ICO.al}</span><b>Mise à jour bloquée</b><span class="mj-sub wrap">${esc(st.reason || '')}</span><span class="mj-sp"></span><button class="mj-pill sm pri" id="mjRt">${st.release ? 'Ouvrir la page' : 'Réessayer'}</button><button class="mj-x" id="mjX" aria-label="Fermer">${ICO.xx}</button>`
+    if (k === 'err') return `<span class="mj-badge bad">${ICO.al}</span><b>Mise à jour bloquée</b><span class="mj-sub" title="${esc(st.reason || '')}">${esc((st.reason || '').split(' · ')[0])}</span><span class="mj-sp"></span><button class="mj-pill sm pri" id="mjRt">${st.release ? 'Ouvrir la page' : 'Réessayer'}</button><button class="mj-x" id="mjX" aria-label="Fermer">${ICO.xx}</button>`
     return `<span class="mj-badge">${ICO.pa}</span><b>${v} ${st.status === 'ready' ? 'prête' : 'disponible'}</b><span class="mj-sub">Rien ne redémarre pendant ta partie ou un enregistrement</span><span class="mj-sp"></span><button class="mj-x" id="mjX" aria-label="Fermer">${ICO.xx}</button>`
   }
   function bindCap(k) {
@@ -152,8 +154,10 @@ const Maj = (() => {
       f('sp').textContent = st.bytesPerSec ? `${speed(st.bytesPerSec)}${st.etaS ? ` · ${left(st.etaS)}` : ''}` : ''
     } else if (k === 'inst') {
       cancelAnimationFrame(raf)
+      // L'horloge de la page compte elle-même, à partir des secondes reçues : rien ne dépend de l'heure du processus principal.
+      if (!instEnd) instEnd = Date.now() + Math.min(3, Math.max(0, st.secondsLeft ?? 3)) * 1000
       const tick = () => {
-        const ms = Math.max(0, (st.endsAt || 0) - Date.now())
+        const ms = Math.max(0, instEnd - Date.now())
         f('cd')?.style.setProperty('--p', (reduced() ? 100 : ms / 30) + '%')
         const n = f('cdn'); if (n) n.textContent = Math.max(1, Math.ceil(ms / 1000))
         if (ms > 0 && st.status === 'installing') raf = requestAnimationFrame(tick)

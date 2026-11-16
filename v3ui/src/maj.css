@@ -41,6 +41,7 @@
 .mj-pc{font:600 20px var(--brand);letter-spacing:-.01em;min-width:62px;text-align:right}
 .mj-sub{color:var(--t3);font-size:12.5px;overflow:hidden;text-overflow:ellipsis}
 .mj-cap>b{font-weight:600;flex:none}
+.mj-cap.bad .mj-sub{min-width:0}
 .mj-cap .mj-sub.wrap{white-space:normal;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;min-width:0}
 .mj-x{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);color:var(--t2);flex:none;transition:background-color .15s,color .15s}
 @media(hover:hover){.mj-x:hover{background:rgba(255,255,255,.16);color:var(--bone)}}
