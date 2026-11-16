@@ -2,8 +2,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync, sign } from 'node:crypto'
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 // @ts-ignore TS5097
 import { afterAttempt, chooseNotes, compareVersions, decideInstall, DOWNLOAD_PREFIX, etaSeconds, isNewer, markerBlocks, parseAttempt, parseManifest, parseNotes, reviewNotes, verifySignature, type InstallFacts, type NoteEntry } from './updaterRules.ts'
+// @ts-ignore TS5097 TS7016
+import { appendPublicKey, buildManifest, findSetup, readNotes, readPublicKeys, signBytes } from '../../../scripts/publier-maj.mjs'
 // @ts-ignore TS5097
 import { cleanPatch, defaults } from './settingsRules.ts'
 
@@ -240,4 +245,51 @@ test('réglages : « Installer à la fermeture » (vrai par défaut), version ig
   assert.deepEqual(cleanPatch({ updateOnQuit: false, updateSkipped: '0.7.2', notesSeen: '0.7.1' }), { updateOnQuit: false, updateSkipped: '0.7.2', notesSeen: '0.7.1' })
   assert.deepEqual(cleanPatch({ updateSkipped: null }), { updateSkipped: null })
   assert.deepEqual(cleanPatch({ updateOnQuit: 'oui', updateSkipped: 'x', notesSeen: 5 }), {})
+})
+
+// ---------- script de publication ----------
+
+test('publication : le maj.json fabriqué par le script passe la vérification de l’appli, signature comprise', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'maj-'))
+  const dist = join(tmp, 'dist')
+  mkdirSync(dist)
+  writeFileSync(join(dist, 'Player-X-V3-Test-Setup-0.7.2.exe'), Buffer.alloc(5000, 7))
+  // Un autre Setup d'une autre version ne gêne pas
+  writeFileSync(join(dist, 'Player-X-V3-Test-Setup-0.7.1.exe'), Buffer.alloc(10, 1))
+  const setup = findSetup(dist, '0.7.2')
+  const notes = readNotes(join(import.meta.dirname, '../../../notes-de-version.json'))
+  const { bytes } = buildManifest({ version: '0.7.2', setup, notes, date: '2026-11-17' })
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519', { privateKeyEncoding: { type: 'pkcs8', format: 'pem', cipher: 'aes-256-cbc', passphrase: 'un mot de passe long' }, publicKeyEncoding: { type: 'spki', format: 'pem' } })
+  const sig = signBytes(bytes, privateKey, 'un mot de passe long')
+  assert.equal(verifySignature(bytes, sig, [publicKey]), true)
+  const m = parseManifest(JSON.parse(bytes.toString('utf8')))
+  assert.equal(m.ok, true)
+  if (m.ok) {
+    assert.equal(m.value.size, 5000)
+    assert.equal(m.value.file, 'Player-X-V3-Test-Setup-0.7.2.exe')
+    assert.deepEqual(m.value.notes.map((e) => e.version), ['0.7.2', '0.7.1'])
+  }
+  assert.throws(() => signBytes(bytes, privateKey, 'faux'))
+})
+
+test('publication : refus sans notes pour la version, sans Setup, avec une page inconnue', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'maj-'))
+  writeFileSync(join(tmp, 'Player-X-V3-Test-Setup-0.7.9.exe'), Buffer.alloc(10))
+  const notes = readNotes(join(import.meta.dirname, '../../../notes-de-version.json'))
+  assert.throws(() => buildManifest({ version: '0.7.9', setup: join(tmp, 'Player-X-V3-Test-Setup-0.7.9.exe'), notes }), /Pas de notes/)
+  assert.throws(() => findSetup(tmp, '0.8.0'), /Aucun Setup/)
+  writeFileSync(join(tmp, 'n.json'), JSON.stringify([{ version: '0.7.2', date: '2026-11-17', items: [{ kind: 'nouveau', title: 'a', text: 'b', page: 'http://x' }] }]))
+  assert.throws(() => readNotes(join(tmp, 'n.json')), /page/)
+})
+
+test('publication : la clé publique s’ajoute à updaterKey.ts sans effacer les anciennes', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'maj-'))
+  const f = join(tmp, 'updaterKey.ts')
+  copyFileSync(join(import.meta.dirname, 'updaterKey.ts'), f)
+  const mk = () => generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString()
+  const a = mk(), b = mk()
+  assert.equal(appendPublicKey(a, f), true)
+  assert.equal(appendPublicKey(a, f), false)
+  assert.equal(appendPublicKey(b, f), true)
+  assert.deepEqual(readPublicKeys(f).map((k: string) => k.trim()), [a.trim(), b.trim()])
 })

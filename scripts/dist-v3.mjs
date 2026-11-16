@@ -14,6 +14,15 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const out = resolve(root, process.argv[2] || 'dist')
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+// Mises à jour dans l'appli : avec PX_MAJ_EXIGER=1, pas de fabrication sans clé publique dans updaterKey.ts (un Setup sans clé ne
+// pourrait jamais se mettre à jour). Sans la variable (fabrication en nuage, essais), la clé n'est pas exigée.
+if (process.env.PX_MAJ_EXIGER === '1') {
+  const keys = readFileSync(join(root, 'src/main/services/updaterKey.ts'), 'utf8').match(/-----BEGIN PUBLIC KEY-----/g)
+  if (!keys) {
+    console.error('Arrêt : src/main/services/updaterKey.ts n’a aucune clé publique, donc ce Setup ne pourrait pas se mettre à jour.\nLance « npm run maj:cle » (une seule fois), commit updaterKey.ts, puis recommence.')
+    process.exit(1)
+  }
+}
 const run = (title, cmd, args) => {
   console.log(`\n▶ ${title}`)
   execFileSync(cmd, args, { cwd: root, stdio: 'inherit' })
