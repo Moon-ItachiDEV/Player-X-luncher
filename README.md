@@ -3,10 +3,6 @@
 Version d'essai de la nouvelle interface de Player X (« V3 »), lanceur de jeux pour Windows fait avec Electron.
 Elle s'installe à part du vrai Player X et n'a pas de mise à jour automatique.
 
-- Dossier d'installation : `%LOCALAPPDATA%\Programs\test-v3-player-x`
-- Données : `%APPDATA%\Player X V3 Test`
-- Identifiant : `dev.breezy.playerx.v3test`
-
 ## Installer l'appli
 
 Lancer `Player-X-V3-Test-Installer-<version>.exe` (ou `Player-X-V3-Test-Setup-<version>.exe`) sous Windows 10 ou 11.
