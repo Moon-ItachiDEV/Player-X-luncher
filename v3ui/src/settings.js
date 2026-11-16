@@ -656,7 +656,10 @@ const Settings = (() => {
   const fondThumb = (k) => {
     if (k === 'fluide') return ''
     if (k !== 'mur') return `--im:url('${A('bf_redsec')}')`
-    const c = GAMES.map((g) => A(g.cover)); if (!c.length) return ''
+    // Adresse mise entre guillemets dans du CSS : un guillemet, une barre oblique inverse ou un retour à la ligne y sont échappés
+    // à la manière du CSS (esc() ne protège que le HTML), pour qu'une adresse de jaquette ne puisse rien ajouter au style
+    const cssUrl = (u) => String(u).replace(/["'\\\n\r\f]/g, (ch) => `\\${ch.charCodeAt(0).toString(16)} `)
+    const c = GAMES.map((g) => cssUrl(A(g.cover))); if (!c.length) return ''
     const at = [[0, 0], [33.33, 0], [66.66, 0], [100, 0], [0, 100], [33.33, 100], [66.66, 100], [100, 100]]
     return `background:${at.map(([x, y], i) => `url("${c[(i * 3) % c.length]}") ${x}% ${y}%/25% auto no-repeat`).join(',')},#0b0810`
   }
