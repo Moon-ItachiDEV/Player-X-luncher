@@ -15,7 +15,6 @@ Rien d'autre à installer : tout ce dont l'appli a besoin, FFmpeg compris, est l
 - FFmpeg 9.0.2, utilisé pour le montage et livré tel quel avec l'appli : GNU LGPL v3 ou ultérieure. Version exacte fixée
   dans `src/shared/ffmpegPin.json`.
 - Polices : licences dans `v3ui/fonts/licences/`.
-- Code de ce dépôt : aucun fichier de licence publié.
 
 ## Contribution
 
