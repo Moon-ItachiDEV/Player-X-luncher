@@ -65,6 +65,48 @@ export function paceOf(timesS: readonly number[], durationS: number, wanted: num
   return { fps, low: Math.min(fps, r1(Math.min(...counts) / PACE_WINDOW_S)), wanted }
 }
 
+/** Un relevé du compteur du moteur : à l'heure `at` (ms), `n` images reçues de la capture depuis son début. */
+export interface CountMark {
+  at: number
+  n: number
+}
+
+/** Le compteur à l'heure `t`, entre les deux relevés qui l'encadrent. null : hors des relevés. */
+function countAt(marks: readonly CountMark[], t: number): number | null {
+  if (!marks.length || t < marks[0].at || t > marks[marks.length - 1].at) return null
+  for (let i = 1; i < marks.length; i++) {
+    const a = marks[i - 1]
+    const b = marks[i]
+    if (t <= b.at) return b.at === a.at ? b.n : a.n + ((b.n - a.n) * (t - a.at)) / (b.at - a.at)
+  }
+  return marks[marks.length - 1].n
+}
+
+/**
+ * 0.7.4 : le rythme d'un clip du moteur, d'après son compteur d'images reçues (relevé chaque seconde). Le moteur sort maintenant
+ * à cadence fixe (il répète la dernière image quand la capture n'en donne pas), donc compter les images du clip dirait toujours
+ * 60 : on compte celles que la capture a vraiment données entre `fromMs` et `toMs`. Les relevés arrivent chaque seconde, la fin
+ * du clip les dépasse souvent un peu : on mesure sur la part couverte, si elle fait au moins 80 % du clip.
+ * null : relevés qui couvrent trop peu du clip.
+ */
+export function paceOfCounts(marks: readonly CountMark[], fromMs: number, toMs: number, wanted: number): ClipPace | null {
+  if (!num(fromMs) || !num(toMs) || toMs - fromMs < 1000 || !num(wanted) || wanted <= 0 || marks.length < 2) return null
+  const lo = Math.max(fromMs, marks[0].at)
+  const hi = Math.min(toMs, marks[marks.length - 1].at)
+  if (hi - lo < 1000 || hi - lo < 0.8 * (toMs - fromMs)) return null
+  const n0 = countAt(marks, lo)
+  const n1 = countAt(marks, hi)
+  if (n0 === null || n1 === null) return null
+  const fps = r1(Math.max(0, n1 - n0) / ((hi - lo) / 1000))
+  let low = fps
+  for (let t = lo; t + PACE_WINDOW_S * 1000 <= hi + 1e-6; t += PACE_WINDOW_S * 1000) {
+    const a = countAt(marks, t)
+    const b = countAt(marks, Math.min(hi, t + PACE_WINDOW_S * 1000))
+    if (a !== null && b !== null) low = Math.min(low, r1(Math.max(0, b - a) / PACE_WINDOW_S))
+  }
+  return { fps, low, wanted }
+}
+
 /** Un rythme relu dans la base : structure vérifiée. undefined s'il ne vaut rien. */
 export function cleanPace(raw: unknown): ClipPace | undefined {
   const p = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null

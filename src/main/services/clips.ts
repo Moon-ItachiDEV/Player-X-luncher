@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app, BrowserWindow, clipboard, ClipboardItem, desktopCapturer, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, type IpcMainEvent, type Session, type WebContents } from 'electron'
-import { cleanGamePace, cleanPace, gamePace, gamePaceLine, paceLog, rateBetween, type GamePace } from '@shared/clipPace'
+import { cleanGamePace, cleanPace, gamePace, gamePaceLine, paceLog, paceOfCounts, rateBetween, type CountMark, type GamePace } from '@shared/clipPace'
 import { CS2_GAME_ID } from '@shared/cs2'
 import { cleanName, isBf6Name } from '@shared/text'
 import type { ClipDisplay, ClipSettings, ClipShareResult, ClipShareStep, ClipsState, Game } from '@shared/types'
@@ -92,6 +92,9 @@ interface RunningGame {
   name: string
 }
 
+/** 0.7.4 : relevés du compteur du moteur gardés (un par seconde) : 10 min, plus que le tampon. */
+const MARKS_MAX = 600
+
 /** Un enregistreur (MediaRecorder) : son en-tête ne vaut que pour ses propres fragments. */
 interface Recorder {
   id: string
@@ -121,7 +124,16 @@ interface Recorder {
   /** Bêta 42 : le son lu par la page en PCM, daté à l'heure du système, gardé en mémoire le temps du tampon. */
   pcm?: PcmPart[]
   /** Bêta 42 : enregistreur d'image du moteur vidéo. */
-  engine?: { proc: ChildProcess; attempt: EngineAttempt; err: string; progress: string; loggedAt: number; last?: { frames: number; at: number } }
+  engine?: {
+    proc: ChildProcess
+    attempt: EngineAttempt
+    err: string
+    progress: string
+    loggedAt: number
+    last?: { frames: number; at: number }
+    /** 0.7.4 : le compteur d'images reçues, relevé chaque seconde (le temps du tampon), pour le rythme des clips. */
+    marks: CountMark[]
+  }
 }
 
 interface Capture {
@@ -503,7 +515,7 @@ function startEngine(c: Capture): void {
     ended: false,
     restartNow: false,
     mime: `moteur : ${attemptLabel(attempt)}`,
-    engine: { proc, attempt, err: '', progress: '', loggedAt: now }
+    engine: { proc, attempt, err: '', progress: '', loggedAt: now, marks: [] }
   }
   recorders.set(id, rec)
   c.eng = rec
@@ -524,10 +536,20 @@ function startEngine(c: Capture): void {
     e.progress = (e.progress + t).slice(-4000)
     const msgs = t.split(/\r?\n/).filter((l) => l.trim() && !/^[a-z_0-9]+=/.test(l.trim()))
     if (msgs.length) e.err = (e.err + msgs.join('\n') + '\n').slice(-3000)
-    // Les images par seconde, toutes les 10 s la première minute, puis chaque minute.
+    // 0.7.4 : on ne lit que les blocs complets (jusqu'à la dernière ligne « progress=… » finie) ; la suite attend le prochain envoi.
+    const done = [...e.progress.matchAll(/^progress=\w*\r?\n/gm)].pop()
+    if (!done) return
+    const cut = done.index + done[0].length
+    const pr = readEngineProgress(e.progress.slice(0, cut))
+    e.progress = e.progress.slice(cut)
+    // 0.7.4 : un relevé par seconde, gardé le temps du tampon (10 min au plus).
+    if (pr) {
+      e.marks.push({ at: Date.now(), n: pr.received })
+      if (e.marks.length > MARKS_MAX) e.marks.splice(0, e.marks.length - MARKS_MAX)
+    }
+    // Les images par seconde dans le journal, toutes les 10 s la première minute, puis chaque minute.
     const every = Date.now() - rec.startedAt < 65_000 ? 9_000 : 59_000
-    if (/progress=/.test(t) && Date.now() - e.loggedAt > every) {
-      const pr = readEngineProgress(e.progress)
+    if (Date.now() - e.loggedAt > every) {
       if (pr) {
         // Bêta 46 : le chiffre du moteur est une moyenne depuis le début ; le rythme depuis le relevé d'avant dit ce qui se passe
         // maintenant. Pour le journal seulement : une pause du jeu le fait baisser sans que la capture soit en faute.
@@ -538,7 +560,6 @@ function startEngine(c: Capture): void {
         e.last = now
       }
       e.loggedAt = Date.now()
-      e.progress = ''
     }
   })
   proc.once('error', (err) => {
@@ -900,8 +921,11 @@ async function writeClip(p: PendingClip): Promise<void> {
   const plan = buildFlat(cut, { createdAtMs: p.firstAt })
   // Le fichier commence sur une image clé, souvent avant la fenêtre demandée : les événements se situent depuis cette image-là.
   const firstWall = rec.anchor + firstFrameS(cut) * 1000
-  // Bêta 46 : le rythme réel du clip, d'après l'instant de chacune de ses images.
-  const pace = paceOfTracks(cut, plan.durationS, rec.wantedFps)
+  // Bêta 46 : le rythme réel du clip, d'après l'instant de chacune de ses images. 0.7.4 : le moteur sort à cadence fixe (images
+  // répétées comprises), son rythme vient de son compteur d'images reçues ; inconnu si les relevés ne couvrent pas le clip.
+  const pace = rec.engine
+    ? (paceOfCounts(rec.engine.marks, firstWall, firstWall + plan.durationS * 1000, rec.wantedFps) ?? undefined)
+    : paceOfTracks(cut, plan.durationS, rec.wantedFps)
   const events = clipEvents(p.events, firstWall, plan.durationS)
   const kills = clipKills(p)
   const title = clipTitle(p.kind, kills, p.headshots, p.peak)

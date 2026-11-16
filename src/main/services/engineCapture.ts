@@ -51,7 +51,7 @@ export const FRAG_US = 500_000
 
 /**
  * La commande d'enregistrement : capture, encodage au débit demandé, MP4 fragmenté sur la sortie standard. L'avancement
- * (images, images/s) part sur la sortie d'erreur toutes les 10 s. `x11` et `libx264` : essais sous Linux seulement.
+ * (images, images/s) part sur la sortie d'erreur chaque seconde (0.7.4 : pour le rythme des clips, paceOfCounts). `x11` et `libx264` : essais sous Linux seulement.
  */
 export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number }): string[] {
   if (!ENCODERS.includes(a.encoder)) throw new Error('Encodeur refusé.')
@@ -80,7 +80,7 @@ export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number 
         ? ['-usage', 'lowlatency', '-rc', 'cbr', '-b:v', String(bps), '-maxrate', String(bps), '-bufsize', String(bps)]
         : ['-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-b:v', String(bps), '-maxrate', String(bps), '-bufsize', String(bps)]
   return [
-    '-hide_banner', '-nostdin', '-loglevel', 'warning', '-stats_period', '10', '-progress', 'pipe:2',
+    '-hide_banner', '-nostdin', '-loglevel', 'warning', '-stats_period', '1', '-progress', 'pipe:2',
     ...input,
     // 0.7.4 : cadence fixe. Pour chaque instant du clip (1/60 s), l'image reçue la plus proche ; la précédente est répétée si le
     // jeu n'en a pas donné de nouvelle. Avant (passthrough), les écarts entre images suivaient la capture : 57 à 58 images/s
