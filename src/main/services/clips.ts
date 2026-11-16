@@ -1,17 +1,16 @@
-import type { ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, type IpcMainEvent, type Session, type WebContents } from 'electron'
-import { cleanGamePace, cleanPace, gamePace, gamePaceLine, paceLog, rateBetween, type GamePace } from '@shared/clipPace'
+import { paceLog, rateBetween } from '@shared/clipPace'
 import { CS2_GAME_ID } from '@shared/cs2'
 import { cleanName, isBf6Name } from '@shared/text'
-import type { ClipDisplay, ClipSettings, ClipsState, Game } from '@shared/types'
+import type { ClipDisplay, ClipSettings, Game } from '@shared/types'
 import { getKv, setKv } from '../db'
 import { hotkeyRefusal } from '../hotkeys'
 import { handle } from '../ipc'
-import { appWindows, broadcast, markOverlay } from '../windows'
+import { appWindows, markOverlay } from '../windows'
 import {
   CLIP_ID,
   canMerge,
@@ -28,7 +27,6 @@ import {
   restartDelayMs,
   selectFragments,
   withNeighbours,
-  type BufferedFragment,
   type ClipMoment,
   type PendingClip
 } from './clipsPlan'
@@ -40,14 +38,15 @@ import { registerClipProtocol, SCHEME } from './clipsProtocol'
 import { filesBusy, filesDone, forgetFiles, serial } from './clipsQueue'
 import { chooseFolder, clipSettings, folderOf, loadClipSettings, resolved, storeClipSettings, usableFolder } from './clipsSettings'
 import { cleanShareCopies } from './clipsShare'
+import { bufferRoot, capture, emitState, frags, libraryRunning, loadLastGame, noteGamePace, pendings, recorders, setCapture, setFrags, setHotkeyError, setLastProblem, setLibraryRunning, setTestRunning, sleep, stateNow, testRunning, thumbAllowed, writing, type Capture, type Recorder, type RunningGame } from './clipsState'
 import { showClipToast } from './clipsToast'
 import { cs2IsRunning, cs2MomentContext, onCs2Moment, onCs2Running } from './cs2Live'
-import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFragment, parseInit, type FlatPlan, type FragmentInfo, type InitInfo } from './fmp4'
+import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFragment, parseInit, type FlatPlan, type FragmentInfo } from './fmp4'
 import { getSettings } from './settings'
 import { gameExeRegex } from './captureTestArgs'
 import { thumbArgs } from './editCompile'
 import { captureEngineReady, spawnCaptureEngine } from './editFfmpeg'
-import { attemptLabel, engineAttempts, muxArgs, PCM_FRAME_BYTES, PCM_RATE, pcmWindow, readEngineProgress, recordArgs, type EngineAttempt, type PcmPart } from './engineCapture'
+import { attemptLabel, engineAttempts, muxArgs, PCM_FRAME_BYTES, PCM_RATE, pcmWindow, readEngineProgress, recordArgs, type EngineAttempt } from './engineCapture'
 
 // Clips « comme NVIDIA » : pendant qu'un jeu tourne, une fenêtre cachée capture l'écran et le son du système, MediaRecorder
 // les encode en MP4 fragmenté et chaque fragment (2 s) part dans un tampon circulaire sur le disque. Sur un kill de CS2 ou le
@@ -58,14 +57,14 @@ import { attemptLabel, engineAttempts, muxArgs, PCM_FRAME_BYTES, PCM_RATE, pcmWi
 // La liste des clips et ce qui la change (renommer, épingler, découper, supprimer, les films) sont dans clipsIndex.ts :
 // ici, elle se lit par clipIndex(). Les travaux sur les fichiers passent un à la fois par la file de clipsQueue.ts.
 // Copier un clip (son fichier dans le presse-papiers, « Copier pour Discord ») est dans clipsCopy.ts.
+// L'état de la capture (la partie filmée, le tampon, les clips en attente) et ce que les pages en voient sont dans
+// clipsState.ts : ici, il se lit tel quel, et se change par ses fonctions set…
 // La fenêtre de capture a sa propre session : la session des pages de l'appli continue de tout refuser (lockDown).
 
 // Doit être appelé une seule fois, avant que l'appli soit prête : d'où ici, au chargement du module (index.ts l'importe).
 // Un autre protocole privilégié devra s'ajouter à cette même liste.
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }])
 
-/** Bêta 46 : le rythme des clips de la dernière partie finie. */
-const LAST_GAME_KEY = 'clipsLastGame'
 const PARTITION = 'px-clips-capture'
 const PAGE_NAME = 'clips-recorder.html'
 /** Attente de la dernière image après la fermeture de la fenêtre d'un clip : un fragment arrive au plus toutes les 2 s environ. */
@@ -83,146 +82,16 @@ const MAX_THUMB_BYTES = 4 * 1024 * 1024
 /** Enregistreur en bonne santé depuis ce temps : ses relances repartent de la plus courte. */
 const HEALTHY_MS = 30_000
 
-interface RunningGame {
-  id: string
-  name: string
-}
-
-/** Un enregistreur (MediaRecorder) : son en-tête ne vaut que pour ses propres fragments. */
-interface Recorder {
-  id: string
-  dir: string
-  splitter: Fmp4Splitter
-  init: InitInfo | null
-  /** Heure du système du temps 0 du flux. */
-  anchor: number
-  startedAt: number
-  lastDataAt: number
-  /** Bêta 46 : la cadence demandée à cet enregistreur (60, ou 30 en qualité légère), pour dire le rythme réel de ses clips. */
-  wantedFps: number
-  seq: number
-  queued: number
-  writes: Promise<void>
-  mime?: string
-  audio?: ClipsState['audio']
-  audioError?: string
-  /** Rang du format dans la liste de la page. */
-  mimeIndex?: number
-  ended: boolean
-  /** Arrêt demandé pour repartir tout de suite avec d'autres réglages. */
-  restartNow: boolean
-  onEnded?: () => void
-  /** Bêta 42 : la page n'enregistre que le son (l'image vient du moteur). */
-  audioOnly?: boolean
-  /** Bêta 42 : le son lu par la page en PCM, daté à l'heure du système, gardé en mémoire le temps du tampon. */
-  pcm?: PcmPart[]
-  /** Bêta 42 : enregistreur d'image du moteur vidéo. */
-  engine?: { proc: ChildProcess; attempt: EngineAttempt; err: string; progress: string; loggedAt: number; last?: { frames: number; at: number } }
-}
-
-interface Capture {
-  game: RunningGame
-  sessionId: string
-  win: BrowserWindow | null
-  ready: boolean
-  rec: Recorder | null
-  attempts: number
-  restartTimer?: ReturnType<typeof setTimeout>
-  stopping: boolean
-  /** Dernière panne, tant qu'aucun enregistreur n'a repris. */
-  failure?: string
-  /** Format à essayer en premier : le suivant, quand un enregistreur n'a jamais rien produit. */
-  mimeFrom: number
-  /** Dernière relance rapide (changement de résolution) : pas de boucle si elle se répète. */
-  quickAt: number
-  /**
-   * Bêta 42 : l'image par le moteur vidéo. undefined : pas encore décidé (le moteur se vérifie au début de la partie) ;
-   * true : le moteur filme l'image, la page le son ; false : tout par Chrome (réglage, moteur absent, ou tous les essais ratés).
-   */
-  engMode?: boolean
-  eng: Recorder | null
-  engAttempts: EngineAttempt[]
-  engIdx: number
-  /** Relances du moteur après une coupure, depuis la dernière minute sans souci. */
-  engRestarts: number
-  engTimer?: ReturnType<typeof setTimeout>
-  /** Début de la partie, et tours d'essais : la fenêtre du jeu peut n'apparaître qu'après quelques secondes. */
-  engStart: number
-  engRound: number
-}
-
-interface BufFrag extends BufferedFragment {
-  file: string
-  info: FragmentInfo
-}
-
 let started = false
-let capture: Capture | null = null
 let stopping: Promise<void> | null = null
 let quitting = false
 let quitRun: Promise<unknown> | null = null
 let suspended = false
 /** Toutes les fenêtres de l'appli sont fermées pour de bon : on arrête la capture, sinon l'appli ne quitterait pas. */
 let windowsGone = false
-let libraryRunning: RunningGame[] = []
-/** Développement : jeux marqués comme lancés par les essais (globalThis.pxClipsTest). */
-let testRunning: RunningGame[] = []
-
-const recorders = new Map<string, Recorder>()
-let frags: BufFrag[] = []
-const pendings = new Map<string, PendingClip>()
-/** Fenêtres des clips en cours d'écriture : leurs fragments restent. */
-const writing = new Map<string, number>()
-const thumbAllowed = new Set<string>()
 let tickTimer: ReturnType<typeof setInterval> | undefined
 let hotkeyNow: string | null = null
-let hotkeyError: string | undefined
-/** Dernier problème hors capture (clip impossible). */
-let lastProblem: string | undefined
-/** Bêta 46 : le rythme des clips de la dernière partie finie (relu de la base au démarrage). */
-let lastGame: GamePace | undefined
-let lastStateJson = ''
 let captureSession: Session | null = null
-
-const userData = (...p: string[]): string => join(app.getPath('userData'), ...p)
-const bufferRoot = (): string => userData('clips-buffer')
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-
-// ---------- état ----------
-
-function bufferSeconds(rec: Recorder | null): number {
-  if (!rec) return 0
-  const mine = frags.filter((f) => f.recId === rec.id)
-  return mine.length ? Math.round((mine[mine.length - 1].endWall - mine[0].startWall) / 1000) : 0
-}
-
-function stateNow(): ClipsState {
-  const last = lastGame ? { lastGame } : {}
-  if (!clipSettings().enabled) return { status: 'off', ...last }
-  if (!capture) return { status: 'idle', ...(lastProblem ? { error: lastProblem } : {}), ...last }
-  const c = capture
-  const rec = c.rec
-  // Bêta 42 : l'image peut venir du moteur (c.eng), le son de la page (c.rec).
-  const video = c.eng ?? rec
-  const problems = [c.failure, rec?.audioError, hotkeyError, lastProblem].filter(Boolean)
-  return {
-    status: c.stopping || video || (!c.failure && !c.restartTimer) ? 'recording' : 'error',
-    game: c.game.name,
-    ...(video?.mime ? { encoder: video.mime } : {}),
-    ...(rec?.audio ? { audio: rec.audio } : {}),
-    ...(problems.length ? { error: problems.join(' ') } : {}),
-    ...(video ? { bufferSeconds: bufferSeconds(video) } : {}),
-    ...last
-  }
-}
-
-function emitState(): void {
-  const s = stateNow()
-  const json = JSON.stringify(s)
-  if (json === lastStateJson) return
-  lastStateJson = json
-  broadcast('clips:state', s)
-}
 
 // ---------- fenêtre de capture ----------
 
@@ -700,7 +569,7 @@ function pruneBuffer(): void {
   }
   const gone = frags.filter((f) => f.endWall < from)
   if (!gone.length) return
-  frags = frags.filter((f) => f.endWall >= from)
+  setFrags(frags.filter((f) => f.endWall >= from))
   for (const f of gone) void unlink(f.file).catch(() => {})
   dropEmptyRecorders()
 }
@@ -794,7 +663,7 @@ function finalize(p: PendingClip): void {
   writing.set(p.id, p.start)
   void serial(() => writeClip(p))
     .catch((e) => {
-      lastProblem = 'Un clip n’a pas pu être écrit : voir le journal.'
+      setLastProblem('Un clip n’a pas pu être écrit : voir le journal.')
       log(`Clip ${p.id} impossible : ${errText(e)}`)
       void unlink(thumbPath(p.id)).catch(() => {})
       emitState()
@@ -935,7 +804,7 @@ async function writeClip(p: PendingClip): Promise<void> {
   }
   addClip(meta)
   log(`Clip ${p.id} écrit : « ${title} », ${plan.durationS.toFixed(1)} s, ${(size / 1e6).toFixed(1)} Mo, ${kills} élim., ${p.headshots} HS, ${paceLog(pace)}.`)
-  lastProblem = undefined
+  setLastProblem(undefined)
   await applyRetention(p.id)
   // Image du moteur : la vignette vient du clip (vers le moment gardé, avant les secondes « après »).
   if (rec.engine) engineThumb(p.id, file, Math.max(0, plan.durationS - clipSettings().after - 0.5))
@@ -983,7 +852,7 @@ function syncHotkey(): void {
   if (want === hotkeyNow) return
   if (hotkeyNow) globalShortcut.unregister(hotkeyNow)
   hotkeyNow = null
-  hotkeyError = undefined
+  setHotkeyError(undefined)
   if (!want) return
   try {
     const onKey = (): void => {
@@ -997,8 +866,9 @@ function syncHotkey(): void {
   } catch (e) {
     log(`Raccourci ${want} : ${errText(e)}`)
   }
-  hotkeyError = `Le raccourci ${want} est déjà pris : choisis-en un autre.`
-  log(hotkeyError)
+  const taken = `Le raccourci ${want} est déjà pris : choisis-en un autre.`
+  setHotkeyError(taken)
+  log(taken)
 }
 
 function checkHotkey(accel: unknown): void {
@@ -1063,8 +933,8 @@ function wanted(): RunningGame | null {
 
 function startCapture(game: RunningGame): void {
   const c: Capture = { game, sessionId: `s${Date.now().toString(36)}`, win: null, ready: false, rec: null, attempts: 0, stopping: false, mimeFrom: 0, quickAt: 0, eng: null, engAttempts: [], engIdx: 0, engRestarts: 0, engStart: Date.now(), engRound: 0 }
-  capture = c
-  lastProblem = undefined
+  setCapture(c)
+  setLastProblem(undefined)
   log(`Jeu lancé : ${game.name}. Capture démarrée (encodage vidéo par la carte graphique selon Chromium : ${app.getGPUFeatureStatus().video_encode} ; fonctions : ${app.commandLine.getSwitchValue('enable-features') || 'aucune'}).`)
   ensureTick()
   openWindow(c)
@@ -1116,7 +986,7 @@ async function stopCapture(reason: string, gameOver = true): Promise<void> {
   const win = c.win
   c.win = null
   if (win && !win.isDestroyed()) win.destroy()
-  capture = null
+  setCapture(null)
   emitState()
   await Promise.all([...recorders.values()].map((r) => r.writes.catch(() => {})))
   for (const p of [...pendings.values()]) finalize(p)
@@ -1125,23 +995,8 @@ async function stopCapture(reason: string, gameOver = true): Promise<void> {
   if (gameOver) noteGamePace(c)
 }
 
-/**
- * Bêta 46 : la partie est finie et ses derniers clips sont écrits. Le rythme de ses clips est gardé pour Paramètres, et la
- * page le dit une fois si des clips sont sous le seuil (jamais pendant la partie : rien ne s'affiche avant cet instant).
- */
-function noteGamePace(c: Capture): void {
-  try {
-    lastGame = gamePace(clipIndex().filter((x) => x.sessionId === c.sessionId && x.kind !== 'film').map((x) => ({ pace: cleanPace(x.pace), durationS: x.durationS })), c.game.name, Date.now())
-    setKv(LAST_GAME_KEY, lastGame)
-    log(lastGame.clips ? `${gamePaceLine(lastGame)} (${String(lastGame.fps).replace('.', ',')} images/s sur ${lastGame.clips} clip(s), ${c.game.name}).` : `Partie finie sans clip dont le rythme est connu (${c.game.name}).`)
-    emitState()
-  } catch (e) {
-    log(`Rythme de la partie : ${errText(e)}`)
-  }
-}
-
 async function clearBuffer(): Promise<void> {
-  frags = []
+  setFrags([])
   recorders.clear()
   await rm(bufferRoot(), { recursive: true, force: true }).catch((e) => log(`Tampon non vidé : ${errText(e)}`))
 }
@@ -1171,7 +1026,7 @@ function sync(): void {
 
 /** Jeux de la bibliothèque en cours (updateRunning, index.ts). */
 export function syncClipsRunning(running: Game[]): void {
-  libraryRunning = running.map((g) => ({ id: g.id, name: cleanName(g.name) }))
+  setLibraryRunning(running.map((g) => ({ id: g.id, name: cleanName(g.name) })))
   sync()
 }
 
@@ -1183,7 +1038,7 @@ function onRecorderStopped(rec: Recorder, info: { reason?: unknown; badSince?: u
     const bad = info.badSince
     rec.writes = rec.writes.then(() => {
       const gone = frags.filter((f) => f.recId === rec.id && f.startWall >= bad)
-      frags = frags.filter((f) => !(f.recId === rec.id && f.startWall >= bad))
+      setFrags(frags.filter((f) => !(f.recId === rec.id && f.startWall >= bad)))
       for (const f of gone) void unlink(f.file).catch(() => {})
     })
   }
@@ -1231,7 +1086,7 @@ function registerRecorderIpc(): void {
     rec.audioError = typeof info.audioError === 'string' ? info.audioError.slice(0, 200) : undefined
     if (capture) {
       capture.failure = undefined
-      lastProblem = undefined
+      setLastProblem(undefined)
     }
     log(`Enregistreur ${rec.id} : ${rec.mime}, son : ${rec.audio}.${rec.audioError ? ` ${rec.audioError}` : ''}`)
     syncHotkey()
@@ -1338,7 +1193,7 @@ export function startClips(): void {
   if (started) return
   loadClipSettings()
   loadClipIndex()
-  lastGame = cleanGamePace(getKv<unknown>(LAST_GAME_KEY, null))
+  loadLastGame()
   registerClipProtocol(SCHEME, (id) => {
     const c = clipById(id)
     return c ? { video: c.file, thumb: thumbPath(c.id) } : undefined
@@ -1397,7 +1252,7 @@ export function startClips(): void {
       .then(() => logFlushed())
       .finally(() => {
         // Plus rien n'attend (ou l'attente est finie) : cette fois, on quitte.
-        capture = null
+        setCapture(null)
         stopping = null
         pendings.clear()
         forgetFiles()
@@ -1410,7 +1265,7 @@ export function startClips(): void {
   if (!app.isPackaged) {
     ;(globalThis as { pxClipsTest?: unknown }).pxClipsTest = {
       setRunning: (list: RunningGame[]) => {
-        testRunning = list
+        setTestRunning(list)
         sync()
       },
       /** Le raccourci « garder un clip », sans touche (il n'a plus de canal : seul le raccourci s'en sert). */
