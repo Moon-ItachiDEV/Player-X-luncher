@@ -1,0 +1,7 @@
+/* Paramètres › Mon PC (settings.js, pPc) : pilote de la carte graphique et fréquence des écrans, en lecture seule */
+.pc-up{font-style:normal;color:var(--rose-t);font-weight:600}
+.pc-ok{color:var(--ok)}
+.pc-ok .ic{width:12px;height:12px;stroke-width:2.6;margin-right:4px;vertical-align:-1px}
+.pc-tag{margin-left:6px;padding:1px 6px;border-radius:6px;background:var(--rose-soft);color:var(--rose-t);font-size:11px;font-weight:600;vertical-align:1px}
+.sr-t .pc-ok,.sr-t .pc-up{display:inline}
+.pc-ok .ic{display:inline-block}

@@ -1,0 +1,148 @@
+/* Boutons caméléon : l'accueil et la fiche du jeu prennent le style du jeu affiché (style.js).
+   Sur la fiche, seuls le grand bouton et le titre changent : les petites actions du dock gardent leur place.
+   Sans style (jeu neutre, réglage coupé, « Toute ta bibliothèque ») : rien ne change, l'îlot rose habituel.
+   Chaque style ne lit que --gs-acc (l'accent tiré de la jaquette) et --gs-on (le texte posé dessus). */
+.pb-chev{display:none}
+:is(.v-play,.cx-gs)[data-gs] .ht-acts{background:none;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;padding:0;gap:10px}
+[data-gs] :is(.ht-acts,.dock) .play-btn::after{background:var(--gs-acc)}
+.v-play[data-gs] .rail-t.on i{background:var(--gs-acc)}
+[data-gs] .play-btn,:is(.v-play,.cx-gs)[data-gs] .ht-acts .dk-b{transition:background-color .35s,color .35s,box-shadow .35s,translate .2s,scale .12s}
+:is(.ht-acts,.dock).gs-in{animation:gsIn .32s var(--e-out) both}
+@keyframes gsIn{from{opacity:.2;filter:blur(4px);translate:0 4px}to{opacity:1;filter:none;translate:0 0}}
+[data-gs] :is(.ht-title,.gp-title){text-wrap:balance}
+.v-play[data-gs] .ht-title.is-in{animation-name:htF}
+
+/* Néon : coins coupés, lettres mono, trame de scanlines, décalage RVB au survol */
+[data-gs=neon] :is(.ht-title,.gp-title){font-family:'PX Neon',var(--f-ui,sans-serif);font-weight:700;text-transform:uppercase;letter-spacing:.03em;font-stretch:normal;text-shadow:2px 0 0 color-mix(in srgb,var(--gs-acc) 70%,transparent),-2px 0 0 rgba(0,240,255,.45)}
+:is(.v-play,.cx-gs)[data-gs=neon] .ht-acts :is(.play-btn,.dk-b),[data-gs=neon] .dock .play-btn{height:52px;border-radius:0;font-family:'PX Neon',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.14em;font-size:14px;clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+[data-gs=neon] :is(.ht-acts,.dock) .play-btn{background:var(--gs-acc);color:var(--gs-on);box-shadow:none;min-width:200px}
+[data-gs=neon] :is(.ht-acts,.dock) .play-btn .pb-in::before{content:"";position:absolute;inset:-30px -400px;background:repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 1px,transparent 1px 3px);pointer-events:none}
+:is(.v-play,.cx-gs)[data-gs=neon] .ht-acts .dk-b{color:var(--gs-acc);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--gs-acc) 70%,transparent);padding:0 20px}
+:is(.v-play,.cx-gs)[data-gs=neon] .ht-acts .dk-i{width:52px;padding:0}
+@media(hover:hover){
+  [data-gs=neon] :is(.ht-acts,.dock) .play-btn:hover{background:var(--gs-acc);animation:gsGlitch .35s steps(2) 1;text-shadow:2px 0 #00f0ff,-2px 0 #ff2bd6}
+  :is(.v-play,.cx-gs)[data-gs=neon] .ht-acts .dk-b:hover{background:color-mix(in srgb,var(--gs-acc) 14%,transparent);color:var(--gs-acc)}
+}
+@keyframes gsGlitch{0%{translate:0}25%{translate:2px -1px}50%{translate:-2px 1px}75%{translate:1px 1px}100%{translate:0}}
+
+/* Stade : parallélogramme penché, italique serré, ombre blanche franche, éclat qui balaie */
+[data-gs=stade] :is(.ht-title,.gp-title){font-family:'PX Stade',var(--f-ui,sans-serif);font-style:italic;font-weight:800;text-transform:uppercase;letter-spacing:0;font-stretch:normal;font-size:clamp(60px,7.4cqw,116px);line-height:.98}
+:is(.v-play,.cx-gs)[data-gs=stade] .ht-acts :is(.play-btn,.dk-b),[data-gs=stade] .dock .play-btn{height:54px;border-radius:4px;transform:skewX(-14deg);font-family:'PX Stade',sans-serif;font-style:italic;font-weight:800;text-transform:uppercase;font-size:21px;letter-spacing:.02em}
+:is(.v-play,.cx-gs)[data-gs=stade] .ht-acts :is(.play-btn .pb-in,.dk-b>*),[data-gs=stade] .dock .play-btn .pb-in{transform:skewX(14deg)}
+[data-gs=stade] :is(.ht-acts,.dock) .play-btn{overflow:hidden;background:var(--gs-acc);color:var(--gs-on);box-shadow:6px 6px 0 rgba(255,255,255,.92);min-width:200px;margin-right:6px}
+[data-gs=stade] :is(.ht-acts,.dock) .play-btn .pb-in::after{content:"";position:absolute;inset:-20px -60px;background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.45) 48%,transparent 60%);translate:-120% 0;transition:translate .5s;pointer-events:none}
+:is(.v-play,.cx-gs)[data-gs=stade] .ht-acts .dk-b{background:#fff;color:#111;padding:0 20px}
+:is(.v-play,.cx-gs)[data-gs=stade] .ht-acts .dk-i{width:54px;padding:0}
+@media(hover:hover){
+  [data-gs=stade] :is(.ht-acts,.dock) .play-btn:hover{background:var(--gs-acc);box-shadow:8px 8px 0 rgba(255,255,255,.92)}
+  [data-gs=stade] :is(.ht-acts,.dock) .play-btn:hover .pb-in::after{translate:120% 0}
+  :is(.v-play,.cx-gs)[data-gs=stade] .ht-acts .dk-b:hover{background:#e9e9e9;color:#111}
+}
+
+/* Épique : capitales gravées, double filet, losanges aux coins, éclat de l'accent */
+[data-gs=epique] :is(.ht-title,.gp-title){font-family:'PX Epique',Georgia,serif;font-weight:700;letter-spacing:.05em;font-stretch:normal;font-size:clamp(46px,5.6cqw,88px);background:linear-gradient(180deg,#fff 0%,color-mix(in srgb,var(--gs-acc) 80%,#fff) 60%,color-mix(in srgb,var(--gs-acc) 70%,#000) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+:is(.v-play,.cx-gs)[data-gs=epique] .ht-acts :is(.play-btn,.dk-b),[data-gs=epique] .dock .play-btn{height:56px;border-radius:2px;font-family:'PX Epique',Georgia,serif;font-weight:700;letter-spacing:.12em;font-size:15px}
+[data-gs=epique] :is(.ht-acts,.dock) .play-btn{overflow:visible;isolation:auto;color:var(--gs-acc);background:radial-gradient(120% 140% at 50% 0%,color-mix(in srgb,var(--gs-acc) 30%,transparent),rgba(0,0,0,.55));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--gs-acc) 80%,transparent),inset 0 0 0 4px rgba(0,0,0,.6),inset 0 0 0 5px color-mix(in srgb,var(--gs-acc) 40%,transparent);min-width:210px;margin:0 6px}
+/* Les losanges aux deux bouts : ::before et ::after du bouton (la lueur floue n'est pas de ce style) */
+[data-gs=epique] :is(.ht-acts,.dock) .play-btn::before,[data-gs=epique] :is(.ht-acts,.dock) .play-btn::after{content:"";position:absolute;inset:auto;top:calc(50% - 5px);width:10px;height:10px;border-radius:0;background:var(--gs-acc);rotate:45deg;filter:none;opacity:1;scale:1;z-index:1}
+[data-gs=epique] :is(.ht-acts,.dock) .play-btn::before{left:-5px}[data-gs=epique] :is(.ht-acts,.dock) .play-btn::after{right:-5px}
+:is(.v-play,.cx-gs)[data-gs=epique] .ht-acts .dk-b{color:var(--t2);font-size:13px}
+:is(.v-play,.cx-gs)[data-gs=epique] .ht-acts .dk-i{width:48px;padding:0}
+@media(hover:hover){
+  [data-gs=epique] :is(.ht-acts,.dock) .play-btn:hover{background:radial-gradient(120% 140% at 50% 0%,color-mix(in srgb,var(--gs-acc) 42%,transparent),rgba(0,0,0,.5));box-shadow:inset 0 0 0 1px var(--gs-acc),inset 0 0 0 4px rgba(0,0,0,.6),inset 0 0 0 5px color-mix(in srgb,var(--gs-acc) 70%,transparent),0 0 30px -6px var(--gs-acc)}
+  :is(.v-play,.cx-gs)[data-gs=epique] .ht-acts .dk-b:hover{background:none;color:var(--bone)}
+}
+
+/* Pop : autocollant épais, contour blanc, ombre franche, rebond */
+[data-gs=pop] :is(.ht-title,.gp-title){font-family:'PX Pop',var(--f-ui,sans-serif);font-weight:800;letter-spacing:0;font-stretch:normal;line-height:.98;color:#fff;text-shadow:3px 3px 0 var(--gs-acc),6px 6px 0 rgba(0,0,0,.35)}
+:is(.v-play,.cx-gs)[data-gs=pop] .ht-acts :is(.play-btn,.dk-b),[data-gs=pop] .dock .play-btn{height:54px;border-radius:999px;font-family:'PX Pop',sans-serif;font-weight:800;font-size:19px;box-shadow:0 0 0 3px #fff,0 6px 0 3px rgba(0,0,0,.55);transition:translate .18s cubic-bezier(.3,1.6,.5,1),box-shadow .18s,background-color .35s}
+[data-gs=pop] :is(.ht-acts,.dock) .play-btn{background:var(--gs-acc);color:var(--gs-on);min-width:190px;margin:0 4px}
+:is(.v-play,.cx-gs)[data-gs=pop] .ht-acts .dk-b{background:#fff;color:#1b1420;padding:0 22px}
+:is(.v-play,.cx-gs)[data-gs=pop] .ht-acts .dk-i{width:54px;padding:0}
+:is(.v-play,.cx-gs)[data-gs=pop] .ht-acts :is(.play-btn,.dk-b):not(:disabled):active,[data-gs=pop] .dock .play-btn:not(:disabled):active{scale:1;translate:0 3px;box-shadow:0 0 0 3px #fff,0 2px 0 3px rgba(0,0,0,.55)}
+@media(hover:hover){
+  [data-gs=pop] :is(.ht-acts,.dock) .play-btn:hover{background:var(--gs-acc)}
+  :is(.v-play,.cx-gs)[data-gs=pop] .ht-acts .dk-b:hover{background:#fff;color:#1b1420}
+  :is(.v-play,.cx-gs)[data-gs=pop] .ht-acts :is(.play-btn,.dk-b):hover,[data-gs=pop] .dock .play-btn:hover{translate:0 -3px;box-shadow:0 0 0 3px #fff,0 9px 0 3px rgba(0,0,0,.55)}
+}
+
+/* Vitesse : italique large, angle coupé, chevrons qui filent */
+[data-gs=vitesse] :is(.ht-title,.gp-title){font-family:'PX Vitesse',var(--f-ui,sans-serif);font-style:italic;text-transform:uppercase;letter-spacing:.01em;font-stretch:normal;font-weight:400}
+:is(.v-play,.cx-gs)[data-gs=vitesse] .ht-acts :is(.play-btn,.dk-b),[data-gs=vitesse] .dock .play-btn{height:52px;border-radius:3px 18px 3px 18px;font-family:'Archivo',sans-serif;font-stretch:120%;font-style:italic;font-weight:800;text-transform:uppercase;letter-spacing:.04em;font-size:15px}
+[data-gs=vitesse] :is(.ht-acts,.dock) .play-btn{background:linear-gradient(100deg,var(--gs-acc) 0 72%,color-mix(in srgb,var(--gs-acc) 70%,#000) 72%);color:var(--gs-on);box-shadow:none;min-width:210px}
+[data-gs=vitesse] .pb-chev{display:inline-flex;letter-spacing:-.25em;font-style:normal;transition:translate .3s var(--e-out)}
+[data-gs=vitesse] .pb-chev b{opacity:.35;transition:opacity .2s}
+:is(.v-play,.cx-gs)[data-gs=vitesse] .ht-acts .dk-b{background:rgba(255,255,255,.08);box-shadow:inset 3px 0 0 var(--gs-acc);color:var(--bone);padding:0 18px}
+:is(.v-play,.cx-gs)[data-gs=vitesse] .ht-acts .dk-i{width:52px;padding:0}
+@media(hover:hover){
+  [data-gs=vitesse] :is(.ht-acts,.dock) .play-btn:hover{background:linear-gradient(100deg,var(--gs-acc) 0 72%,color-mix(in srgb,var(--gs-acc) 70%,#000) 72%)}
+  [data-gs=vitesse] :is(.ht-acts,.dock) .play-btn:hover .pb-chev{translate:6px 0}
+  [data-gs=vitesse] :is(.ht-acts,.dock) .play-btn:hover .pb-chev b{opacity:1}
+  :is(.v-play,.cx-gs)[data-gs=vitesse] .ht-acts .dk-b:hover{background:rgba(255,255,255,.14)}
+}
+
+/* Frisson : machine à écrire, un seul trait de couleur, lumière qui vacille au survol */
+[data-gs=frisson] :is(.ht-title,.gp-title){font-family:'PX Frisson',ui-monospace,monospace;font-weight:400;letter-spacing:.02em;font-stretch:normal;color:#e9e4dc;text-shadow:0 0 18px color-mix(in srgb,var(--gs-acc) 50%,transparent)}
+:is(.v-play,.cx-gs)[data-gs=frisson] .ht-acts :is(.play-btn,.dk-b),[data-gs=frisson] .dock .play-btn{height:52px;border-radius:2px;font-family:'PX Frisson',monospace;font-weight:400;font-size:16px;letter-spacing:.08em;text-transform:lowercase}
+[data-gs=frisson] :is(.ht-acts,.dock) .play-btn{background:rgba(0,0,0,.62);color:#f0ebe3;box-shadow:inset 0 -2px 0 var(--gs-acc),inset 0 0 0 1px rgba(255,255,255,.12);min-width:180px}
+[data-gs=frisson] :is(.ht-acts,.dock) .play-btn::after{display:none}
+:is(.v-play,.cx-gs)[data-gs=frisson] .ht-acts .dk-b{color:var(--t3)}
+:is(.v-play,.cx-gs)[data-gs=frisson] .ht-acts .dk-i{width:48px;padding:0}
+@media(hover:hover){
+  [data-gs=frisson] :is(.ht-acts,.dock) .play-btn:hover{background:rgba(0,0,0,.7);color:var(--gs-acc);animation:gsFlick 1.6s linear infinite}
+  :is(.v-play,.cx-gs)[data-gs=frisson] .ht-acts .dk-b:hover{background:none;color:var(--t2)}
+}
+@keyframes gsFlick{0%,19%,23%,60%,64%,100%{opacity:1}20%,22%,62%{opacity:.4}}
+
+/* FPS · Tactique : mono carré, crochets de viseur autour du bouton */
+[data-gs=tactique] :is(.ht-title,.gp-title){font-family:'Archivo',sans-serif;font-stretch:68%;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+:is(.v-play,.cx-gs)[data-gs=tactique] .ht-acts :is(.play-btn,.dk-b),[data-gs=tactique] .dock .play-btn{height:50px;border-radius:0;font-family:'PX Tactique',ui-monospace,monospace;font-weight:400;text-transform:uppercase;letter-spacing:.12em;font-size:14px}
+[data-gs=tactique] :is(.ht-acts,.dock) .play-btn{overflow:visible;background:color-mix(in srgb,var(--gs-acc) 88%,#000);color:var(--gs-on);box-shadow:none;min-width:200px;margin:0 8px}
+[data-gs=tactique] :is(.ht-acts,.dock) .play-btn .pb-ring{display:none}
+[data-gs=tactique] :is(.ht-acts,.dock) .play-btn::after{inset:-7px;border-radius:0;background:none;filter:none;opacity:1;scale:1;border:1.5px solid var(--gs-acc);-webkit-mask:conic-gradient(at 12px 12px,transparent 75%,#000 0) 0 0/calc(100% - 12px) calc(100% - 12px);mask:conic-gradient(at 12px 12px,transparent 75%,#000 0) 0 0/calc(100% - 12px) calc(100% - 12px);transition:inset .2s}
+:is(.v-play,.cx-gs)[data-gs=tactique] .ht-acts .dk-b{background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:var(--bone);padding:0 18px}
+:is(.v-play,.cx-gs)[data-gs=tactique] .ht-acts .dk-i{width:50px;padding:0}
+@media(hover:hover){
+  [data-gs=tactique] :is(.ht-acts,.dock) .play-btn:hover{background:var(--gs-acc)}
+  [data-gs=tactique] :is(.ht-acts,.dock) .play-btn:hover::after{inset:-10px;opacity:1;scale:1}
+  :is(.v-play,.cx-gs)[data-gs=tactique] .ht-acts .dk-b:hover{background:rgba(255,255,255,.12)}
+}
+
+/* Sur la fiche, le titre garde sa taille et le bouton toute la largeur du dock */
+.gp[data-gs] .gp-title{font-size:clamp(48px,5.6cqw,88px);line-height:1.1}
+.gp[data-gs] .gp-title[data-len=l]{font-size:clamp(40px,4.2cqw,64px)}
+.gp[data-gs] .dock .play-btn{min-width:0;width:100%;margin:0}
+.gp[data-gs=stade] .dock .play-btn{width:calc(100% - 8px)}
+.gp[data-gs=epique] .dock .play-btn{width:calc(100% - 12px);margin:0 6px}
+.gp[data-gs=tactique] .dock .play-btn{width:calc(100% - 16px);margin:6px 8px}
+.gp[data-gs] .dock .dk-b[aria-pressed=true] .ic-swap .b{color:var(--gs-acc)}
+
+/* Le menu d'un jeu (clic droit) : la jaquette floutée transparaît derrière le verre, teintée par l'accent du jeu */
+.mn.mn-game{isolation:isolate;overflow:hidden;background:rgba(14,10,16,.5)}
+.mn-art{position:absolute;inset:-40px;z-index:-1;background-size:cover;background-position:center;filter:blur(34px) saturate(1.5) brightness(.62);opacity:.9;pointer-events:none}
+.mn.mn-game::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(180deg,rgba(10,8,12,.15),rgba(10,8,12,.55))}
+.mn.mn-game[data-gs]::before{background:linear-gradient(180deg,color-mix(in srgb,var(--gs-acc) 22%,transparent),rgba(10,8,12,.55) 70%)}
+.mn.mn-game .mn-h,.mn.mn-game hr{border-color:rgba(255,255,255,.14)}
+.mn.mn-game button .ic{color:rgba(247,241,244,.8)}
+@media(hover:hover){.mn.mn-game button:hover{background:rgba(255,255,255,.12)}}
+.mn[data-gs] button.is-main .ic{background:var(--gs-acc);color:var(--gs-on)}
+@media(hover:hover){.mn[data-gs] button.is-main:hover{background:color-mix(in srgb,var(--gs-acc) 22%,transparent)}}
+.mn[data-gs=neon] button.is-main{font-family:'PX Neon',sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:13px}
+.mn[data-gs=neon] button.is-main .ic{border-radius:0;clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)}
+.mn[data-gs=stade] button.is-main{font-family:'PX Stade',sans-serif;font-style:italic;font-weight:800;text-transform:uppercase;font-size:17px}
+.mn[data-gs=stade] button.is-main .ic{border-radius:3px;transform:skewX(-12deg);box-shadow:3px 3px 0 #fff}
+.mn[data-gs=epique] button.is-main{font-family:'PX Epique',Georgia,serif;letter-spacing:.08em;color:var(--gs-acc)}
+.mn[data-gs=epique] button.is-main .ic{border-radius:2px;background:rgba(0,0,0,.5);color:var(--gs-acc);box-shadow:inset 0 0 0 1px var(--gs-acc)}
+.mn[data-gs=pop] button.is-main{font-family:'PX Pop',sans-serif;font-weight:800;font-size:16px}
+.mn[data-gs=pop] button.is-main .ic{box-shadow:0 0 0 2px #fff,0 3px 0 2px rgba(0,0,0,.5)}
+.mn[data-gs=vitesse] button.is-main{font-family:'Archivo',sans-serif;font-stretch:120%;font-style:italic;font-weight:800;text-transform:uppercase;letter-spacing:.03em;font-size:13px}
+.mn[data-gs=vitesse] button.is-main .ic{border-radius:2px 8px 2px 8px}
+.mn[data-gs=frisson] button.is-main{font-family:'PX Frisson',monospace;font-weight:400;text-transform:lowercase;letter-spacing:.06em}
+.mn[data-gs=frisson] button.is-main .ic{border-radius:2px;background:rgba(0,0,0,.6);color:#f0ebe3;box-shadow:inset 0 -2px 0 var(--gs-acc)}
+.mn[data-gs=tactique] button.is-main{font-family:'PX Tactique',monospace;font-weight:400;text-transform:uppercase;letter-spacing:.1em;font-size:13px}
+.mn[data-gs=tactique] button.is-main .ic{border-radius:0;outline:1px solid var(--gs-acc);outline-offset:2px}
+
+/* La mise à jour garde son bouton clair, quel que soit le style */
+[data-gs] :is(.ht-acts,.dock) .play-btn.is-upd{background:linear-gradient(180deg,#fff,#E9E2E6);color:#150d12}
+:is(.v-play,.cx-gs)[data-gs] .ht-acts .dk-b:focus-visible,[data-gs] :is(.ht-acts,.dock) .play-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){:is(.v-play,.cx-gs)[data-gs] .ht-acts :is(.play-btn,.dk-b):hover,[data-gs] .dock .play-btn:hover{animation:none}}

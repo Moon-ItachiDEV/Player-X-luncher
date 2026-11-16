@@ -1,0 +1,16 @@
+{
+  "name": "FFmpeg",
+  "version": "9.0.2",
+  "build": "n9.0.2-39-g7adfbe40dc",
+  "builtOn": "31 octobre 2026",
+  "license": "GNU LGPL version 3 ou ultérieure",
+  "zipUrl": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-9.0.zip",
+  "zipSha256": "9d37c564e0d01c18cde184a079fa6ef04d7d2783ada41da81d04165cc8f1a650",
+  "zipSize": 168715328,
+  "exeInZip": "ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-9.0/bin/ffmpeg.exe",
+  "licenseInZip": "ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-9.0/LICENSE.txt",
+  "exeSha256": "d03c858a130cae1382902925d9f46eb15d7de42e025d34cc29b7ddca6cfb4c62",
+  "exeSize": 132190720,
+  "sourceUrl": "https://github.com/FFmpeg/FFmpeg/tree/7adfbe40dcde598f93a6963d2f7b22cd75202ccc",
+  "buildScriptsUrl": "https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-10-31-12-59"
+}

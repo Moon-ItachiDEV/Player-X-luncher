@@ -1,0 +1,229 @@
+/* Overlay CS2, trois styles à l'essai (0.6.2-beta.1) : Étendard (.te), Viseur (.tv), Régie (.tr). Rendu par overlay/trois.ts.
+   Repris de la maquette « Overlay CS2 · trois pistes » (v3). Mesures pour un écran de 1080 px de haut : la racine .ov3 est
+   mise à l'échelle par `zoom` (hauteur de l'écran puissance 0,8, fois la taille choisie), et les positions suivent le HUD
+   de CS2 (hauteur de l'écran, puissance 1) grâce à --p : calc(340px * var(--p)).
+   Rouge du blason seulement, jamais de rose. Camps : bleu CT et ocre T, les couleurs du jeu. */
+
+@font-face{font-family:'PX Chakra';src:url('../assets/fonts/chakra-petch-700.woff2') format('woff2');font-weight:700;font-display:block}
+@font-face{font-family:'PX Mono';src:url('../assets/fonts/share-tech-mono.woff2') format('woff2');font-weight:400;font-display:block}
+@font-face{font-family:'PX Barlow';src:url('../assets/fonts/barlow-condensed-800i.woff2') format('woff2');font-weight:800;font-style:italic;font-display:block}
+@font-face{font-family:'PX Cinzel';src:url('../assets/fonts/cinzel-700.woff2') format('woff2');font-weight:700;font-display:block}
+@font-face{font-family:'Sora';font-style:normal;font-display:swap;font-weight:800;src:url('@fontsource/sora/files/sora-latin-800-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+
+.ov3{--red:#e8264f;--red-hi:#e8264f;--red-lo:#b3112f;--ct:#7fb2ff;--t:#f0b54a;font-variant-numeric:tabular-nums}
+/* Mise à jour sans changer de moment (argent, compte à rebours, mort) : rien ne rejoue son entrée. */
+.ov3.ov3-still *,.ov3.ov3-still *::before,.ov3.ov3-still *::after{animation:none!important}
+/* Place choisie dans Paramètres › Overlay : chaque bloc se décale ; les voiles plein écran et l'étiquette d'aperçu restent. */
+.ov3>:not(.vig):not(.flashw):not(.ov-sample){transform:translate(var(--dx,0px),var(--dy,0px))}
+.ov3 .ov-sample{font-family:'Inter',system-ui,sans-serif;font-style:normal;text-transform:none;color:rgba(255,255,255,.86);background:rgba(13,5,7,.86)}
+
+/* ===================================================================
+   OVERLAY · données communes
+   =================================================================== */
+.ov3 *{box-sizing:border-box}
+.ov3 .ct{color:var(--ct)}.ov3 .tt{color:var(--t)}
+
+/* ===================================================================
+   A · VISEUR : aucune carte, des lignes et des crochets accrochés au HUD
+   =================================================================== */
+/* 0.6.2 : plus de halo sombre flou derrière les blocs (il faisait une tache grise en jeu). La lecture tient avec un
+   contour noir net de 1 px autour des lettres, et les petites plaques sombres derrière le texte fin. */
+.tv{--a:#e8264f;font-family:"PX Chakra",sans-serif;color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.85),-1px 1px 0 rgba(0,0,0,.85),1px -1px 0 rgba(0,0,0,.85),-1px -1px 0 rgba(0,0,0,.85),0 2px 2px rgba(0,0,0,.6)}
+.tv .mono{font-family:"PX Mono",monospace;letter-spacing:.04em}
+.tv .blk{position:absolute;padding:18px 22px}
+.tv .br{position:absolute;width:26px;height:26px;border-color:var(--a);border-style:solid;filter:drop-shadow(0 0 6px rgba(232,38,79,.8))}
+.tv .br.tl{left:0;top:0;border-width:3px 0 0 3px}.tv .br.tr{right:0;top:0;border-width:3px 3px 0 0}
+.tv .br.bl{left:0;bottom:0;border-width:0 0 3px 3px}.tv .br.brr{right:0;bottom:0;border-width:0 3px 3px 0}
+.tv .k{font:400 17px/1 "PX Mono",monospace;color:rgba(255,255,255,.66);letter-spacing:.08em}
+.tv .k b{color:var(--a);font-weight:400}
+.tv .score{font-size:52px;line-height:1;display:flex;align-items:center;gap:18px;margin-top:10px}
+.tv .score .dash{width:44px;height:4px;background:#fff;opacity:.7}
+.tv .score small{font:400 18px/1 "PX Mono",monospace;opacity:.8}
+.tv .ticks{display:flex;align-items:flex-end;gap:7px;height:36px;margin-top:10px}
+.tv .ticks i{width:12px;background:rgba(255,255,255,.35);box-shadow:0 0 4px #000}
+.tv .ticks i.w{background:var(--a);box-shadow:0 0 8px rgba(232,38,79,.9)}
+.tv .ticks i.nx{background:none;outline:2px dashed var(--a);height:18px!important}
+.tv .ticks i.sw{margin-left:12px}
+.tv .money{font-size:42px;line-height:1;margin-top:12px}
+.tv .money small{font-size:24px;margin-right:6px;color:rgba(255,255,255,.66)}
+.tv .budget{position:relative;height:10px;margin-top:12px;background:rgba(255,255,255,.18)}
+.tv .budget>i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--red-lo),var(--a));box-shadow:0 0 10px rgba(232,38,79,.8)}
+.tv .budget>em{position:absolute;top:-8px;bottom:-8px;width:2px;background:#fff}
+.tv .budget>em span{position:absolute;top:22px;left:-40px;width:80px;text-align:center;font:400 13px/1 "PX Mono",monospace;font-style:normal;opacity:.85}
+.tv .nxt{margin-top:8px;font:400 17px/1.3 "PX Mono",monospace;color:rgba(255,255,255,.86)}
+.tv .adv{margin-top:30px;font:400 16px/1.3 "PX Mono",monospace;color:#fff}
+.tv .adv b{color:var(--a);font-weight:400}
+.tv .stats{display:flex;gap:26px;margin-top:16px;font:400 20px/1 "PX Mono",monospace}
+.tv .stats span{opacity:.75;margin-right:8px}
+.tv .pips{display:flex;gap:14px}
+.tv .pips i{width:24px;height:24px;rotate:45deg;border:3px solid rgba(255,255,255,.5);background:rgba(0,0,0,.45);box-shadow:0 0 4px #000}
+.tv .pips i.on{background:#fff;border-color:#fff;box-shadow:0 0 0 3px var(--a),0 0 16px var(--a)}
+.tv .pips i.new{animation:aPulse .5s ease-out 3}
+@keyframes aPulse{50%{scale:1.5}}
+.tv .k,.tv .adv,.tv .stats,.tv .nxt{background:rgba(8,3,5,.62);padding:4px 8px;width:fit-content;text-shadow:none}
+.tv .kda{font-size:34px;line-height:1}
+.tv .flash{font-size:46px;line-height:1;color:#fff}
+.tv .flash b{color:var(--a)}
+.tv .scan{position:absolute;right:100%;top:50%;height:2px;width:520px;margin-right:22px;background:linear-gradient(270deg,var(--a),transparent)}
+.tv .band{display:flex;align-items:center;gap:22px;font-size:34px;white-space:nowrap}
+.tv .band::before,.tv .band::after{content:"";width:220px;height:2px;background:linear-gradient(90deg,transparent,var(--a))}
+.tv .band::after{background:linear-gradient(270deg,transparent,var(--a))}
+.tv .kn{display:flex;gap:7px;align-items:flex-end;height:70px}
+.tv .kn div{display:grid;justify-items:center;gap:4px;font:400 14px/1 "PX Mono",monospace}
+.tv .kn i{width:14px;background:rgba(255,255,255,.35)}
+.tv .kn i.w{background:var(--a);box-shadow:0 0 8px rgba(232,38,79,.9)}
+.tv .vig{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(0,0,0,.35),rgba(0,0,0,.82))}
+.tv .big{font-size:132px;line-height:.9;letter-spacing:.02em;color:#fff}
+.tv .big b{color:var(--a);font-weight:700}
+.tv .rd{display:grid;grid-template-columns:auto 1fr;gap:14px 34px;font:400 26px/1 "PX Mono",monospace}
+.tv .rd dt{color:rgba(255,255,255,.66);opacity:.85}.tv .rd dd{margin:0;color:#fff}
+.tv .rd>*{animation:aType .5s steps(14) both;animation-delay:calc(var(--i,0)*110ms + 300ms)}
+@keyframes aType{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes aIn{from{opacity:0;clip-path:inset(0 0 100% 0)}to{opacity:1;clip-path:inset(0 0 0 0)}}
+@keyframes aBr{from{scale:1.4;opacity:0}}
+@keyframes aScan{from{width:0;opacity:1}to{opacity:1}}
+.tv .in{animation:aIn .45s cubic-bezier(.2,.8,.2,1) both}
+.tv .in .br{animation:aBr .35s ease-out both}
+.tv .scan{animation:aScan .4s ease-out both}
+
+
+.ov3 .lg-blink{opacity:0;animation:lgBlink .9s ease-out both}
+@keyframes lgBlink{0%{opacity:0}20%{opacity:.55}100%{opacity:0}}
+.ov3 .mark{display:inline-block;flex:none;width:30px;height:35px;vertical-align:middle;filter:drop-shadow(0 2px 4px rgba(0,0,0,.8))}
+.ov3 .mark svg{width:100%;height:100%;display:block}
+/* ===================================================================
+   B · ÉTENDARD (0.6.2, refait) : le blason reste à droite, sous le fil des élim. Au lieu d'une grande bannière
+   verticale, il hisse des oriflammes horizontales, coupées en queue d'aronde, qui sortent de derrière lui :
+   une par info, de la plus importante (rouge, en haut) à la plus discrète. Moitié moins de place à l'écran.
+   =================================================================== */
+.te{font-family:'Sora',sans-serif;color:#fff;--cloth:#2a0a12;--cloth-lo:#14050a}
+.te .ens{position:absolute;right:40px;top:calc(300px * var(--p,1));display:flex;align-items:flex-start}
+.te .hold{position:relative;z-index:2;flex:none;display:grid;justify-items:center;gap:10px}
+.te .shield{width:132px;height:155px;filter:drop-shadow(0 6px 14px rgba(0,0,0,.75)) drop-shadow(0 0 18px rgba(232,38,79,.5))}
+.te .shield svg{width:100%;height:100%;overflow:visible}
+.te .shield.pulse{animation:tePulse .8s ease-out 2}
+@keyframes tePulse{40%{scale:1.1}}
+/* les 5 losanges des élim. du round, sous le blason */
+.te .kp{display:flex;gap:9px}
+.te .kp i{width:15px;height:15px;rotate:45deg;border:2px solid rgba(255,255,255,.5);background:rgba(10,3,6,.75);box-shadow:0 1px 4px #000}
+.te .kp i.on{background:#fff;border-color:#fff;box-shadow:0 0 0 2px #e8264f,0 0 12px #e8264f}
+.te .kp i.new{animation:aPulse .5s ease-out 3}
+/* la hampe : les oriflammes partent de derrière le blason */
+.te .fls{position:relative;z-index:1;display:grid;justify-items:end;gap:6px;margin:26px -34px 0 0}
+.te .fl{position:relative;display:flex;align-items:center;gap:18px;padding:12px 56px 12px 46px;white-space:nowrap;
+  background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.07) 48%,transparent 60%) 120% 0/250% 100% no-repeat,linear-gradient(180deg,var(--cloth),var(--cloth-lo));
+  box-shadow:inset 0 2px 0 rgba(232,38,79,.9),inset 0 -1px 0 rgba(232,38,79,.25);
+  clip-path:polygon(0 0,100% 0,100% 100%,0 100%,26px 50%);transform-origin:right center;
+  animation:teUnfurl .55s cubic-bezier(.2,.9,.2,1) both,teSheen 1.4s ease-out both;animation-delay:calc(var(--i,0)*110ms),calc(var(--i,0)*110ms + 250ms)}
+.te .fl.r{background:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.18) 48%,transparent 60%) 120% 0/250% 100% no-repeat,linear-gradient(180deg,var(--red-hi),var(--red-lo));box-shadow:inset 0 2px 0 rgba(255,255,255,.55);padding-block:14px}
+.te .fl.th{padding-block:8px;gap:12px;font:600 15px/1.2 'Sora';color:rgba(255,255,255,.86)}
+.te .fl.th b{color:#fff;font-weight:800}
+@keyframes teUnfurl{from{clip-path:polygon(100% 0,100% 0,100% 100%,100% 100%,100% 50%)}60%{transform:skewY(-1.6deg)}85%{transform:skewY(.6deg)}to{clip-path:polygon(0 0,100% 0,100% 100%,0 100%,26px 50%)}}
+@keyframes teSheen{from{background-position:120% 0,0 0}to{background-position:-30% 0,0 0}}
+.te .ey{font:700 13px/1 'Sora';letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.78)}
+.te .fl.r .ey{color:#fff;opacity:.85}
+.te .col{display:grid;gap:7px}
+.te .sc{display:flex;align-items:baseline;gap:10px;font:800 44px/1 'Sora';letter-spacing:-.03em}
+.te .sc small{font:700 14px/1 'Sora';letter-spacing:.12em}
+.te .sc .d{opacity:.6}
+.te .fl.r .ct,.te .fl.r .tt{color:#fff}
+.te .fl.r .sc .them{opacity:.7}
+.te .mny{font:800 38px/1 'Sora';letter-spacing:-.02em}
+.te .adv{display:grid;gap:3px;font:600 15px/1.2 'Sora';color:rgba(255,255,255,.86)}
+.te .adv b{font:800 18px/1.1 'Sora';color:#fff}
+.te .ln{font:600 15px/1.2 'Sora';color:rgba(255,255,255,.86)}
+.te .ln b{font-weight:800}
+.te .word{font:700 34px/1 "PX Cinzel",serif;letter-spacing:.05em;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.25)}
+.te .word.l{font-size:40px}
+.te .rr{display:flex;gap:6px}
+.te .rr i{width:12px;height:12px;rotate:45deg;border:1.5px solid rgba(255,255,255,.5)}
+.te .rr i.w{background:#fff;border-color:#fff;box-shadow:0 0 6px rgba(255,255,255,.6)}
+.te .rr i.nx{border:1.5px dashed #fff}
+.te .rr i.sw{margin-left:10px}
+.te .fl:not(.r) .rr i.nx{border-color:var(--red-hi)}
+.te .st{display:flex;gap:26px}
+.te .st div{display:grid;gap:5px}
+.te .st span{font:700 11px/1 'Sora';letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.66)}
+.te .st b{font:800 26px/1 'Sora';letter-spacing:-.02em}
+.te .palm{display:flex;gap:16px;align-items:center}
+.te .palm span{display:inline-flex;align-items:center;gap:6px}
+.te .palm svg{width:14px;height:14px}
+.te .kt{display:grid;gap:4px}
+.te .kt small{font:700 12px/1 'Sora';letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.78)}
+.te .kt b{font:800 28px/1 'Sora'}
+
+/* ===================================================================
+   C · RÉGIE : bandeaux de retransmission, coupés en biais
+   =================================================================== */
+/* 0.6.2 : verre teinté façon Apple au lieu des fonds noirs pleins. Une fenêtre d'overlay transparente ne peut pas flouter
+   le jeu derrière elle (Windows ne le permet pas sans flouter tout l'écran) : le verre est imité par une teinte translucide,
+   un reflet en haut, un liseré clair et un grain fin. L'aperçu sur Dust II montre exactement ce qu'on verra en jeu. */
+.tr{font-family:"PX Barlow",sans-serif;font-style:italic;font-weight:800;text-transform:uppercase;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --gl:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.03) 42%,rgba(255,255,255,0) 60%),var(--grain),linear-gradient(180deg,rgba(32,24,28,.64),rgba(12,8,10,.7));
+  --gl-r:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,0) 32%),var(--grain),linear-gradient(180deg,rgba(220,30,70,.94),rgba(170,14,44,.92));
+  --gl-w:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,255,255,.78)),var(--grain);
+  --gl-edge:inset 0 1px 0 rgba(255,255,255,.3),inset 0 0 0 1px rgba(255,255,255,.1)}
+.tr .sl{display:inline-flex;align-items:center;transform:skewX(-14deg);padding:0 22px;height:56px;border-radius:5px;background:var(--gl);box-shadow:var(--gl-edge),0 10px 24px -10px rgba(0,0,0,.55)}
+.tr .sl>*{transform:skewX(14deg)}
+.tr .sl.r{background:var(--gl-r)}
+.tr .sl.w{background:var(--gl-w);color:#0d0507;text-shadow:none}
+.tr .row{display:flex;gap:6px;align-items:stretch}
+.tr .row+.row{margin-top:6px}
+.tr .l3{position:absolute;left:70px;bottom:calc(120px * var(--p,1))}
+.tr .l3 .sl{animation:cWipe .35s cubic-bezier(.7,0,.2,1) both;animation-delay:calc(var(--i,0)*70ms)}
+@keyframes cWipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+.tr .f22{font-size:24px;letter-spacing:.02em}
+.tr .f30{font-size:32px}
+.tr .scorebar{height:96px;padding:0 34px;gap:26px}
+.tr .scorebar .n{font-size:84px;line-height:1}
+.tr .scorebar .s{font-size:24px;opacity:.9}
+.tr .scorebar .v{width:3px;height:56px;background:rgba(255,255,255,.3)}
+.tr .stripe{width:10px;height:100%;margin-left:-22px;margin-right:12px}
+.tr .tick{font-family:'Inter';font-style:normal;text-transform:none;font-weight:600;font-size:21px;height:44px}
+.tr .tick b{font-family:"PX Barlow";font-style:italic;font-weight:800;font-size:26px;margin-right:6px}
+.tr .bug{position:absolute;left:0;top:calc(470px * var(--p,1));height:64px;padding:0 26px 0 34px;display:flex;align-items:center;gap:14px;background:var(--gl);box-shadow:var(--gl-edge);clip-path:polygon(0 0,100% 0,calc(100% - 18px) 100%,0 100%);font-size:34px;animation:cWipe0 .4s cubic-bezier(.7,0,.2,1) both}
+@keyframes cWipe0{from{clip-path:polygon(0 0,0 0,0 100%,0 100%)}}
+.tr .bug svg{width:44px;height:52px}
+.tr .bug small{font-size:22px;color:rgba(255,255,255,.66)}
+.tr .sting{position:absolute;left:0;bottom:calc(150px * var(--p,1));display:grid;justify-items:start}
+.tr .sting .big{font-size:170px;line-height:.86;padding:6px 80px 10px 60px;background:var(--gl-r);box-shadow:var(--gl-edge);clip-path:polygon(0 0,100% 0,calc(100% - 50px) 100%,0 100%);animation:cSlam .45s cubic-bezier(.7,0,.2,1) both;text-shadow:6px 6px 0 rgba(0,0,0,.35)}
+.tr .sting .sub{margin-top:-2px;padding:12px 60px 12px 60px;font-size:34px;background:var(--gl);box-shadow:var(--gl-edge);clip-path:polygon(0 0,100% 0,calc(100% - 18px) 100%,0 100%);animation:cSlam .45s .12s cubic-bezier(.7,0,.2,1) both}
+.tr .sting .sub b{color:var(--red-hi)}
+@keyframes cSlam{from{clip-path:polygon(0 0,0 0,0 100%,0 100%);translate:-60px 0}}
+.tr .flashw{position:absolute;inset:0;background:linear-gradient(90deg,rgba(232,38,79,.35),transparent 60%);animation:cFlash .6s ease-out both}
+@keyframes cFlash{from{opacity:1}to{opacity:0}}
+.tr .band{position:absolute;left:0;bottom:calc(110px * var(--p,1));height:220px;clip-path:polygon(0 0,100% 0,calc(100% - 40px) 100%,0 100%);background:var(--gl);box-shadow:var(--gl-edge);display:flex;align-items:stretch;animation:cWipe0 .5s cubic-bezier(.7,0,.2,1) both}
+.tr .band .hd{display:flex;flex-direction:column;justify-content:center;padding:0 40px 0 70px;background:var(--gl-r);box-shadow:var(--gl-edge);clip-path:polygon(0 0,100% 0,calc(100% - 40px) 100%,0 100%);min-width:0;flex:none}
+.tr .band .hd .t{font-size:30px;letter-spacing:.06em;opacity:.9}
+.tr .band .hd .n{font-size:96px;line-height:.9}
+.tr .band .hd .s{font-size:26px}
+.tr .bars{display:flex;flex-direction:column;justify-content:center;padding:0 40px;gap:8px}
+.tr .bars .cap{font-family:'Inter';font-style:normal;font-weight:700;font-size:16px;letter-spacing:.12em;color:rgba(255,255,255,.66)}
+.tr .bars .g{display:flex;align-items:flex-end;gap:8px;height:110px}
+.tr .bars .g div{display:grid;justify-items:center;gap:4px}
+.tr .bars .g i{width:26px;background:rgba(255,255,255,.22);transform-origin:bottom;animation:cGrow .5s cubic-bezier(.2,.9,.2,1) both;animation-delay:calc(var(--i,0)*40ms + 300ms);transform:skewX(-10deg)}
+.tr .bars .g i.w{background:linear-gradient(180deg,var(--red-hi),var(--red-lo))}
+.tr .bars .g span{font-size:20px}
+.tr .bars .g em{font-family:'Inter';font-style:normal;font-size:13px;font-weight:600;color:rgba(255,255,255,.5)}
+@keyframes cGrow{from{scale:1 0}}
+.tr .bstats{display:grid;grid-template-columns:repeat(2,auto);align-content:center;gap:10px 40px;padding:0 90px 0 44px;border-left:2px solid rgba(255,255,255,.12)}
+.tr .bstats span{display:block;font-family:'Inter';font-style:normal;font-weight:700;font-size:15px;letter-spacing:.12em;color:rgba(255,255,255,.66)}
+.tr .bstats b{font-size:48px;line-height:1}
+.tr .panel{position:absolute;right:0;top:calc(200px * var(--p,1));width:600px;display:grid;gap:8px;justify-items:end}
+.tr .panel>*{animation:cSlamR .45s cubic-bezier(.7,0,.2,1) both;animation-delay:calc(var(--i,0)*90ms)}
+@keyframes cSlamR{from{clip-path:inset(0 0 0 100%);translate:60px 0}to{clip-path:inset(0 0 0 0)}}
+.tr .ph{padding:10px 60px 10px 50px;font-size:30px;letter-spacing:.06em;background:var(--gl-w);color:#0d0507;text-shadow:none;clip-path:polygon(24px 0,100% 0,100% 100%,0 100%)}
+.tr .pr{width:100%;padding:16px 60px 16px 70px;background:var(--gl-r);box-shadow:var(--gl-edge);clip-path:polygon(40px 0,100% 0,100% 100%,0 100%);display:flex;align-items:baseline;gap:22px}
+.tr .pr .w{font-size:96px;line-height:.9}
+.tr .pr .s{font-size:62px;opacity:.95}
+.tr .pb{width:100%;padding:18px 60px 16px 80px;background:var(--gl);box-shadow:var(--gl-edge);clip-path:polygon(40px 0,100% 0,100% 100%,0 100%)}
+.tr .pb .cap{display:flex;justify-content:space-between;gap:20px;white-space:nowrap;font-family:'Inter';font-style:normal;font-weight:700;font-size:15px;letter-spacing:.12em;color:rgba(255,255,255,.66);text-transform:uppercase}
+.tr .pb svg{display:block;width:100%;height:auto;margin-top:8px}
+.tr .ps{display:flex;justify-content:space-between;gap:28px}
+.tr .ps span{display:block;font-family:'Inter';font-style:normal;font-weight:700;font-size:15px;letter-spacing:.12em;color:rgba(255,255,255,.66)}
+.tr .ps b{font-size:42px;line-height:1;white-space:nowrap}
+.tr .pm{padding:12px 60px 12px 50px;font-size:28px;background:var(--gl);box-shadow:var(--gl-edge);clip-path:polygon(24px 0,100% 0,100% 100%,0 100%)}
+.tr .pm b{color:var(--red-hi)}
+
+@media (prefers-reduced-motion: reduce){.ov3 *,.ov3 *::before,.ov3 *::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important}}

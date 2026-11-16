@@ -1,0 +1,39 @@
+/* Base de la page de l'overlay CS2 (renderer/index.html) : ce que l'ancienne base partagée de l'interface React donnait
+   à ses éléments. Les boutons, champs, menus, dialogues et toasts de l'ancienne interface sont partis avec elle ; la V3
+   a ses propres styles (v3ui/). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text-1);
+  font: 400 14px/20px var(--font-ui);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+p {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

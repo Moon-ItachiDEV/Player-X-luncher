@@ -1,0 +1,223 @@
+/* Styles de l'accueil (essai 0.6.2) : Vitrine (data-home=v) et Arsenal (data-home=r), choisis dans Paramètres > Général.
+   Rien ici ne touche l'accueil actuel (data-home=0). Tout est dessiné pour 1600 × 940 ; --k (posé par play.js) réduit l'ensemble dans une fenêtre plus petite.
+   Couleur : --hx-a est le rouge du blason, ou l'accent caméléon du jeu (--gs-acc) quand le jeu a un style. Le décor suit donc le jeu, comme les boutons. */
+.v-play{--hx-a:#e8264f;--hx-hi:#ff4566}
+.v-play[data-gs]{--hx-a:var(--gs-acc);--hx-hi:color-mix(in srgb,var(--gs-acc) 78%,#fff)}
+:root:not([data-home=v]) :is(.hm-fx,.hv-shk,.hv-kick,.hv-chips,.hv-news,.hv-dia){display:none}
+:root:not([data-home=r]) :is(.ar-deco,.ar-ret,.ar-idx,.ar-ready,.ar-nav,.ar-rank){display:none}
+:root:not([data-home=v]):not([data-home=r]) :is(.hm-bg,.pb-sh,.pb-k){display:none}
+:root:is([data-home=v],[data-home=r]) .rail{display:none}
+
+/* ---------- Fond : l'image du jeu ---------- */
+.hm-bg{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+:root[data-home=r] .hm-bg{background:#08060b}
+.hb{position:absolute;inset:0;opacity:0;transition:opacity .9s var(--e-out)}
+.hb.on{opacity:1}
+.hb img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:50% 30%;user-select:none}
+.hb-w img,.hb-c .hb-t{animation:hbKb 26s ease-in-out infinite alternate}
+@keyframes hbKb{from{transform:scale(1.02)}to{transform:scale(1.09) translate(-1.2%,-.8%)}}
+.hb-c .hb-u{filter:blur(54px) saturate(1.35) brightness(.7);transform:scale(1.25)}
+.hb-c .hb-t{left:auto;right:calc(var(--k,1)*70px);width:auto;aspect-ratio:2/3;-webkit-mask-image:linear-gradient(90deg,transparent,#000 24%,#000 82%,transparent),linear-gradient(180deg,#000 70%,transparent);-webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent,#000 24%,#000 82%,transparent),linear-gradient(180deg,#000 70%,transparent);mask-composite:intersect}
+.hb-a img{filter:blur(64px) saturate(1.35) brightness(.42);transform:scale(1.25)}
+
+/* ---------- Partagé : « Prêt à jouer », pastilles, Jouer vivant, jaquette choisie ---------- */
+.hv-kick,.hv-k{display:flex;align-items:center;gap:10px;margin:0 0 10px;font-size:13px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:color-mix(in srgb,var(--hx-hi) 70%,#fff);white-space:nowrap}
+.hv-kick>i,.hv-k>i{flex:none;width:8px;height:8px;rotate:45deg;background:var(--hx-hi);animation:hvBeat 2.4s ease-out infinite}
+.hv-k.st>i{animation:none;box-shadow:0 0 8px var(--hx-a)}
+@keyframes hvBeat{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--hx-hi) 75%,transparent)}70%,100%{box-shadow:0 0 0 9px transparent}}
+.hv-kick span{letter-spacing:0;text-transform:none;font-weight:500;color:var(--t2)}
+.hv-chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.hv-chips:empty{display:none}
+.hv-chip{display:inline-flex;align-items:center;gap:10px;height:42px;padding:0 16px 0 8px;border-radius:13px;background:rgba(16,12,20,.55);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);font-size:14px;color:var(--t2);white-space:nowrap}
+.hv-chip b{color:var(--bone);font-weight:600}
+.hv-chip.rk{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--hx-hi) 45%,transparent)}
+.hv-chip.pl{padding-left:16px}
+.hv-chip.rk svg{flex:none;width:22px;height:26px}
+.hv-ach{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:rgba(255,255,255,.08);color:var(--bone)}
+.hv-ach .ic{width:16px;height:16px}
+.hv-pb{display:block;flex:none;width:64px;height:5px;border-radius:3px;background:rgba(255,255,255,.13);overflow:hidden}
+.hv-pb i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,color-mix(in srgb,var(--hx-a) 70%,#000),var(--hx-hi));box-shadow:0 0 8px color-mix(in srgb,var(--hx-hi) 60%,transparent)}
+.hv-jn{height:28px;padding:0 12px;margin-right:-8px;border-radius:9px;background:rgba(255,255,255,.1);font-size:13px;font-weight:600;color:var(--bone);transition:background-color .15s}
+@media(hover:hover){.hv-jn:hover{background:color-mix(in srgb,var(--hx-a) 45%,transparent)}}
+.pb-sh{position:absolute;inset:0;z-index:0;border-radius:inherit;overflow:hidden;pointer-events:none}
+.pb-sh::before{content:"";position:absolute;top:0;bottom:0;left:-50%;width:34%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.36),transparent);animation:pbSh 5.5s 1.4s ease-in-out infinite}
+@keyframes pbSh{0%{left:-50%}22%,100%{left:125%}}
+.pb-k{font-family:inherit;font-size:11px;font-weight:600;font-style:normal;line-height:1;letter-spacing:0;text-transform:none;padding:4px 6px;border-radius:5px;background:rgba(0,0,0,.2);box-shadow:inset 0 0 0 1px rgba(255,255,255,.3);color:inherit;opacity:.85}
+.play-btn:disabled .pb-k,.play-btn.is-upd .pb-k{display:none}
+:root[data-home=v] .ht-ready li:has(.r-avs),:root[data-home=r] .ht-ready li:has(.r-avs){display:none}
+:root:is([data-home=v],[data-home=r]) .card.is-front{box-shadow:0 0 0 2.5px var(--hx-a),0 0 40px -4px color-mix(in srgb,var(--hx-a) 85%,transparent),0 24px 40px -18px rgba(0,0,0,.9)}
+.launching :is(.hv-chips,.hv-news){display:none}
+
+/* ---------- 1 · Vitrine : le jeu en plein écran, ta pile en étagère ---------- */
+.hm-fx{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden;background:linear-gradient(90deg,rgba(8,6,11,.95) 0%,rgba(8,6,11,.72) 32%,rgba(8,6,11,0) 60%),linear-gradient(0deg,rgba(8,6,11,.98) 0%,rgba(8,6,11,.66) 32%,rgba(8,6,11,0) 55%),linear-gradient(180deg,rgba(8,6,11,.6),transparent 16%)}
+.hm-tint{position:absolute;left:-10%;width:90%;bottom:-38%;height:76%;background:radial-gradient(50% 50% at 50% 50%,color-mix(in srgb,var(--hx-a) 26%,transparent),transparent 70%);transition:background .9s}
+.hm-sweep{position:absolute;inset:0;background:linear-gradient(100deg,transparent 38%,color-mix(in srgb,var(--hx-a) 32%,transparent) 47%,rgba(255,236,240,.32) 50%,color-mix(in srgb,var(--hx-a) 32%,transparent) 53%,transparent 62%);mix-blend-mode:screen;translate:-110% 0}
+.hm-sweep.go{animation:hmSw .9s cubic-bezier(.5,0,.2,1) both}
+@keyframes hmSw{to{translate:110% 0}}
+:root[data-home=v] .ht{top:calc(var(--k,1)*88px);bottom:auto;width:min(58cqw,880px)}
+:root[data-home=v] .ht-title.is-px{font-size:clamp(52px,6.6cqw,108px)}
+:root[data-home=v] .ht-title.is-px[data-len=m]{font-size:clamp(44px,5.4cqw,86px)}
+:root[data-home=v] .ht-title.is-px[data-len=l]{font-size:clamp(36px,4.3cqw,68px)}
+:root[data-home=v] .ht-meta{display:none}
+:root[data-home=v] .ht-acts{margin-top:20px}
+.hv-news{margin:14px 0 0}
+.hv-news:empty{display:none}
+.hv-nw{display:inline-flex;align-items:center;gap:12px;height:38px;max-width:min(52cqw,760px);padding:0 16px 0 6px;border-radius:12px;background:rgba(16,12,20,.45);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09);font-size:14px;color:var(--t3);white-space:nowrap;text-align:left;transition:background-color .15s}
+.hv-nw em{flex:none;font-style:normal;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:6px 9px;border-radius:8px;background:color-mix(in srgb,var(--hx-a) 24%,transparent);color:color-mix(in srgb,var(--hx-hi) 45%,#fff)}
+.hv-nw b{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--bone);font-weight:600}
+.hv-nw span{flex:none}
+@media(hover:hover){.hv-nw:hover{background:rgba(36,28,42,.72)}}
+/* Fenêtre basse : la ligne d'actu laisse la place à l'étagère */
+@container (max-height:840px){:root[data-home=v] .hv-news{display:none}}
+.hv-shk{position:absolute;left:calc(var(--k,1)*72px);bottom:calc(82px + var(--k,1)*276px + 36px);z-index:6;display:flex;align-items:center;gap:12px;font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);white-space:nowrap}
+.hv-shk>i{width:7px;height:7px;rotate:45deg;background:var(--hx-a);box-shadow:0 0 8px var(--hx-a)}
+.hv-shk>span{margin-right:8px;letter-spacing:0;text-transform:none;font-weight:500;color:var(--t4)}
+/* Le rebord lumineux sous l'étagère */
+.hv-shk::after{content:"";position:absolute;left:-28px;width:calc(100cqw - var(--k,1)*88px);top:calc(100% + 36px + var(--k,1)*262px);height:1px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--hx-hi) 70%,transparent) 10%,color-mix(in srgb,var(--hx-hi) 50%,transparent) 55%,transparent);box-shadow:0 0 16px 1px color-mix(in srgb,var(--hx-a) 55%,transparent);pointer-events:none}
+.hv-nav,.ar-nav{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:rgba(16,12,20,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);color:var(--bone);transition:background-color .15s}
+.hv-nav .ic,.ar-nav .ic{width:16px;height:16px}
+@media(hover:hover){:is(.hv-nav,.ar-nav):hover{background:color-mix(in srgb,var(--hx-a) 38%,rgba(16,12,20,.6))}}
+:root[data-home=v] .stack{left:calc(var(--k,1)*72px);right:calc(var(--k,1)*72px);top:auto;bottom:calc(82px + var(--k,1)*14px);height:calc(var(--k,1)*262px);z-index:3;transform-style:flat;transition:transform .5s var(--e-out)}
+:root[data-home=v] .card{left:0;top:auto;bottom:calc(var(--k,1)*12px);transform-origin:0 100%;border-radius:12px}
+:root[data-home=v] .card:not(.is-front){box-shadow:0 18px 30px -16px rgba(0,0,0,.9)}
+.hv-dia{position:absolute;left:0;bottom:calc(var(--k,1)*261px + 10px);z-index:120;width:12px;height:16px;margin-left:-6px;background:#ffe3ea;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);filter:drop-shadow(0 0 6px var(--hx-hi));transition:translate .45s var(--e-out);animation:hvDb 2.6s ease-in-out infinite;pointer-events:none}
+@keyframes hvDb{50%{transform:translateY(-4px)}}
+
+/* ---------- 2 · Arsenal : la roue, le viseur, et le décor du style du jeu ---------- */
+:root[data-home=r] .v-play{perspective:calc(var(--k,1)*2100px);perspective-origin:50% 30%}
+:root[data-home=r] .stack{left:0;right:0;top:0;bottom:0;z-index:3;transform-style:preserve-3d}
+:root[data-home=r] .card{left:calc(50% - var(--cw)/2);top:calc(39% - var(--ch)/2);border-radius:16px;-webkit-box-reflect:below calc(var(--k,1)*14px) linear-gradient(transparent 64%,rgba(255,255,255,.2))}
+:root[data-home=r] .card.is-front{animation:arBob 4.6s ease-in-out infinite}
+@keyframes arBob{50%{translate:0 -8px}}
+:root[data-home=r] .card::before{content:"";position:absolute;inset:0;z-index:2;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.42) 50%,transparent 65%);translate:-130% 0;pointer-events:none}
+:root[data-home=r] .card.ar-flash::before{animation:arFl 1s .1s var(--e-out) both}
+@keyframes arFl{to{translate:130% 0}}
+.ar-deco{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden}
+.ar-vig{position:absolute;inset:0;background:radial-gradient(30% 38% at 50% 39%,color-mix(in srgb,var(--hx-a) 26%,transparent),transparent 72%),radial-gradient(38% 20% at 50% 62%,color-mix(in srgb,var(--hx-a) 28%,transparent),transparent 72%),radial-gradient(72% 66% at 50% 42%,transparent 34%,rgba(8,6,11,.9) 100%),linear-gradient(180deg,rgba(8,6,11,.7),transparent 16%)}
+.ar-hor{position:absolute;left:0;right:0;top:calc(39% + var(--k,1)*195px);height:1px;background:linear-gradient(90deg,transparent 4%,color-mix(in srgb,var(--hx-hi) 85%,#fff) 50%,transparent 96%);box-shadow:0 0 26px 5px color-mix(in srgb,var(--hx-a) 32%,transparent)}
+.ar-spot{position:absolute;left:50%;top:calc(39% + var(--k,1)*197px);width:calc(var(--k,1)*560px);height:calc(var(--k,1)*110px);translate:-50% -50%;background:radial-gradient(50% 50% at 50% 50%,color-mix(in srgb,var(--hx-hi) 42%,transparent),transparent 70%)}
+.ar-big{position:absolute;left:-200px;right:-200px;top:calc(var(--k,1)*92px);text-align:center;font-family:var(--f);font-size:calc(var(--k,1)*var(--fs,170)*1px);font-weight:900;line-height:1;font-stretch:125%;text-transform:uppercase;letter-spacing:-.01em;color:transparent;-webkit-text-stroke:1.5px rgba(255,255,255,.16);white-space:nowrap}
+.ar-big.in{animation:arBn .8s var(--e-out) both}
+@keyframes arBn{0%{opacity:0;letter-spacing:.12em;-webkit-text-stroke-color:var(--hx-hi)}60%{-webkit-text-stroke-color:color-mix(in srgb,var(--hx-hi) 50%,transparent)}100%{opacity:1;letter-spacing:-.01em;-webkit-text-stroke-color:rgba(255,255,255,.16)}}
+.ar-hud{position:absolute;inset:calc(var(--k,1)*88px) calc(var(--k,1)*40px) calc(var(--k,1)*100px)}
+.ar-hud i{position:absolute;width:44px;height:44px;border:0 solid color-mix(in srgb,var(--hx-hi) 55%,transparent)}
+.ar-hud i:nth-child(1){left:0;top:0;border-width:2px 0 0 2px}
+.ar-hud i:nth-child(2){right:0;top:0;border-width:2px 2px 0 0}
+.ar-hud i:nth-child(3){left:0;bottom:0;border-width:0 0 2px 2px}
+.ar-hud i:nth-child(4){right:0;bottom:0;border-width:0 2px 2px 0}
+/* Le viseur se verrouille sur la jaquette choisie quand la roue s'arrête */
+.ar-ret{position:absolute;left:50%;top:39%;z-index:4;pointer-events:none;--rx:calc(var(--k,1)*152px);--ry:calc(var(--k,1)*216px)}
+.ar-ret i{position:absolute;width:34px;height:34px;border:0 solid var(--hx-hi);filter:drop-shadow(0 0 8px var(--hx-hi));opacity:0}
+.ar-ret i:nth-child(1){left:calc(-1*var(--rx));top:calc(-1*var(--ry));border-width:3px 0 0 3px;--dx:-28px;--dy:-28px}
+.ar-ret i:nth-child(2){left:calc(var(--rx) - 34px);top:calc(-1*var(--ry));border-width:3px 3px 0 0;--dx:28px;--dy:-28px}
+.ar-ret i:nth-child(3){left:calc(-1*var(--rx));top:calc(var(--ry) - 34px);border-width:0 0 3px 3px;--dx:-28px;--dy:28px}
+.ar-ret i:nth-child(4){left:calc(var(--rx) - 34px);top:calc(var(--ry) - 34px);border-width:0 3px 3px 0;--dx:28px;--dy:28px}
+.ar-ret b{position:absolute;left:-7px;top:calc(-1*var(--ry) - 28px);width:14px;height:14px;rotate:45deg;background:#ffe3ea;box-shadow:0 0 14px var(--hx-hi);opacity:0}
+.ar-ret.go i{animation:arLk .5s .05s var(--e-out) both}
+.ar-ret.go b{animation:arDi .5s .15s var(--e-out) both}
+@keyframes arLk{from{opacity:0;translate:var(--dx) var(--dy)}to{opacity:1;translate:0 0}}
+@keyframes arDi{from{opacity:0;translate:0 -16px}to{opacity:1;translate:0 0}}
+.launching .ar-ret{opacity:0}
+/* À gauche, ton arsenal numéroté ; à droite, « Prêt à jouer » */
+.ar-idx{position:absolute;left:calc(var(--k,1)*60px);top:calc(39% - var(--k,1)*164px);bottom:calc(var(--k,1)*290px);z-index:6;width:calc(var(--k,1)*236px);display:flex;flex-direction:column;gap:2px;overflow:hidden;padding-top:14px;-webkit-mask-image:linear-gradient(180deg,transparent,#000 14px,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(180deg,transparent,#000 14px,#000 calc(100% - 40px),transparent)}
+.ar-idx .hv-k{margin:0 0 10px 12px;font-size:12px}
+.ar-ix{position:relative;flex:none;display:flex;align-items:center;gap:12px;height:36px;padding:0 12px;border-radius:9px;font-size:14px;color:var(--t3);text-align:left;transition:color .2s,background-color .25s}
+.ar-ix b{flex:none;min-width:24px;font-size:13px;font-weight:700;color:var(--t4);font-variant-numeric:tabular-nums;display:inline-flex}
+.ar-ix b .ic{width:15px;height:15px}
+.ar-ix span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(hover:hover){.ar-ix:hover{color:var(--bone);background:rgba(255,255,255,.05)}}
+.ar-ix.on{color:#fff;background:linear-gradient(90deg,color-mix(in srgb,var(--hx-a) 42%,transparent),transparent)}
+.ar-ix::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--hx-hi);box-shadow:0 0 10px var(--hx-hi);scale:1 0;transition:scale .3s var(--e-out)}
+.ar-ix.on::before{scale:1 1}
+.ar-ix.on b{color:color-mix(in srgb,var(--hx-hi) 45%,#fff)}
+.ar-ready{position:absolute;right:calc(var(--k,1)*58px);top:calc(39% - var(--k,1)*172px);width:calc(var(--k,1)*300px);z-index:6;padding:18px 20px 20px;border-radius:16px 4px 16px 16px;background:rgba(16,12,20,.6);-webkit-backdrop-filter:blur(24px) saturate(150%);backdrop-filter:blur(24px) saturate(150%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 30px 60px -30px rgba(0,0,0,.9);display:flex;flex-direction:column;gap:14px}
+.ar-ready::before{content:"";position:absolute;right:0;top:0;width:24px;height:24px;border-top-right-radius:4px;background:linear-gradient(225deg,var(--hx-a) 50%,transparent 50%)}
+.ar-ready .hv-k{margin:0}
+.ar-rd{display:flex;flex-direction:column;gap:3px}
+.ar-rd small{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t4)}
+.ar-rd b{font-size:15px;font-weight:600;line-height:1.35;color:var(--bone)}
+.ar-ln{display:flex;align-items:center;gap:12px}
+.ar-ln .hv-pb{flex:1;width:auto}
+.ar-ln em{font-style:normal;font-size:13px;color:var(--t3);font-variant-numeric:tabular-nums}
+.ar-fr{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 10px;border-radius:12px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.ar-fr>div{min-width:0}
+.ar-fr b{display:block;font-size:14px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ar-fr small{display:block;font-size:12px;line-height:1.3;color:var(--ok)}
+.ar-fr button{flex:none;margin-left:auto;height:32px;padding:0 12px;border-radius:9px;background:var(--key);box-shadow:var(--key-edge);font-size:13px;font-weight:600;color:#fff}
+.v-play[data-gs] .ar-fr button{background:var(--gs-acc);color:var(--gs-on);box-shadow:none}
+.ar-ic{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.08)}
+.ar-ic .ic{width:16px;height:16px}
+.ar-nav{position:absolute;top:calc(39% - 22px);left:calc(50% - var(--k,1)*410px - 22px);z-index:7;width:44px;height:44px}
+.ar-nav.ar-nr{left:calc(50% + var(--k,1)*410px - 22px)}
+.launching :is(.ar-ready,.ar-idx,.ar-nav){opacity:0;pointer-events:none;transition:opacity .2s}
+/* Le titre et les boutons centrés sous la roue (les boutons gardent le style caméléon du jeu) */
+:root[data-home=r] .ht{left:0;right:0;margin-inline:auto;bottom:calc(84px + var(--k,1)*16px);width:min(70cqw,980px);align-items:center;text-align:center}
+:root[data-home=r] .ht-title{margin-inline:0;text-align:center}
+:root[data-home=r] .ht-title.is-px{font-size:clamp(30px,2.9cqw,46px)}
+:root[data-home=r] .ht-title.is-px[data-len=m]{font-size:clamp(28px,2.6cqw,42px)}
+:root[data-home=r] .ht-title.is-px[data-len=l]{font-size:clamp(24px,2.3cqw,36px)}
+:root[data-home=r] .ht-title:not(.is-px){font-size:clamp(32px,3.3cqw,52px);line-height:1.05}
+:root[data-home=r] .ht-meta{display:none}
+:root[data-home=r] .ht-kick{justify-content:center}
+:root[data-home=r] .ht-acts{margin-top:16px}
+:root[data-home=r] .ht-ready{justify-content:center;margin-top:10px;min-height:0}
+:root[data-home=r] .ht-steps{align-items:center}
+.ar-rank{display:block;margin-bottom:12px}
+.ar-rank:empty{display:none}
+
+/* Le décor d'Arsenal prend le style caméléon du jeu : lettrage du grand nom, sol, trame */
+.v-play[data-gs=neon] .ar-big{font-family:'PX Neon',var(--f);font-weight:700;font-stretch:normal;letter-spacing:.04em;-webkit-text-stroke-width:1.2px;text-shadow:3px 0 0 rgba(0,240,255,.12)}
+.v-play[data-gs=neon] .ar-deco::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 4px)}
+.v-play[data-gs=neon] .ar-ret i{border-color:#00f0ff;filter:drop-shadow(0 0 8px rgba(0,240,255,.8))}
+.v-play[data-gs=stade] .ar-big{font-family:'PX Stade',var(--f);font-style:italic;font-weight:800;font-stretch:normal;letter-spacing:0}
+.v-play[data-gs=stade] .ar-ret i{transform:skewX(-14deg)}
+.v-play[data-gs=epique] .ar-big{font-family:'PX Epique',Georgia,serif;font-weight:700;font-stretch:normal;letter-spacing:.06em;-webkit-text-stroke-color:color-mix(in srgb,var(--gs-acc) 30%,transparent)}
+.v-play[data-gs=pop] .ar-big{font-family:'PX Pop',var(--f);font-weight:800;font-stretch:normal;letter-spacing:0;-webkit-text-stroke-width:2.5px;text-shadow:6px 6px 0 rgba(0,0,0,.25)}
+.v-play[data-gs=pop] .ar-ret i{border-radius:10px}
+.v-play[data-gs=vitesse] .ar-big{font-family:'PX Vitesse',var(--f);font-style:italic;font-weight:400;font-stretch:normal}
+.v-play[data-gs=frisson] .ar-big{font-family:'PX Frisson',ui-monospace,monospace;font-weight:400;font-stretch:normal;letter-spacing:.04em}
+.v-play[data-gs=frisson] .ar-hor{animation:arFlick 4s steps(1) infinite}
+@keyframes arFlick{0%,100%{opacity:1}46%{opacity:.35}48%{opacity:1}50%{opacity:.5}}
+.v-play[data-gs=tactique] .ar-big{font-stretch:68%;font-weight:800;letter-spacing:.04em}
+.v-play[data-gs=tactique] .ar-hud i{width:64px;height:64px;border-color:color-mix(in srgb,var(--hx-hi) 75%,transparent)}
+
+/* Rien ne bouge en continu hors de l'accueil, ni avec « mouvement réduit » */
+#win:not(.is-home) .v-play :is(.hb img,.hv-kick>i,.hv-k>i,.hv-dia,.card,.ar-hor),#win:not(.is-home) .v-play .pb-sh::before{animation-play-state:paused}
+@media(prefers-reduced-motion:reduce){.hb img,.pb-sh::before,.hv-kick>i,.hv-k>i,.hv-dia,.ar-hor,:root[data-home=r] .card.is-front,.hm-sweep.go,.ar-big.in{animation:none}.ar-ret i,.ar-ret b{opacity:1}}
+
+/* Le sol de l'Arsenal : Brume (par défaut) ou Laqué (Paramètres > Général > Sol de l'Arsenal, ou F2 sur l'accueil). Choix de Breezydev le 15/11 */
+.ar-sol{position:absolute;inset:0}
+.ar-sol>i,.hb-a img.hb-m{display:none}
+
+/* Laqué : un sol noir verni ; l'image du jeu s'y reflète, floue ; une flaque de lumière sous la jaquette, un reflet qui passe */
+:root[data-sol=laque] .hb-a img.hb-m{display:block;position:absolute;left:-10%;width:120%;top:calc(39% + var(--k,1)*195px);height:64%;object-fit:cover;transform:scaleY(-1);filter:blur(7px) saturate(1.15) brightness(.5);opacity:.85;-webkit-mask-image:linear-gradient(180deg,#000,transparent 62%);mask-image:linear-gradient(180deg,#000,transparent 62%)}
+:root[data-sol=laque] .as-sheen{display:block;position:absolute;left:0;right:0;top:calc(39% + var(--k,1)*195px);bottom:0;overflow:hidden;background:radial-gradient(38% 34% at 50% 0,color-mix(in srgb,var(--hx-hi) 40%,transparent),transparent 72%),radial-gradient(70% 60% at 50% 0,color-mix(in srgb,var(--hx-a) 20%,transparent),transparent 70%),linear-gradient(180deg,rgba(255,255,255,.1),transparent 3px),linear-gradient(180deg,transparent 16%,rgba(255,255,255,.06) 17%,transparent 25%,transparent 48%,rgba(255,255,255,.045) 49%,transparent 58%),linear-gradient(180deg,rgba(6,5,9,.2),rgba(6,5,9,.88) 85%)}
+:root[data-sol=laque] .as-sheen::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 42%,rgba(255,255,255,.11) 50%,transparent 58%) 0 0/300% 100% no-repeat;animation:asGloss 8s ease-in-out infinite}
+@keyframes asGloss{0%,30%{background-position:120% 0}70%,100%{background-position:-20% 0}}
+:root[data-sol=laque][data-home=r] .card{-webkit-box-reflect:below calc(var(--k,1)*6px) linear-gradient(transparent 38%,rgba(255,255,255,.5))}
+:root[data-sol=laque] .ar-hor{opacity:.8}
+
+
+/* Brume : pas de sol dessiné ; de la fumée qui dérive, des rayons derrière la jaquette, des poussières qui montent */
+:root[data-sol=brume] :is(.as-rays,.as-fog,.as-dust){display:block}
+.as-rays{position:absolute;left:50%;top:39%;width:calc(var(--k,1)*1600px);aspect-ratio:1;margin-left:calc(var(--k,1)*-800px);margin-top:calc(var(--k,1)*-800px);background:repeating-conic-gradient(transparent 0 7deg,color-mix(in srgb,var(--hx-hi) 14%,transparent) 9deg 11deg,transparent 13deg 22deg);-webkit-mask-image:radial-gradient(circle closest-side,#000 10%,transparent 72%);mask-image:radial-gradient(circle closest-side,#000 10%,transparent 72%);animation:asRay 80s linear infinite}
+@keyframes asRay{to{rotate:360deg}}
+.as-fog{position:absolute;left:0;right:0;bottom:0;top:calc(39% + var(--k,1)*60px);background-image:radial-gradient(closest-side,rgba(215,215,228,.34),transparent),radial-gradient(closest-side,color-mix(in srgb,var(--hx-hi) 46%,transparent),transparent),radial-gradient(closest-side,rgba(215,215,228,.26),transparent);background-size:calc(var(--k,1)*900px) 55%,calc(var(--k,1)*700px) 45%,calc(var(--k,1)*1150px) 70%;background-position:0 62%,300px 88%,640px 100%;background-repeat:repeat-x;-webkit-mask-image:linear-gradient(180deg,transparent,#000 30%);mask-image:linear-gradient(180deg,transparent,#000 30%);animation:asFog 46s linear infinite}
+.as-fog.f2{top:calc(39% + var(--k,1)*150px);opacity:.75;background-position:200px 70%,520px 96%,0 100%;animation:asFog2 70s linear infinite}
+@keyframes asFog{to{background-position:calc(var(--k,1)*900px) 62%,calc(300px + var(--k,1)*700px) 88%,calc(640px + var(--k,1)*1150px) 100%}}
+@keyframes asFog2{to{background-position:calc(200px - var(--k,1)*900px) 70%,calc(520px - var(--k,1)*700px) 96%,calc(var(--k,1)*-1150px) 100%}}
+.as-dust{position:absolute;inset:0;background-image:radial-gradient(2.4px 2.4px at 30px 40px,color-mix(in srgb,var(--hx-hi) 85%,#fff),transparent),radial-gradient(1.8px 1.8px at 150px 110px,rgba(255,255,255,.85),transparent),radial-gradient(2px 2px at 90px 200px,color-mix(in srgb,var(--hx-hi) 70%,#fff),transparent),radial-gradient(1.5px 1.5px at 210px 170px,rgba(255,255,255,.7),transparent);background-size:240px 240px;-webkit-mask-image:radial-gradient(60% 58% at 50% 50%,#000 40%,transparent 100%);mask-image:radial-gradient(60% 58% at 50% 50%,#000 40%,transparent 100%);animation:asDust 22s linear infinite}
+.as-dust.d2{background-size:380px 380px;opacity:.55;scale:1.6;animation:asDust2 38s linear infinite}
+@keyframes asDust2{to{background-position:-60px -380px}}
+@keyframes asDust{to{background-position:40px -240px}}
+:root[data-sol=brume] .ar-hor{opacity:.3}
+
+/* La Brume suit le style du jeu (caméléon) : la couleur vient de --hx-a ; ici, la vitesse et l'épaisseur */
+.v-play[data-gs=stade] .as-fog{animation-duration:28s}.v-play[data-gs=stade] .as-fog.f2{animation-duration:42s}
+.v-play[data-gs=epique] .as-fog{animation-duration:72s}.v-play[data-gs=epique] .as-fog.f2{animation-duration:110s}.v-play[data-gs=epique] .as-rays{animation-duration:140s}
+.v-play[data-gs=vitesse] .as-fog{animation-duration:14s}.v-play[data-gs=vitesse] .as-fog.f2{animation-duration:22s}.v-play[data-gs=vitesse] .as-dust{animation-duration:9s}
+.v-play[data-gs=frisson] .as-fog{animation-duration:90s;filter:brightness(1.3)}.v-play[data-gs=frisson] .as-fog.f2{animation-duration:130s;opacity:1}.v-play[data-gs=frisson] .as-rays{opacity:.45}
+.v-play[data-gs=tactique] .as-rays{opacity:.6}.v-play[data-gs=tactique] .as-dust.d2{opacity:.3}
+
+#win:not(.is-home) .ar-sol i,#win:not(.is-home) .ar-sol i::after{animation-play-state:paused}
+@media(prefers-reduced-motion:reduce){.ar-sol i,.ar-sol i::after{animation:none}}

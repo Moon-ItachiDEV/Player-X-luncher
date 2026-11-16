@@ -1,0 +1,161 @@
+/* Paramètres, bêta 49 : la page prend le style du reste de Player X (logo blason, installeur, menu d'un jeu).
+   - Le fond : la jaquette du jeu en cours, floutée derrière un verre sombre, et une lueur de sa couleur (--sh-acc, tirée par style.js).
+     Sans jaquette ni style : la lueur rouge du blason, comme l'installeur.
+   - Les commandes gardent le rouge de Player X : le dégradé du blason (#ff3a5c vers #c4123a), le losange du logo comme repère.
+   - Les réglages sont rangés dans des cartes de verre ; les lignes restent séparées par un filet.
+   Ce fichier vient après settings.css et ne change que l'apparence : aucune place, aucun texte, aucun raccourci ne bouge. */
+#sheet{--bz-a:#ff3a5c;--bz-b:#c4123a;--bz:linear-gradient(180deg,var(--bz-a),var(--bz-b));--sh-acc:var(--bz-a);--sh-card:rgba(255,255,255,.035);--sh-card-edge:inset 0 0 0 1px rgba(255,255,255,.075),inset 0 1px 0 rgba(255,255,255,.06)}
+.sh{isolation:isolate;overflow:hidden;background:radial-gradient(760px 420px at 22% -140px,color-mix(in srgb,var(--sh-acc) 32%,transparent),transparent 72%),radial-gradient(640px 520px at 104% 112%,color-mix(in srgb,var(--bz-b) 16%,transparent),transparent 70%),var(--sh-bg);grid-template-columns:minmax(24px,1fr) 236px minmax(0,calc(var(--sh-col) + var(--sh-gut))) minmax(24px,1fr)}
+/* La jaquette floutée : très loin derrière, juste assez pour donner la teinte du jeu */
+.sh-art{position:absolute;inset:-80px;z-index:-2;background:center 30%/cover no-repeat;filter:blur(60px) saturate(1.4) brightness(.5);opacity:.7;pointer-events:none;transition:opacity .4s}
+.sh-art:not([style*=url]){opacity:0}
+.sh::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(180deg,rgba(9,6,10,.42),rgba(9,6,10,.8) 46%,rgba(9,6,10,.9))}
+
+/* La barre du haut : le petit blason à côté du nom */
+.sh-top h2{display:flex;align-items:center;gap:10px;font:600 16px/24px var(--brand);letter-spacing:-.01em}
+.sh-mark{width:22px;height:26px;flex:none;filter:drop-shadow(0 0 8px rgba(232,38,79,.45))}
+.sh-mark svg{width:100%;height:100%}
+.sh-q{background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),inset 0 1px 0 rgba(255,255,255,.05);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.sh-q:has(input:focus-visible){background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1.5px var(--bz-a),0 0 0 4px rgba(232,38,79,.16)}
+.sh-saved{padding:4px 10px 4px 8px;border-radius:999px;background:rgba(91,228,155,.12);box-shadow:inset 0 0 0 1px rgba(91,228,155,.25)}
+
+/* Le sommaire : une colonne de verre, une icône par rubrique, la rubrique ouverte marquée du losange du logo */
+.sh-nav{align-self:start;max-height:100%;gap:0;padding:8px;border-radius:20px;background:var(--sh-card);box-shadow:var(--sh-card-edge);-webkit-backdrop-filter:blur(20px) saturate(140%);backdrop-filter:blur(20px) saturate(140%)}
+.sh-g+.sh-g{margin-top:8px;padding-top:8px;box-shadow:0 -1px 0 var(--hair)}
+.sh-t{gap:10px;height:44px;padding:0 10px 0 8px;border-radius:12px}
+.sh-i{display:grid;place-items:center;width:28px;height:28px;flex:none;border-radius:9px;background:rgba(255,255,255,.06);color:var(--t2);transition:background .2s,color .2s,box-shadow .2s}
+.sh-i .ic{width:15px;height:15px;stroke-width:1.9}
+.sh-t::before{left:-4px;top:50%;bottom:auto;width:8px;height:8px;margin-top:-4px;border-radius:1px;rotate:45deg;background:#ffffff;box-shadow:0 0 8px var(--bz-a);scale:.4;transition:opacity .15s,scale .25s var(--e-out)}
+.sh-t[aria-current=page]{background:linear-gradient(90deg,rgba(232,38,79,.17),rgba(232,38,79,.04) 70%,transparent);box-shadow:inset 0 0 0 1px rgba(232,38,79,.18)}
+.sh-t[aria-current=page]::before{scale:1}
+.sh-t[aria-current=page] .sh-i{background:var(--bz);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 4px 14px -4px rgba(232,38,79,.7)}
+.sh-t .dot{background:var(--bz-a);box-shadow:0 0 6px var(--bz-a)}
+@media(hover:hover){.sh-t:not([aria-current=page]):hover{background:rgba(255,255,255,.05)}.sh-t:not([aria-current=page]):hover .sh-i{color:var(--bone);background:rgba(255,255,255,.1)}}
+
+/* Le titre de la rubrique : son icône dans un écu, comme le logo, et un filet rouge qui s'efface (la barre de l'installeur) */
+.sh-head{position:relative;align-items:center;gap:14px;padding-bottom:16px}
+.sh-head::after{content:"";position:absolute;left:var(--sh-gut);right:0;bottom:0;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--bz-a),color-mix(in srgb,var(--bz-b) 50%,transparent) 30%,transparent 75%);opacity:.75}
+.sh-badge{position:relative;display:grid;place-items:center;width:40px;height:44px;flex:none;color:#fff;filter:drop-shadow(0 0 10px rgba(232,38,79,.45))}
+.sh-badge::before,.sh-badge::after{content:"";position:absolute;inset:0;clip-path:path("M20 1.5 L38 7.5 V22 C38 32 31 39 20 43 C9 39 2 32 2 22 V7.5 Z")}
+.sh-badge::before{background:var(--bz)}
+.sh-badge::after{inset:2.5px;background:linear-gradient(180deg,#2a0b14,#140709);clip-path:path("M17.5 1 L33 6.2 V19.5 C33 28 27 34 17.5 37.5 C8 34 2 28 2 19.5 V6.2 Z")}
+.sh-badge .ic{position:relative;z-index:1;width:18px;height:18px;margin-top:-2px;stroke-width:2;color:#ffffff}
+.sh-badge.pop{animation:shPop .38s var(--e-out)}
+@keyframes shPop{from{scale:.82;opacity:.3}to{scale:1;opacity:1}}
+#shTitle{font-family:var(--brand);letter-spacing:-.02em}
+.sh-body{padding-top:20px}
+.sh-d{margin-bottom:16px;color:var(--t3)}
+
+/* Les groupes : un en-tête marqué du losange, puis une carte de verre */
+.sg>h2{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-family:var(--brand);font-size:15px;letter-spacing:-.005em}
+.sg>h2::before{content:"";width:7px;height:7px;flex:none;border-radius:1px;rotate:45deg;background:var(--bz);box-shadow:0 0 8px rgba(232,38,79,.6)}
+.sg-l:not(.rt-new){padding:0 20px;border-radius:16px;background:var(--sh-card);box-shadow:var(--sh-card-edge)}
+.sg-l>:first-child{border-top:0!important}
+.sg-l.rt-new{padding:16px 20px;border-radius:16px;background:var(--sh-card);box-shadow:var(--sh-card-edge)}
+.sg-n{margin-left:4px}
+.sg:not(:has(>h2)){margin-top:12px}
+.sr::before,.sb::before,.sg::before{inset:0 -12px;background:rgba(232,38,79,.16)}
+.sg-l .sr::before,.sg-l .sb::before{inset:0 -14px}
+/* Les replis « Plus de réglages » : l'en-tête garde son allure de titre, la carte s'ouvre dessous */
+.rc-more>details>summary{margin-inline:-10px;padding:0 10px}
+.rc-more>details>summary h2{font-family:var(--brand)}
+.rc-more>details>summary h2::before{content:"";display:inline-block;width:6px;height:6px;margin:0 10px 2px 2px;border-radius:1px;rotate:45deg;background:rgba(255,255,255,.35);vertical-align:middle}
+.rc-more>details[open]>summary h2::before{background:var(--bz);box-shadow:0 0 6px rgba(232,38,79,.6)}
+.rc-more>details>.sg-l{margin-top:4px}
+/* Un écran vide (moteur absent, aucun jeu) : dans une carte aussi */
+.sh-body>.empty{margin-top:8px;border-radius:20px;background:var(--sh-card);box-shadow:var(--sh-card-edge)}
+
+/* Les commandes au rouge du blason */
+.sw{background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.sw[aria-checked=true]{background:var(--bz);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 0 14px -3px rgba(232,38,79,.75)}
+.sw[aria-checked=true] i{box-shadow:0 1px 3px rgba(80,0,20,.55)}
+.seg{background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.seg [role=radio][aria-checked=true]{background:rgba(232,38,79,.2);color:#fff;box-shadow:inset 0 0 0 1px rgba(232,38,79,.55)}
+#sheet input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--bz-b),var(--bz-a) var(--pct,0%),rgba(255,255,255,.16) 0)}
+#sheet input[type=range]::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(232,38,79,.35),0 1px 4px rgba(0,0,0,.5)}
+.seg3-b{background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);border-radius:12px}
+.seg3-b[aria-checked=true]{background:linear-gradient(180deg,rgba(232,38,79,.2),rgba(196,18,58,.1));box-shadow:inset 0 0 0 1.5px var(--bz-a),0 8px 22px -12px rgba(232,38,79,.8)}
+.seg3-b[aria-checked=true] b{color:#fff}
+.rd-c,.rd-c.h1,.rd-c.h2{background:linear-gradient(180deg,rgba(232,38,79,.35),rgba(196,18,58,.25));box-shadow:inset 0 0 0 1.5px var(--bz-a),0 0 14px -4px rgba(232,38,79,.8)}
+.kc{background:rgba(255,255,255,.06)}
+.kc.wait{box-shadow:inset 0 0 0 1.5px var(--bz-a),0 0 0 4px rgba(232,38,79,.15)}
+.sel{background-color:rgba(255,255,255,.07)}
+#sheet .sel option,#sheet .rt-trig option{background:#1a0d13}
+.ac-d.ok{box-shadow:0 0 6px var(--ok)}
+.rt-s.cur .rt-n{background:var(--bz-a);box-shadow:0 0 0 4px rgba(232,38,79,.25)}
+.rt-menu{background:rgba(255,255,255,.06);box-shadow:var(--sh-card-edge)}
+
+/* Les résultats de la recherche : une carte aussi */
+.sh-res{padding-top:4px}
+.sh-res>.sh-r:first-child{margin-top:0}
+.sh-r.on{background:linear-gradient(90deg,rgba(232,38,79,.17),rgba(232,38,79,.04));box-shadow:inset 0 0 0 1px rgba(232,38,79,.2)}
+.sh-r.on+.sh-r{box-shadow:none}
+
+/* Essentiel (0.6.2) : noms de groupes du sommaire, puis la page Essentiel */
+.sh-gl{padding:10px 10px 6px;font:600 11px/16px var(--f);letter-spacing:.09em;text-transform:uppercase;color:var(--t3)}
+/* les mêmes cartes que les autres rubriques, avec un dessin par réglage */
+.sg>h2:has(.hm-i){gap:10px}
+.sg>h2:has(.hm-i)::before{display:none}
+.hm-i{width:26px;height:26px;border-radius:8px}
+.hm-i .ic{width:14px;height:14px}
+.hm-i.w{background:rgba(255,180,160,.12);color:#ffb4a0}
+.hm-more{display:inline-grid;place-items:center;width:28px;height:28px;margin-left:auto;padding:0;border-radius:50%;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);font:500 12px/16px var(--f);letter-spacing:0;color:var(--t3);transition:background-color .15s,color .15s}
+.hm-more .ic{width:14px;height:14px;transition:translate .2s var(--e-out)}
+@media(hover:hover){.hm-more:hover{background:rgba(255,255,255,.09);color:var(--bone)}.hm-more:hover .ic{translate:2px 0}}
+/* Le voyant : rouge et vivant quand la caméra est prête, éteint sinon */
+.sg-l:has(>.hm-rec.on){background:radial-gradient(360px 150px at 0 0,rgba(232,38,79,.16),transparent 72%),var(--sh-card)}
+.hm-lamp{position:relative;display:grid;place-items:center;width:40px;height:40px;flex:none;border-radius:50%;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),inset 0 1px 0 rgba(255,255,255,.08)}
+.hm-lamp i{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.22);transition:background-color .2s,box-shadow .2s}
+.hm-rec.on .hm-lamp{background:rgba(232,38,79,.12);box-shadow:inset 0 0 0 1px rgba(232,38,79,.4)}
+.hm-rec.on .hm-lamp i{background:var(--bz-a);box-shadow:0 0 12px var(--bz-a)}
+.hm-rec.on .hm-lamp::after{content:"";position:absolute;inset:8px;border-radius:50%;box-shadow:0 0 0 1.5px var(--bz-a);opacity:0;animation:hmPulse 2.4s ease-out infinite}
+@keyframes hmPulse{0%{opacity:.7;scale:.5}70%,100%{opacity:0;scale:1.5}}
+.hm-rest>*{border-top:1px solid var(--hair)}
+.hm-rest[inert]{opacity:.38}
+/* La durée : le dessin est le bouton */
+.hm-rd{position:relative;flex:none;width:300px;padding:6px 12px 0;border-radius:12px;transition:background-color .15s}
+.hm-rd .rd{display:block;height:48px;margin:0;pointer-events:none}
+@media(hover:hover){.hm-rd:hover{background:rgba(255,255,255,.05)}}
+/* La qualité : une, deux ou trois barres */
+.hm-q [role=radio]{display:inline-flex;align-items:center;gap:8px}
+.hm-bars{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
+.hm-bars i{width:3px;border-radius:1px;background:currentColor;opacity:.28}
+.hm-bars i:nth-child(1){height:5px}.hm-bars i:nth-child(2){height:8px}.hm-bars i:nth-child(3){height:12px}
+.hm-bars[data-n="1"] i:nth-child(-n+1),.hm-bars[data-n="2"] i:nth-child(-n+2),.hm-bars[data-n="3"] i{opacity:1}
+.hm-q [aria-checked=true] .hm-bars{color:var(--bz-a)}
+/* L'overlay : une vignette par style, prise dans une vraie partie */
+.hm-ovs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:2px 0 16px;border-top:0!important}
+.sh-body:has(#h-ov)>.sg{margin-top:30px}
+.sh-body:has(#h-ov)>.sg:first-child{margin-top:0}
+.hm-ovs.off .hm-ov-i img{filter:saturate(.25) brightness(.7)}
+.hm-ov{display:flex;flex-direction:column;gap:8px;padding:6px 6px 8px;border-radius:14px;background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);text-align:left;transition:background-color .15s,box-shadow .15s}
+.hm-ov-i{position:relative;display:block;aspect-ratio:2/1;border-radius:9px;overflow:hidden;background:#111}
+.hm-ov-i img{display:block;width:100%;height:100%;object-fit:cover;transition:scale .4s var(--e-out),filter .2s}
+.hm-ov b{display:flex;align-items:center;gap:8px;padding:0 6px;font:500 14px/20px var(--f);color:var(--t2)}
+.hm-ov b::before{content:"";width:6px;height:6px;border-radius:1px;rotate:45deg;background:rgba(255,255,255,.25);transition:background .2s,box-shadow .2s}
+.hm-ov[aria-checked=true]{background:linear-gradient(180deg,rgba(232,38,79,.2),rgba(196,18,58,.08));box-shadow:inset 0 0 0 1.5px var(--bz-a),0 10px 26px -14px rgba(232,38,79,.9)}
+.hm-ov[aria-checked=true] b{color:#fff}
+.hm-ov[aria-checked=true] b::before{background:var(--bz-a);box-shadow:0 0 8px var(--bz-a)}
+@media(hover:hover){.hm-ov:not([aria-checked=true]):hover{background:rgba(255,255,255,.06)}.hm-ov:hover img{scale:1.05}}
+/* La routine : la jaquette du jeu, puis ses étapes sur un fil, comme dans la barre du bas */
+.hm-cov img{display:block;width:100%;height:100%;object-fit:cover}
+.hm-cov{display:grid;place-items:center;overflow:hidden;width:40px;height:54px;flex:none;border-radius:8px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),0 6px 14px -8px #000;font:600 16px/1 var(--brand);color:var(--t3)}
+.hm-steps{display:flex;align-items:center;margin-top:4px;max-width:none!important}
+.hm-st{display:grid;place-items:center;width:24px;height:24px;flex:none;border-radius:50%;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);color:var(--t2)}
+.hm-st .ic{width:12px;height:12px}
+.hm-st.go{background:var(--bz);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 0 10px -2px rgba(232,38,79,.8);color:#fff}
+.hm-ln{width:18px;height:2px;flex:none;background:rgba(255,255,255,.14)}
+/* L'arrivée sur la page : les cartes se posent l'une après l'autre, une seule fois */
+.hm-in>.sg{animation:hmIn .42s var(--e-out) both}
+.hm-in>.sg:nth-child(2){animation-delay:.05s}.hm-in>.sg:nth-child(3){animation-delay:.1s}.hm-in>.sg:nth-child(4){animation-delay:.15s}
+@keyframes hmIn{from{opacity:0;translate:0 10px}}
+/* « À voir » dans la colonne : un point ambre */
+.sh-t .dot.w{background:#ffb4a0;box-shadow:0 0 6px rgba(255,180,160,.8)}
+/* Petite fenêtre : la colonne à onze entrées se resserre pour tenir sans défiler */
+@media(max-height:760px){.sh-t{height:40px}.sh-gl{padding:6px 10px 2px}.sh-g+.sh-g{margin-top:5px;padding-top:5px}.sh-nav{padding:6px 8px}}
+@media(max-width:1100px){.hm-rd{width:220px}}
+@media(prefers-reduced-motion:reduce){.hm-in>.sg,.hm-rec.on .hm-lamp::after{animation:none}.hm-ov-i img,.hm-more .ic{transition:none}}
+
+@media(max-width:1100px){.sh{grid-template-columns:16px 200px minmax(0,1fr) 16px}.sh-t em{display:none}}
+@media(prefers-reduced-motion:reduce){.sh-badge.pop{animation:none}.sh-t::before,.sh-i{transition:none}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.sh-nav,.sh-q{background:#1b1218}}
