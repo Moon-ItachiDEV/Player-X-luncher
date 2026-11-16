@@ -19,7 +19,6 @@ import {
   clipKills,
   clipTitle,
   cleanClipSettings,
-  keepFrom,
   mergePending,
   openPending,
   pickRecorder,
@@ -37,16 +36,17 @@ import { registerClipProtocol, SCHEME } from './clipsProtocol'
 import { filesBusy, filesDone, forgetFiles, serial } from './clipsQueue'
 import { chooseFolder, clipSettings, folderOf, loadClipSettings, resolved, storeClipSettings, usableFolder } from './clipsSettings'
 import { cleanShareCopies } from './clipsShare'
-import { bufferRoot, capture, emitState, frags, libraryRunning, loadLastGame, noteGamePace, pendings, recorders, setCapture, setFrags, setHotkeyError, setLastProblem, setLibraryRunning, setTestRunning, sleep, stateNow, testRunning, thumbAllowed, writing, type Capture, type Recorder, type RunningGame } from './clipsState'
+import { bufferRoot, capture, emitState, frags, libraryRunning, loadLastGame, noteGamePace, pendings, recorders, setCapture, setHotkeyError, setLastProblem, setLibraryRunning, setTestRunning, sleep, stateNow, testRunning, thumbAllowed, writing, type Capture, type Recorder, type RunningGame } from './clipsState'
 import { fromRecorder, launchRecorder, onRecordersChanged, onRecorderStopped, openWindow, recorderLost, requestThumb, send, targetDisplayId, testSource } from './clipsWindow'
+import { clearBuffer, pcmForWindow, pruneBuffer, storeFragment } from './clipsBuffer'
 import { showClipToast } from './clipsToast'
 import { cs2IsRunning, cs2MomentContext, onCs2Moment, onCs2Running } from './cs2Live'
-import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFragment, parseInit, type FlatPlan, type FragmentInfo } from './fmp4'
+import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFragment, parseInit, type FlatPlan } from './fmp4'
 import { getSettings } from './settings'
 import { gameExeRegex } from './captureTestArgs'
 import { thumbArgs } from './editCompile'
 import { captureEngineReady, spawnCaptureEngine } from './editFfmpeg'
-import { attemptLabel, engineAttempts, muxArgs, PCM_FRAME_BYTES, PCM_RATE, pcmWindow, readEngineProgress, recordArgs, type EngineAttempt } from './engineCapture'
+import { attemptLabel, engineAttempts, muxArgs, PCM_FRAME_BYTES, readEngineProgress, recordArgs, type EngineAttempt } from './engineCapture'
 
 // Clips « comme NVIDIA » : pendant qu'un jeu tourne, une fenêtre cachée capture l'écran et le son du système, MediaRecorder
 // les encode en MP4 fragmenté et chaque fragment (2 s) part dans un tampon circulaire sur le disque. Sur un kill de CS2 ou le
@@ -74,8 +74,6 @@ const STALL_MS = 15_000
 const STOP_WAIT_MS = 3_000
 /** L'appli qui quitte n'attend pas plus longtemps ses derniers clips. */
 const QUIT_WAIT_MS = 8_000
-/** Plus que ça en attente d'écriture : le disque ne suit pas, l'enregistreur s'arrête plutôt que de remplir la mémoire. */
-const MAX_QUEUED_BYTES = 256 * 1024 * 1024
 const MAX_THUMB_BYTES = 4 * 1024 * 1024
 
 let started = false
@@ -313,41 +311,6 @@ function engineThumb(id: string, file: string, atS: number): void {
 
 // ---------- flux reçu de la page ----------
 
-function storeFragment(rec: Recorder, data: Buffer, info: FragmentInfo): void {
-  const seq = rec.seq++
-  const file = join(rec.dir, `${String(seq).padStart(6, '0')}.m4s`)
-  // Le fragment vient de finir : le flux ne peut pas être en avance sur l'horloge. S'il l'est, le temps 0 était plus tôt.
-  const lag = Date.now() - (rec.anchor + info.endS * 1000)
-  if (lag < 0) rec.anchor += lag
-  const startWall = rec.anchor + info.startS * 1000
-  const endWall = rec.anchor + info.endS * 1000
-  rec.queued += data.length
-  if (rec.queued > MAX_QUEUED_BYTES) {
-    log('Le disque ne suit pas : enregistreur arrêté.')
-    if (capture?.rec === rec) {
-      send(capture, { type: 'abort', recId: rec.id, reason: 'disque trop lent' })
-      recorderLost(rec, 'disque trop lent')
-    }
-    return
-  }
-  rec.writes = rec.writes
-    .then(async () => {
-      await writeFile(file, data)
-      rec.queued -= data.length
-      frags.push({ recId: rec.id, startWall, endWall, key: info.key, file, info })
-      pruneBuffer()
-      emitState()
-    })
-    .catch((e) => {
-      rec.queued -= data.length
-      log(`Écriture du tampon impossible : ${errText(e)}`)
-      if (capture?.rec === rec) {
-        send(capture, { type: 'abort', recId: rec.id, reason: 'écriture impossible' })
-        recorderLost(rec, 'écriture du tampon impossible')
-      }
-    })
-}
-
 function onChunk(rec: Recorder, chunk: Uint8Array): void {
   rec.lastDataAt = Date.now()
   for (const item of rec.splitter.push(chunk)) {
@@ -360,32 +323,6 @@ function onChunk(rec: Recorder, chunk: Uint8Array): void {
     if (!rec.init) continue
     const info = parseFragment(item.data, rec.init)
     if (info.tracks.some((t) => t.samples.length)) storeFragment(rec, item.data, info)
-  }
-}
-
-/** Retire les fragments qui ne servent plus à rien : ni à un événement à venir, ni à un clip en cours. */
-function pruneBuffer(): void {
-  const inUse = [...[...pendings.values()].map((p) => p.start), ...writing.values()]
-  const from = keepFrom(Date.now(), clipSettings(), inUse)
-  // Le son en PCM : les morceaux finis avant le début utile.
-  for (const r of recorders.values()) {
-    if (!r.pcm?.length) continue
-    let i = 0
-    while (i < r.pcm.length && r.pcm[i].wall + (r.pcm[i].data.length / PCM_FRAME_BYTES / PCM_RATE) * 1000 < from) i++
-    if (i) r.pcm.splice(0, i)
-  }
-  const gone = frags.filter((f) => f.endWall < from)
-  if (!gone.length) return
-  setFrags(frags.filter((f) => f.endWall >= from))
-  for (const f of gone) void unlink(f.file).catch(() => {})
-  dropEmptyRecorders()
-}
-
-function dropEmptyRecorders(): void {
-  for (const [id, rec] of recorders) {
-    if (capture?.rec === rec || capture?.eng === rec || rec.pcm?.length || frags.some((f) => f.recId === id)) continue
-    recorders.delete(id)
-    void rm(rec.dir, { recursive: true, force: true }).catch(() => {})
   }
 }
 
@@ -472,23 +409,6 @@ function finalize(p: PendingClip): void {
       writing.delete(p.id)
       pruneBuffer()
     })
-}
-
-/**
- * Bêta 42 : le son d'un clip filmé par le moteur, en PCM, pris dans l'enregistreur « son seulement » qui couvre le mieux
- * [fromWall ; fromWall + durS]. null : rien pour cette fenêtre.
- */
-function pcmForWindow(fromWall: number, durS: number): { pcm: Buffer; covered: number } | null {
-  const toWall = fromWall + durS * 1000
-  let best: { pcm: Buffer; covered: number } | null = null
-  for (const r of recorders.values()) {
-    if (!r.pcm?.length) continue
-    const parts = r.pcm.filter((x) => x.wall < toWall && x.wall + (x.data.length / PCM_FRAME_BYTES / PCM_RATE) * 1000 > fromWall)
-    if (!parts.length) continue
-    const w = pcmWindow(parts, fromWall, durS)
-    if (!best || w.covered > best.covered) best = w
-  }
-  return best && best.covered >= 0.02 ? best : null
 }
 
 /** Une commande courte du moteur (assemblage d'un clip) : code de sortie et dernières lignes d'erreur. */
@@ -795,12 +715,6 @@ async function stopCapture(reason: string, gameOver = true): Promise<void> {
   if (gameOver) noteGamePace(c)
 }
 
-async function clearBuffer(): Promise<void> {
-  setFrags([])
-  recorders.clear()
-  await rm(bufferRoot(), { recursive: true, force: true }).catch((e) => log(`Tampon non vidé : ${errText(e)}`))
-}
-
 /** Remet la capture d'accord avec les jeux en cours et les réglages. */
 function sync(): void {
   if (!started) return
@@ -1056,6 +970,8 @@ export function startClips(): void {
         spans: frags.slice(-8).map((f) => +(f.endWall - f.startWall).toFixed(0)),
         list: frags.map((f) => ({ recId: f.recId, startS: f.info.startS, endS: f.info.endS, key: f.key, startWall: f.startWall, endWall: f.endWall, size: f.info.size, counts: f.info.tracks.map((x) => x.samples.length) })),
         anchor: capture?.rec?.anchor ?? null,
+        // Le plus vieux morceau de son PCM gardé (heure), tous enregistreurs confondus ; null : aucun.
+        pcmFrom: [...recorders.values()].reduce<number | null>((m, r) => (r.pcm?.length && (m === null || r.pcm[0].wall < m) ? r.pcm[0].wall : m), null),
         pendings: [...pendings.values()],
         hotkey: hotkeyNow,
         hotkeyRegistered: hotkeyNow ? globalShortcut.isRegistered(hotkeyNow) : false,
