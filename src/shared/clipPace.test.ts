@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-ignore TS5097
-import { cleanGamePace, cleanPace, gamePace, gamePaceAlert, gamePaceLine, isSlow, paceLog, paceNote, paceOf, rateBetween, slowUnder, type ClipPace } from './clipPace.ts'
+import { paceOfCounts, cleanGamePace, cleanPace, gamePace, gamePaceAlert, gamePaceLine, isSlow, paceLog, paceNote, paceOf, rateBetween, slowUnder, type ClipPace } from './clipPace.ts'
 
 /** Les instants d'images régulières : `fps` images par seconde de `from` à `to` secondes. */
 const frames = (fps: number, from: number, to: number): number[] => {
@@ -128,4 +128,23 @@ test('le rythme entre deux relevés du moteur', () => {
   assert.equal(rateBetween(null, { frames: 600, at: 10_000 }), null)
   assert.equal(rateBetween({ frames: 600, at: 10_000 }, { frames: 640, at: 10_500 }), null)
   assert.equal(rateBetween({ frames: 600, at: 10_000 }, { frames: 12, at: 20_000 }), null)
+})
+
+test('0.7.4 : rythme d’un clip du moteur d’après son compteur d’images reçues', () => {
+  // Un relevé par seconde : 60 images/s, puis 2 s à 30 images/s, puis 60 de nouveau.
+  const marks = [{ at: 0, n: 0 }]
+  const rates = [60, 60, 60, 30, 30, 60, 60, 60]
+  for (const r of rates) marks.push({ at: marks[marks.length - 1].at + 1000, n: marks[marks.length - 1].n + r })
+  const p = paceOfCounts(marks, 1000, 7000, 60)!
+  assert.equal(p.fps, 50) // (420 − 60 − 60) / 6 s
+  assert.equal(p.low, 30) // tranche 3 → 5 s
+  assert.equal(p.wanted, 60)
+  // Entre deux relevés : le compteur est interpolé.
+  assert.equal(paceOfCounts(marks, 500, 2500, 60)!.fps, 60)
+  // La fin du clip dépasse un peu le dernier relevé : mesuré sur la part couverte (7 s sur 7,5).
+  assert.equal(paceOfCounts(marks, 1000, 8500, 60)!.fps, 51.4) // (420 − 60) / 7 s
+  // Moins de 80 % couverts, ou trop court : inconnu.
+  assert.equal(paceOfCounts(marks, 5000, 11000, 60), null)
+  assert.equal(paceOfCounts(marks, 1000, 1500, 60), null)
+  assert.equal(paceOfCounts([], 0, 2000, 60), null)
 })

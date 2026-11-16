@@ -19,6 +19,9 @@ import { thumbArgs } from './editCompile'
 import { captureEngineReady, spawnCaptureEngine } from './editFfmpeg'
 import { attemptLabel, engineAttempts, readEngineProgress, recordArgs, type EngineAttempt } from './engineCapture'
 
+/** 0.7.4 : relevés du compteur du moteur gardés (un par seconde) : 10 min, plus que le tampon. */
+const MARKS_MAX = 600
+
 // Le moteur vidéo : choisir s'il filme et de quelle manière, le lancer, lire son flux, le relancer ou y renoncer, et
 // ses commandes courtes (vignette, assemblage d'un clip). L'état qu'il change est dans clipsState.ts.
 // Ce code vient de clips.ts, sans changement de comportement.
@@ -103,7 +106,7 @@ function startEngine(c: Capture): void {
     ended: false,
     restartNow: false,
     mime: `moteur : ${attemptLabel(attempt)}`,
-    engine: { proc, attempt, err: '', progress: '', loggedAt: now }
+    engine: { proc, attempt, err: '', progress: '', loggedAt: now, marks: [] }
   }
   recorders.set(id, rec)
   c.eng = rec
@@ -124,20 +127,30 @@ function startEngine(c: Capture): void {
     e.progress = (e.progress + t).slice(-4000)
     const msgs = t.split(/\r?\n/).filter((l) => l.trim() && !/^[a-z_0-9]+=/.test(l.trim()))
     if (msgs.length) e.err = (e.err + msgs.join('\n') + '\n').slice(-3000)
-    // Les images par seconde, toutes les 10 s la première minute, puis chaque minute.
+    // 0.7.4 : on ne lit que les blocs complets (jusqu'à la dernière ligne « progress=… » finie) ; la suite attend le prochain envoi.
+    const done = [...e.progress.matchAll(/^progress=\w*\r?\n/gm)].pop()
+    if (!done) return
+    const cut = done.index + done[0].length
+    const pr = readEngineProgress(e.progress.slice(0, cut))
+    e.progress = e.progress.slice(cut)
+    // 0.7.4 : un relevé par seconde, gardé le temps du tampon (10 min au plus).
+    if (pr) {
+      e.marks.push({ at: Date.now(), n: pr.received })
+      if (e.marks.length > MARKS_MAX) e.marks.splice(0, e.marks.length - MARKS_MAX)
+    }
+    // Les images par seconde dans le journal, toutes les 10 s la première minute, puis chaque minute.
     const every = Date.now() - rec.startedAt < 65_000 ? 9_000 : 59_000
-    if (/progress=/.test(t) && Date.now() - e.loggedAt > every) {
-      const pr = readEngineProgress(e.progress)
+    if (Date.now() - e.loggedAt > every) {
       if (pr) {
         // Bêta 46 : le chiffre du moteur est une moyenne depuis le début ; le rythme depuis le relevé d'avant dit ce qui se passe
         // maintenant. Pour le journal seulement : une pause du jeu le fait baisser sans que la capture soit en faute.
-        const now = { frames: pr.frames, at: Date.now() }
+        // 0.7.4 : le clip est à cadence fixe ; le rythme est compté sur les images reçues de la capture (sans les répétées).
+        const now = { frames: pr.received, at: Date.now() }
         const rate = rateBetween(e.last, now)
-        log(`Moteur : ${pr.fps} images/s (${pr.frames} images depuis le début${rate === null ? '' : `, ${String(rate).replace('.', ',')} images/s depuis le dernier relevé`}).`)
+        log(`Moteur : ${pr.fps} images/s dans le clip (${pr.frames} images, ${pr.received} reçues de la capture${rate === null ? '' : ` ; capture : ${String(rate).replace('.', ',')} images/s depuis le dernier relevé`}).`)
         e.last = now
       }
       e.loggedAt = Date.now()
-      e.progress = ''
     }
   })
   proc.once('error', (err) => {
