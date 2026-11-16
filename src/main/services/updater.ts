@@ -199,7 +199,9 @@ async function fetchBytes(url: string, max: number): Promise<Buffer | null> {
     const res = await net.fetch(url, { cache: 'no-store', redirect: 'follow', signal: ac.signal })
     if (res.status === 404) return null
     if (!res.ok || !res.body) throw new Quiet(`réponse ${res.status}`)
-    if (!res.url.startsWith('https://')) throw new Quiet('adresse non sécurisée')
+    // net.fetch d'Electron peut rendre une adresse vide après les redirections de GitHub : seule une adresse en http:// est refusée.
+    // (Le contenu reste de toute façon vérifié : signature de maj.json, taille et SHA-256 du Setup.)
+    if (res.url && !res.url.startsWith('https://')) throw new Quiet('adresse non sécurisée')
     const len = Number(res.headers.get('content-length'))
     if (Number.isFinite(len) && len > max) throw new Quiet('fichier trop gros')
     const chunks: Uint8Array[] = []
@@ -328,7 +330,7 @@ async function downloadSetup(m: Manifest): Promise<void> {
   try {
     const res = await net.fetch(m.url, { cache: 'no-store', redirect: 'follow', signal: ac.signal })
     if (!res.ok || !res.body) throw new Error(`réponse ${res.status}`)
-    if (!res.url.startsWith('https://')) throw new Error('adresse non sécurisée')
+    if (res.url && !res.url.startsWith('https://')) throw new Error('adresse non sécurisée')
     const len = Number(res.headers.get('content-length'))
     if (Number.isFinite(len) && len > 0 && len !== m.size) throw new Error('taille')
     fh = await open(part, 'w')
