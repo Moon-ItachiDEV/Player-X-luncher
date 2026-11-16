@@ -288,7 +288,9 @@
           min = recent
         }
         s.gotData = true
-        api.pcm(s.cmd.recId, Math.round(min + startMs), new Uint8Array(out.buffer))
+        // Un morceau n'arrive qu'une fois entendu jusqu'au bout : le plus petit écart date donc sa fin. Son premier instant
+        // est un morceau plus tôt (sans ce recul, le son des clips du moteur venait 85 ms trop tard, sous Windows aussi).
+        api.pcm(s.cmd.recId, Math.round(min + startMs - blockMs), new Uint8Array(out.buffer))
       }
       s.pcm = { ac, node, src, mute }
       void ac.resume()
