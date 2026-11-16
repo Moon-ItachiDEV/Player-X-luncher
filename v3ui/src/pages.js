@@ -196,7 +196,7 @@ const Pages = (() => {
     items.push(['info', 'Voir la fiche', () => openGame(g.id, fr)])
     items.push([g.fav ? 'starf' : 'star', g.fav ? 'Retirer des favoris' : 'Ajouter aux favoris', async () => { await Real.favorite(g); toast(`${ic(g.fav ? 'starf' : 'star')} ${esc(g.name)} ${g.fav ? 'ajouté aux favoris' : 'retiré des favoris'}`, { ms: 1800 }) }])
     if (g.installed) items.push(['folder', 'Ouvrir le dossier', () => API.openGameFolder(g.rid).catch(() => toast('Le dossier du jeu n’a pas pu s’ouvrir. Réessaie depuis la fiche.', { tone: 'warn', ms: 3000 }))])
-    menuAt(t, items, { at, main: true, head: `<i class="mn-art" aria-hidden="true" style="background-image:url('${esc(A(g.cover))}')"></i><div class="mn-h"><img src="${esc(A(g.cover))}" alt=""><span><b>${esc(g.name)}</b>${g.time ? `<small>${esc(g.time)} de jeu</small>` : ''}</span></div>` })
+    menuAt(t, items, { at, main: true, head: `<i class="mn-art" aria-hidden="true" style="background-image:url('${esc(String(A(g.cover)).replace(/['\\\n\r\f]/g, (c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`))}')"></i><div class="mn-h"><img src="${esc(A(g.cover))}" alt=""><span><b>${esc(g.name)}</b>${g.time ? `<small>${esc(g.time)} de jeu</small>` : ''}</span></div>` })
     // Le menu du jeu : sa jaquette floutée en fond, et le style caméléon sur « Lancer » (style.js)
     const m = $('#pxMenu'); if (!m) return
     m.classList.add('mn-game')
