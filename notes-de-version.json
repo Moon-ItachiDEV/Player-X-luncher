@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.7.3",
+    "date": "2026-11-16",
+    "items": [
+      {
+        "kind": "corrige",
+        "title": "Version d’essai de la mise à jour",
+        "text": "Rien d’autre ne change : elle sert à vérifier que Player X se met à jour tout seul."
+      }
+    ]
+  },
+  {
     "version": "0.7.2",
     "date": "2026-11-16",
     "items": [
