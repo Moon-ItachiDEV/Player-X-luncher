@@ -247,6 +247,8 @@ export function decideInstall(mode: 'now' | 'quit', f: InstallFacts): { ok: true
 export interface AttemptFile {
   version: string
   attempts: number
+  /** Un Setup a vraiment été lancé depuis le dernier comptage (absent dans les fichiers des 0.7.2 et 0.7.3 : ils n'étaient écrits qu'au lancement). */
+  launched: boolean
 }
 
 /** Lecture du petit fichier des tentatives : n'importe quoi d'autre qu'un {version, attempts} valide donne null. */
@@ -254,7 +256,8 @@ export function parseAttempt(raw: unknown): AttemptFile | null {
   if (!isObj(raw) || !isVersion(raw.version)) return null
   const n = raw.attempts
   if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > 100) return null
-  return { version: raw.version, attempts: n }
+  if (raw.launched !== undefined && typeof raw.launched !== 'boolean') return null
+  return { version: raw.version, attempts: n, launched: raw.launched !== false }
 }
 
 /**
@@ -263,6 +266,8 @@ export function parseAttempt(raw: unknown): AttemptFile | null {
  */
 export function afterAttempt(rec: AttemptFile, current: string): { outcome: 'installed' } | { outcome: 'retry'; attempts: number } | { outcome: 'give-up'; attempts: number } {
   if (!isNewer(rec.version, current)) return { outcome: 'installed' }
+  // Aucun Setup lancé depuis le dernier démarrage (PC éteint, installation refusée) : ce n'est pas un échec de plus.
+  if (!rec.launched) return { outcome: 'retry', attempts: rec.attempts }
   const attempts = rec.attempts + 1
   return attempts >= MAX_ATTEMPTS ? { outcome: 'give-up', attempts } : { outcome: 'retry', attempts }
 }

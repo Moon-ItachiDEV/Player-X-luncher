@@ -38,6 +38,8 @@ const dir = (): string => join(app.getPath('userData'), 'mise-a-jour')
 const MANIFEST_FILE = 'maj.json'
 const SIG_FILE = 'maj.json.sig'
 const ATTEMPT_FILE = 'tentative.json'
+/** Version abandonnée après deux échecs : la vérification automatique ne la repropose plus (« Vérifier maintenant », si). */
+const GAVE_UP_FILE = 'abandon.json'
 const MARKER_FILE = 'installation-en-cours'
 
 let state: MajState = { status: 'idle', current, configured: UPDATE_KEYS.length > 0, blocked: false, quiet: false }
@@ -130,11 +132,17 @@ function ensureDir(): string {
   return d
 }
 
+/** La version abandonnée après deux installations ratées, s'il y en a une. */
+function gaveUpVersion(): string | null {
+  const raw = readJson(join(dir(), GAVE_UP_FILE))
+  return raw && typeof raw === 'object' && typeof (raw as { version?: unknown }).version === 'string' ? (raw as { version: string }).version : null
+}
+
 /** Efface les Setup, les .part et le maj.json gardé ; `all` : le fichier des tentatives aussi. */
 function purge(all = false): void {
   try {
     for (const f of readdirSync(dir())) {
-      if (f === MARKER_FILE) continue
+      if (f === MARKER_FILE || f === GAVE_UP_FILE) continue
       if (f === ATTEMPT_FILE && !all) continue
       rmSync(join(dir(), f), { force: true, recursive: false })
     }
@@ -271,7 +279,7 @@ async function check(manual: boolean): Promise<void> {
     if (!f) return back('Aucune version publiée pour l’instant.')
     state = { ...was, checkedAt: Date.now() }
     const m = f.manifest
-    if (!isNewer(m.version, current) || getSettings().updateSkipped === m.version) {
+    if (!isNewer(m.version, current) || getSettings().updateSkipped === m.version || (!manual && gaveUpVersion() === m.version)) {
       if (st === 'available' || st === 'ready') return back()
       put('uptodate', { quiet: false })
       return
@@ -462,7 +470,7 @@ function spawnSetup(m: Manifest, args: string[]): ChildProcess | null {
   installerSpawned = true
   try {
     const d = ensureDir()
-    writeFileSync(join(d, ATTEMPT_FILE), JSON.stringify({ version: m.version, attempts }))
+    writeFileSync(join(d, ATTEMPT_FILE), JSON.stringify({ version: m.version, attempts, launched: true }))
     writeFileSync(join(d, MARKER_FILE), JSON.stringify({ version: m.version, at: Date.now() }))
     const child = spawn(setupPath(m), args, { detached: true, stdio: 'ignore', windowsHide: true })
     child.on('error', (e) => {
@@ -610,14 +618,22 @@ function restore(): void {
   let gaveUp: string | null = null
   if (rec) {
     const r = afterAttempt(rec, current)
-    if (r.outcome === 'installed') purge(true)
+    if (r.outcome === 'installed') {
+      purge(true)
+      rmSync(join(d, GAVE_UP_FILE), { force: true })
+    }
     else if (r.outcome === 'retry') {
       attempts = r.attempts
-      writeFileSync(join(d, ATTEMPT_FILE), JSON.stringify({ version: rec.version, attempts }))
+      writeFileSync(join(d, ATTEMPT_FILE), JSON.stringify({ version: rec.version, attempts, launched: false }))
     } else {
       // Deux installations qui n'ont pas changé la version : plus d'installation silencieuse, la personne choisit.
       gaveUp = rec.version
       purge(true)
+      try {
+        writeFileSync(join(ensureDir(), GAVE_UP_FILE), JSON.stringify({ version: rec.version }))
+      } catch (e) {
+        logError('mise à jour : abandon', e)
+      }
     }
   }
   if (gaveUp) {

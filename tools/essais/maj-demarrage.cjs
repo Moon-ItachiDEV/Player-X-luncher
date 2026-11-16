@@ -15,18 +15,25 @@ const J = (md, f) => { try { return JSON.parse(fs.readFileSync(path.join(md, f),
   // Une installation qui n'a pas changé la version, une première fois : on garde le compte
   let r = await run((md) => fs.writeFileSync(path.join(md, 'tentative.json'), JSON.stringify({ version: '9.9.9', attempts: 0 })))
   let p = await r.app.firstWindow(); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(3000)
-  assert.deepStrictEqual(J(r.md, 'tentative.json'), { version: '9.9.9', attempts: 1 }); console.log('ok 1 : un échec noté, on garde le fichier')
+  assert.deepStrictEqual(J(r.md, 'tentative.json'), { version: '9.9.9', attempts: 1, launched: false }); console.log('ok 1 : un échec noté, on garde le fichier')
   assert.strictEqual((await p.evaluate(() => window.launcher.majState())).status, 'idle'); await r.app.close()
   // Deuxième échec : abandon, fichier supprimé, erreur avec la page des versions
   r = await run((md) => { fs.writeFileSync(path.join(md, 'tentative.json'), JSON.stringify({ version: '9.9.9', attempts: 1 })); fs.writeFileSync(path.join(md, 'Setup-9.9.9.exe'), 'x') })
   p = await r.app.firstWindow(); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(3000)
   const s = await p.evaluate(() => window.launcher.majState())
   assert.strictEqual(s.status, 'error'); assert.strictEqual(s.release, true); assert.ok(!fs.existsSync(path.join(r.md, 'tentative.json'))); assert.ok(!fs.existsSync(path.join(r.md, 'Setup-9.9.9.exe')))
+  assert.deepStrictEqual(J(r.md, 'abandon.json'), { version: '9.9.9' })
   console.log('ok 2 : abandon après deux échecs :', s.reason); await r.app.close()
   // La version a changé : réussi, tout est nettoyé
   r = await run((md) => { fs.writeFileSync(path.join(md, 'tentative.json'), JSON.stringify({ version: '0.0.2', attempts: 0 })); fs.writeFileSync(path.join(md, 'a.exe.part'), 'x') })
   p = await r.app.firstWindow(); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(3000)
   assert.ok(!fs.existsSync(path.join(r.md, 'tentative.json')) && !fs.existsSync(path.join(r.md, 'a.exe.part'))); console.log('ok 3 : installation réussie, nettoyage'); await r.app.close()
+  // Un démarrage de plus sans Setup relancé : rien n'est compté (audit : un seul vrai échec ne doit pas devenir « deux fois »)
+  r = await run((md) => fs.writeFileSync(path.join(md, 'tentative.json'), JSON.stringify({ version: '9.9.9', attempts: 1, launched: false })))
+  p = await r.app.firstWindow(); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(3000)
+  const s3 = await p.evaluate(() => window.launcher.majState())
+  assert.notStrictEqual(s3.status, 'error'); assert.deepStrictEqual(J(r.md, 'tentative.json'), { version: '9.9.9', attempts: 1, launched: false })
+  console.log('ok 3b : démarrage sans Setup lancé, pas d’échec de plus'); await r.app.close()
   // Marqueur périmé : retiré à un démarrage normal
   r = await run((md) => fs.writeFileSync(path.join(md, 'installation-en-cours'), JSON.stringify({ version: '9.9.9', at: Date.now() - 600000 })))
   p = await r.app.firstWindow(); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(3000)

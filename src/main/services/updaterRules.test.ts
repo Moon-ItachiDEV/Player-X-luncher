@@ -209,11 +209,17 @@ test('installer : après deux échecs, plus d’installation silencieuse', () =>
 })
 
 test('tentatives : réussi, nouvel essai, puis abandon à la deuxième fois', () => {
-  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 0 }, '0.7.2'), { outcome: 'installed' })
-  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 0 }, '0.7.3'), { outcome: 'installed' })
-  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 0 }, '0.7.1'), { outcome: 'retry', attempts: 1 })
-  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 1 }, '0.7.1'), { outcome: 'give-up', attempts: 2 })
+  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 0, launched: true }, '0.7.2'), { outcome: 'installed' })
+  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 0, launched: true }, '0.7.3'), { outcome: 'installed' })
+  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 0, launched: true }, '0.7.1'), { outcome: 'retry', attempts: 1 })
+  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 1, launched: true }, '0.7.1'), { outcome: 'give-up', attempts: 2 })
   assert.equal(parseAttempt({ version: '0.7.2', attempts: 1 })?.attempts, 1)
+  // Sans Setup lancé depuis le dernier démarrage, rien n'est compté ; un ancien fichier (sans « launched ») compte comme lancé.
+  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 1, launched: false }, '0.7.1'), { outcome: 'retry', attempts: 1 })
+  assert.deepEqual(afterAttempt({ version: '0.7.2', attempts: 1, launched: false }, '0.7.2'), { outcome: 'installed' })
+  assert.equal(parseAttempt({ version: '0.7.2', attempts: 1 })?.launched, true)
+  assert.equal(parseAttempt({ version: '0.7.2', attempts: 1, launched: false })?.launched, false)
+  assert.equal(parseAttempt({ version: '0.7.2', attempts: 1, launched: 'oui' }), null)
   for (const x of [null, [], { version: 'x', attempts: 1 }, { version: '0.7.2', attempts: -1 }, { version: '0.7.2', attempts: '1' }, { version: '0.7.2' }]) assert.equal(parseAttempt(x), null)
 })
 
