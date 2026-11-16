@@ -1,5 +1,37 @@
 [
   {
+    "version": "0.7.4",
+    "date": "2026-11-16",
+    "items": [
+      {
+        "kind": "corrige",
+        "title": "Mises à jour plus fiables",
+        "text": "Player X trouve bien les nouvelles versions sur GitHub.",
+        "page": "set-about"
+      },
+      {
+        "kind": "corrige",
+        "title": "Les clips ne saccadent plus",
+        "text": "Ils sortent à 60 images par seconde régulières."
+      },
+      {
+        "kind": "corrige",
+        "title": "Alt + C rappelé sur Battlefield 6",
+        "text": "Sur les jeux sans clip automatique, Player X te rappelle au début de la partie que Alt + C garde un moment."
+      },
+      {
+        "kind": "corrige",
+        "title": "Le raccourci marche sans son",
+        "text": "Sans son du jeu ni micro, Alt + C ne gardait rien. C’est réglé."
+      },
+      {
+        "kind": "ameliore",
+        "title": "Fenêtres de mise à jour plus sobres",
+        "text": "Texte plus fin et plus léger."
+      }
+    ]
+  },
+  {
     "version": "0.7.2",
     "date": "2026-11-16",
     "items": [
