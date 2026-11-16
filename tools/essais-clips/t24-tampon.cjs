@@ -11,8 +11,8 @@ const check = (name, ok, extra) => { if (ok) pass++; else fail++; console.log(`$
 const note = (s) => console.log(`    ${s}`)
 const ENV = { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '640x360' }
 const ENGINE_ENV = { ...ENV, PX_FFMPEG: '/usr/bin/ffmpeg', PX_FFMPEG_ENCODER: 'libx264', PX_ENGINE_SOURCE: 'x11' }
-// avant 5 s, après 0 s : le tampon garde 5 + 0 + 10 = 15 s. Marge pour le dernier fragment et le rythme des contrôles : 3 s.
-const KEEP_S = 15, SLACK_S = 3
+// avant 5 s, après 0 s : le tampon garde 5 + 0 + 10 = 15 s. Marge : le plus vieux fragment gardé a commencé jusqu’à un fragment avant la limite, et l’élagage n’a lieu qu’à l’arrivée d’un fragment : 5 s.
+const KEEP_S = 15, SLACK_S = 5
 
 ;(async () => {
   let s, dirs
