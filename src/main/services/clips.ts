@@ -10,6 +10,7 @@ import { cleanName, isBf6Name } from '@shared/text'
 import type { ClipDisplay, ClipSettings, ClipShareResult, ClipShareStep, ClipsState, Game } from '@shared/types'
 import { getKv, setKv } from '../db'
 import { hotkeyRefusal } from '../hotkeys'
+import { hotkeyText } from '@shared/hotkey'
 import { handle } from '../ipc'
 import { appWindows, broadcast, markOverlay } from '../windows'
 import {
@@ -82,6 +83,9 @@ const MAX_QUEUED_BYTES = 256 * 1024 * 1024
 const MAX_THUMB_BYTES = 4 * 1024 * 1024
 /** Enregistreur en bonne santé depuis ce temps : ses relances repartent de la plus courte. */
 const HEALTHY_MS = 30_000
+/** Rappel du raccourci au début d'une partie sans clip automatique : plus long et plus large que « Clip gardé ». */
+const HINT_MS = 6_000
+const HINT_W = 400
 
 interface RunningGame {
   id: string
@@ -121,6 +125,8 @@ interface Recorder {
 }
 
 interface Capture {
+  /** Le rappel du raccourci est déjà passé pour cette partie (jeux sans clip automatique, BF6 par exemple). */
+  hinted?: boolean
   game: RunningGame
   sessionId: string
   win: BrowserWindow | null
@@ -501,6 +507,7 @@ function startEngine(c: Capture): void {
   }
   recorders.set(id, rec)
   c.eng = rec
+  syncHotkey()
   if (c.engRound === 0 || attempt.method.id !== 'fenetre') log(`Moteur : essai « ${attemptLabel(attempt)} ».`)
   proc.stdout?.on('data', (d: Buffer) => {
     if (rec.ended) return
@@ -678,6 +685,7 @@ function onChunk(rec: Recorder, chunk: Uint8Array): void {
       rec.init = parseInit(item.data)
       log(`En-tête MP4 de ${rec.id} : ${rec.init.tracks.map((t) => (t.kind === 'video' ? `${t.codec} ${t.width}×${t.height}` : t.codec)).join(', ')}.`)
       if (rec.engine) engineReady(rec)
+      if (rec.init.tracks.some((t) => t.kind === 'video')) hotkeyHint(rec)
       continue
     }
     if (!rec.init) continue
@@ -1063,7 +1071,7 @@ function displays(): ClipDisplay[] {
 
 /** Raccourci d'un jeu seulement : pris pendant que le tampon tourne, rendu dès qu'il s'arrête. */
 function syncHotkey(): void {
-  const want = capture?.rec && !capture.stopping ? clipSettings().hotkey : null
+  const want = (capture?.rec || capture?.eng) && !capture.stopping ? clipSettings().hotkey : null
   if (want === hotkeyNow) return
   if (hotkeyNow) globalShortcut.unregister(hotkeyNow)
   hotkeyNow = null
@@ -1076,6 +1084,8 @@ function syncHotkey(): void {
     }
     if (globalShortcut.register(want, onKey)) {
       hotkeyNow = want
+      // La première image a pu arriver avant que le raccourci soit pris : le rappel attendait lui.
+      for (const r of [capture?.eng, capture?.rec]) if (r?.init?.tracks.some((t) => t.kind === 'video')) hotkeyHint(r)
       return
     }
   } catch (e) {
@@ -1083,6 +1093,19 @@ function syncHotkey(): void {
   }
   hotkeyError = `Le raccourci ${want} est déjà pris : choisis-en un autre.`
   log(hotkeyError)
+}
+
+/**
+ * Seul CS2 dit ses kills à Player X. Sur les autres jeux (BF6…), rien n'est gardé sans le raccourci : la première image de la
+ * partie le rappelle une fois, en haut de l'écran, sans être filmée.
+ */
+function hotkeyHint(rec: Recorder): void {
+  const c = capture
+  if (!c || c.hinted || c.stopping || (c.rec !== rec && c.eng !== rec) || !hotkeyNow) return
+  if (c.game.id === CS2_GAME_ID && getSettings().cs2Live !== false && Object.values(clipSettings().triggers).some(Boolean)) return
+  c.hinted = true
+  log(`Rappel du raccourci montré (${c.game.name} ne garde pas de clip tout seul).`)
+  showClipToast(`Caméra prête. ${hotkeyText(hotkeyNow)} garde un moment`, false, targetDisplayId(), { ms: HINT_MS, width: HINT_W })
 }
 
 function checkHotkey(accel: unknown): void {

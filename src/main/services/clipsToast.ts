@@ -15,21 +15,22 @@ function toastPage(text: string, ok: boolean): string {
 html,body{margin:0;height:100%;background:transparent;overflow:hidden}
 body{display:flex;align-items:flex-start;justify-content:flex-end;padding:8px;box-sizing:border-box;font:500 14px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;color:#f6f1f4}
 div{display:flex;align-items:center;gap:8px;height:48px;padding:0 16px;box-sizing:border-box;border-radius:16px;background:rgba(16,12,20,.92);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);animation:i .15s ease-out}
-svg{width:16px;height:16px;fill:none;stroke:#ff5c8a;stroke-width:1.8;stroke-linecap:round}
+svg{width:16px;height:16px;fill:none;stroke:#ff4566;stroke-width:1.8;stroke-linecap:round}
 @keyframes i{from{opacity:0}}
 </style><div>${mark}${text}</div></html>`
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
 }
 
 /** Le raccourci se presse en plein jeu, Player X est derrière : une pastille confirme, et la vidéo ne la montre pas. */
-export function showClipToast(text: string, ok: boolean, displayId: number): void {
+export function showClipToast(text: string, ok: boolean, displayId: number, opts: { ms?: number; width?: number } = {}): void {
+  const width = opts.width ?? TOAST_W
   clearTimeout(toastTimer)
   if (toastWin && !toastWin.isDestroyed()) toastWin.destroy()
   const display = screen.getAllDisplays().find((d) => d.id === displayId) ?? screen.getPrimaryDisplay()
   const w = new BrowserWindow({
-    x: display.bounds.x + display.bounds.width - TOAST_W - 16,
+    x: display.bounds.x + display.bounds.width - width - 16,
     y: display.bounds.y + 16,
-    width: TOAST_W,
+    width,
     height: TOAST_H,
     show: false,
     frame: false,
@@ -59,5 +60,5 @@ export function showClipToast(text: string, ok: boolean, displayId: number): voi
   toastTimer = setTimeout(() => {
     if (!w.isDestroyed()) w.destroy()
     if (toastWin === w) toastWin = null
-  }, TOAST_MS)
+  }, opts.ms ?? TOAST_MS)
 }

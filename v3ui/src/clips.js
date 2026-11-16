@@ -52,6 +52,9 @@ const Clips = (() => {
   const cs2Live = () => Real.st.settings?.cs2Live !== false
   // Le jeu montré : celui que le moteur filme, sinon celui qui tourne, sinon le dernier joué, et seulement un jeu que l'enregistrement filme
   const heroGame = (cfg) => { const l = GAMES.filter((g) => g.installed && !g.hidden && (cfg?.games !== 'cs2bf6' || g.id === 'cs2' || g.id === 'bf6')); const live = Real.clipsLive?.game; return (live && l.find((g) => g.name === live)) || l.find((g) => g.running) || l[0] || null }
+  // Seul CS2 dit ses kills à Player X (et seulement avec au moins un moment coché) : ailleurs, rien n'est gardé sans le raccourci
+  const autoHere = (cfg, g) => { const live = Real.clipsLive?.game; return (live ? /counter-strike 2/i.test(live) : g?.id === 'cs2') && cs2Live() && Settings.TRIG.some(([k]) => cfg?.triggers?.[k]) }
+  const keyHint = (cfg) => `Appuie sur ${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} pour garder un moment`
   // Une vraie image du jeu, large d'abord ; jamais le repli « nom sur sa teinte »
   const realArt = (u) => (u && A(u) !== BLANK && !/^data:image\/svg/.test(A(u)) ? A(u) : null)
   const heroArt = (g) => [g?.heroWide, g?.hero, g?.cover].map(realArt).find(Boolean) || null
@@ -245,7 +248,7 @@ const Clips = (() => {
     if (zero) {
       const art = st.k === 'rec' ? heroArt(g) : null
       const pic = art ? `<img src="${esc(art)}" alt="" decoding="async" draggable="false">` : wallHTML()
-      const lead = st.k === 'ready' ? 'Elle démarre toute seule avec ton jeu.' : off ? 'Aucun clip n’est gardé.' : st.k === 'rec' ? `En cours${live?.game ? ` sur ${esc(live.game)}` : ''}. Tes clips arriveront ici.` : esc(live?.error || 'La caméra est en panne.')
+      const lead = st.k === 'ready' ? 'Elle démarre toute seule avec ton jeu.' : off ? 'Aucun clip n’est gardé.' : st.k === 'rec' ? `En cours${live?.game ? ` sur ${esc(live.game)}` : ''}. ${autoHere(cfg, g) ? 'Tes clips arriveront ici.' : `${keyHint(cfg)} : ce jeu ne garde rien tout seul.`}` : esc(live?.error || 'La caméra est en panne.')
       const tiles = 3 + (cs2Here() ? 1 : 0)
       const cs2Tile = !cs2Here() ? '' : pw('trig', popBtn('trig', 'cx-tile', `<span class="lab">Counter-Strike 2</span><span class="val">${!cs2Live() ? 'Suivi coupé' : nT ? `${nT} moment${nT > 1 ? 's' : ''}` : 'Aucun'}</span><span class="sub">${!cs2Live() ? 'Raccourci seulement' : nT > 1 ? 'Clips automatiques' : nT ? 'Clip automatique' : 'Raccourci seulement'}</span>`), 1)
       return { groups: new Map(), html: `<div class="${ctx} cx-full" id="cxRoot"><figure class="cx-vf cx-band" aria-label="Caméra">
@@ -269,7 +272,7 @@ const Clips = (() => {
     let txt
     if (st.k === 'rec') {
       const m = sess?.[0]?.map ? Shared.cs2.mapLabel(sess[0].map) : ''
-      txt = `<p class="cx-kick">${esc(g?.name || live?.game || 'Partie en cours')}${m ? `, ${esc(m)}` : ''}</p><h1 class="cx-title">${sess.length ? `${sess.length} clip${sess.length > 1 ? 's' : ''} dans cette partie` : 'Le prochain clip arrive ici'}</h1>
+      txt = `<p class="cx-kick">${esc(g?.name || live?.game || 'Partie en cours')}${m ? `, ${esc(m)}` : ''}</p><h1 class="cx-title">${sess.length ? `${sess.length} clip${sess.length > 1 ? 's' : ''} dans cette partie` : autoHere(cfg, g) ? 'Le prochain clip arrive ici' : keyHint(cfg)}</h1>
         ${sess.length ? `<div class="ht-acts">${watchBtn(sess[0], 'Regarder le dernier')}</div>` : ''}`
     } else {
       txt = `${down ? `<div class="cx-kickrow">${errLine(live)}${logPill()}</div>` : `<p class="cx-kick">Dernier ${wordOf(last)}, ${esc(T.timeAgo(last.at))}</p>`}<h1 class="cx-title">${esc(last.title || 'Clip')}</h1>
@@ -300,7 +303,7 @@ const Clips = (() => {
       <div class="cx-body"><div class="cx-set${dim}"${inert}>${sKey()}${cs2Here() ? sTrig(cfg) : ''}${sDur(cfg)}${sQual(cfg)}${sSon(cfg)}</div></div>
       <footer class="cx-foot">${tail(cfg)}</footer></aside>`
     if (!zero) { const lib = libHTML(cfg, st); return { html: `<div class="cx cx-a cx-s-${st.k}" id="cxRoot">${con}<div class="cx-rlib">${lib.html}</div></div>`, groups: lib.groups } }
-    const lead = off ? 'La caméra est coupée.' : 'Joue, ils arriveront ici.'
+    const lead = off ? 'La caméra est coupée.' : st.k === 'rec' && !autoHere(cfg, heroGame(cfg)) ? `${keyHint(cfg)} : ce jeu ne garde rien tout seul.` : 'Joue, ils arriveront ici.'
     const sub = cs2Here() ? `Un kill sur Counter-Strike 2, ou ${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} dans n’importe quel jeu.` : `${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} dans n’importe quel jeu.`
     return { groups: new Map(), html: `<div class="cx cx-a cx-s-${st.k}" id="cxRoot">${con}<div class="cx-rlib cx-empty"><div class="cx-mid"><h1 class="cx-tt">Aucun clip</h1><p class="cx-lead">${lead}</p>
       ${off ? `<div class="cx-off2"><button class="cx-pill" data-act="on" data-fk="on">Allumer la caméra</button></div>` : `<div class="cx-borncard"><div class="cx-born" data-born></div><p class="cx-note">${sub}</p></div>`}</div>
