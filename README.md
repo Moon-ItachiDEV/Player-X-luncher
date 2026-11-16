@@ -7,12 +7,14 @@ Elle s'installe à part du vrai Player X et n'a pas de mise à jour automatique.
 - Données : `%APPDATA%\Player X V3 Test`
 - Identifiant : `dev.breezy.playerx.v3test`
 
-## Prérequis
+## Installer l'appli
 
-- Node.js 22.6 ou plus récent, Python 3
-- Pour l'installeur : Go 1.22 ou plus récent (et Wine + Xvfb pour construire depuis Linux)
+Lancer `Player-X-V3-Test-Installer-<version>.exe` (ou `Player-X-V3-Test-Setup-<version>.exe`) sous Windows 10 ou 11.
+Rien d'autre à installer : tout ce dont l'appli a besoin, FFmpeg compris, est livré dedans.
 
-## Commandes
+## Développement
+
+Prérequis : Node.js 22.6 ou plus récent, Python 3, et Go 1.22 ou plus récent pour l'installeur.
 
 ```
 npm ci              # dépendances
@@ -22,7 +24,7 @@ npm test            # tous les *.test.ts de src/
 npm run dist        # FFmpeg, tests, puis installeurs Windows dans dist/
 ```
 
-Étapes de reconstruction et de livraison : `NOTES.md`.
+Détails de construction (dont depuis Linux) et de livraison : `NOTES.md`.
 
 ## Organisation du code
 
