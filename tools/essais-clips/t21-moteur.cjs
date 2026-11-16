@@ -195,10 +195,10 @@ const firstWallOf = (c) => c.at - c.events[0].t * 1000
     const snd = heard.map((w) => Math.round(w - nearest(expected, w)))
     const missing = expected.filter((t) => t > k.first + 100 && t < endWall - 600 && !heard.some((w) => Math.abs(w - t) < 400))
     note(`son : ${heard.length} bips dans le clip, entendus ${snd.join(', ')} ms après leur heure (pause de ${pause.to - pause.from} ms, reprise demandée en ${pause.to - pause.resume} ms)`)
-    check('l’heure du son : chaque bip du clip tombe sur un bip attendu, de 60 à 220 ms après, celui de la reprise compris, et aucun pendant la pause', snd.length >= 4 && snd.every((d) => d >= 60 && d <= 220) && missing.length === 0 && heard.some((w) => Math.abs(w - pause.resume) < 400), { snd, missing: missing.map((t) => t - k.first) })
+    check('l’heure du son : chaque bip du clip tombe sur un bip attendu, de 0 à 90 ms après, celui de la reprise compris, et aucun pendant la pause', snd.length >= 4 && snd.every((d) => d >= 0 && d <= 90) && missing.length === 0 && heard.some((w) => Math.abs(w - pause.resume) < 400), { snd, missing: missing.map((t) => t - k.first) })
     const gap = img.length && snd.length ? Math.round(mean(snd) - mean(img)) : null
     note(`écart moyen du son sur l’image dans ce clip : ${gap} ms`)
-    check('l’écart du son sur l’image reste celui mesuré : de 40 à 160 ms', gap !== null && gap >= 40 && gap <= 160, gap)
+    check('l’écart du son sur l’image : de -40 à 60 ms (85 ms de trop avant la correction de la datation du son)', gap !== null && gap >= -40 && gap <= 60, gap)
     const speed = (await since(mGame)).map((l) => /^Moteur : ([\d.]+) images\/s \((\d+) images depuis le début/.exec(l)).filter(Boolean)
     check('le journal donne le rythme du moteur : 30 images/s', speed.length >= 1 && speed.every((x) => Math.abs(+x[1] - 30) <= 2 && +x[2] > 200), speed.map((x) => x[0]))
 
