@@ -531,9 +531,10 @@ function startEngine(c: Capture): void {
       if (pr) {
         // Bêta 46 : le chiffre du moteur est une moyenne depuis le début ; le rythme depuis le relevé d'avant dit ce qui se passe
         // maintenant. Pour le journal seulement : une pause du jeu le fait baisser sans que la capture soit en faute.
-        const now = { frames: pr.frames, at: Date.now() }
+        // 0.7.4 : le clip est à cadence fixe ; le rythme est compté sur les images reçues de la capture (sans les répétées).
+        const now = { frames: pr.received, at: Date.now() }
         const rate = rateBetween(e.last, now)
-        log(`Moteur : ${pr.fps} images/s (${pr.frames} images depuis le début${rate === null ? '' : `, ${String(rate).replace('.', ',')} images/s depuis le dernier relevé`}).`)
+        log(`Moteur : ${pr.fps} images/s dans le clip (${pr.frames} images, ${pr.received} reçues de la capture${rate === null ? '' : ` ; capture : ${String(rate).replace('.', ',')} images/s depuis le dernier relevé`}).`)
         e.last = now
       }
       e.loggedAt = Date.now()
