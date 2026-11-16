@@ -1,15 +1,13 @@
-# Player X V3
+# Player X
 
 Player X est un lanceur de jeux pour Windows. Il réunit les jeux du PC, les lance, enregistre des clips, en monte des
 films et affiche un overlay pendant les parties de Counter-Strike 2.
 
-Player X V3 est sa nouvelle version, avec une interface refaite. Elle s'installe à côté de l'ancienne version, sans
-toucher à ses fichiers ni à ses données. Elle ne se met pas encore à jour toute seule : une nouvelle version s'installe
-par-dessus.
+Il ne se met pas encore à jour tout seul : une nouvelle version s'installe par-dessus.
 
 ## Installer l'appli
 
-Lancer `Player-X-V3-Test-Installer-<version>.exe` (ou `Player-X-V3-Test-Setup-<version>.exe`) sous Windows 10 ou 11.
+Lancer l'installeur (`…-Installer-<version>.exe`, ou `…-Setup-<version>.exe`) sous Windows 10 ou 11.
 Rien d'autre à installer : tout ce dont l'appli a besoin, FFmpeg compris, est livré dedans.
 
 ## Développement
