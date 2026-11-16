@@ -501,6 +501,7 @@ function startEngine(c: Capture): void {
   }
   recorders.set(id, rec)
   c.eng = rec
+  syncHotkey()
   if (c.engRound === 0 || attempt.method.id !== 'fenetre') log(`Moteur : essai « ${attemptLabel(attempt)} ».`)
   proc.stdout?.on('data', (d: Buffer) => {
     if (rec.ended) return
@@ -973,9 +974,12 @@ function displays(): ClipDisplay[] {
 
 // ---------- réglages ----------
 
-/** Raccourci d'un jeu seulement : pris pendant que le tampon tourne, rendu dès qu'il s'arrête. */
+/**
+ * Raccourci d'un jeu seulement : pris pendant que le tampon tourne, rendu dès qu'il s'arrête. Le tampon tourne quand la
+ * page enregistre, ou quand le moteur vidéo filme : sans aucun son voulu, la page n'enregistre rien et le moteur filme seul.
+ */
 function syncHotkey(): void {
-  const want = capture?.rec && !capture.stopping ? clipSettings().hotkey : null
+  const want = (capture?.rec || capture?.eng) && !capture.stopping ? clipSettings().hotkey : null
   if (want === hotkeyNow) return
   if (hotkeyNow) globalShortcut.unregister(hotkeyNow)
   hotkeyNow = null
