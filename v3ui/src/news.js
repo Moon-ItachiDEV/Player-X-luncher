@@ -3,7 +3,9 @@ const NewsView = (() => {
   const WEEK = 7 * 864e5
   const DOWN = 'Steam ne répond pas pour le moment. Réessaie dans quelques minutes.'
   const steamPage = (appId) => `https://store.steampowered.com/news/app/${appId}`
-  const out = (href, html, cls = 'btn sm') => `<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${html}</a>`
+  // Un lien n'est posé que s'il mène en https (le processus principal le vérifie déjà) : sinon il ne mène nulle part
+  const httpsOr = (u) => (/^https:\/\//i.test(String(u || '')) ? String(u) : '#')
+  const out = (href, html, cls = 'btn sm') => `<a class="${cls}" href="${esc(httpsOr(href))}" target="_blank" rel="noopener noreferrer">${html}</a>`
   const dateFr = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
   function ago(t) {
     const m = Math.max(1, Math.round((Date.now() - t) / 6e4))
@@ -143,7 +145,7 @@ const NewsView = (() => {
     $('#nrN', el).textContent = `${cur + 1} sur ${list.length}`
     $('#nrPrev', el).setAttribute('aria-disabled', cur === 0)
     $('#nrNext', el).setAttribute('aria-disabled', cur === list.length - 1)
-    $('#nrOut', el).href = p.url
+    $('#nrOut', el).href = httpsOr(p.url)
     // En haut, l'image de l'annonce en grand (sinon l'image du jeu), le titre posé dessus ; la même image n'est pas répétée dans le texte
     const cover = p.image ? p.image : fallbackArt(game)
     const blocks = p.blocks.filter((b, i) => !(i < 2 && b.type === 'image' && p.image && b.src === p.image))
