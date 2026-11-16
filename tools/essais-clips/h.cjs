@@ -81,7 +81,12 @@ function decodeCheck(file) {
 
 /** L'heure peinte dans l'image par la source d'essai (centièmes de seconde sur 40 bits, ligne du haut), à cet instant du fichier. */
 function clockAt(file, atS, width = 1280, height = 720) {
-  const raw = execFileSync('/usr/bin/ffmpeg', ['-v', 'error', '-ss', String(atS), '-i', file, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: width * height * 2 })
+  // Un instant après la dernière image ne rend aucune image : la fin d'un clip est celle du son, qui peut finir quelques
+  // dizaines de millisecondes après l'image (« durée − 0,1 s » tombait alors parfois après elle). On recule par pas de
+  // 20 ms, au plus de 0,3 s, jusqu'à la dernière image.
+  const frame = (s) => execFileSync('/usr/bin/ffmpeg', ['-v', 'error', '-ss', String(s), '-i', file, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: width * height * 2 })
+  let raw = frame(atS)
+  for (let back = 0.02; raw.length < width * 32 && back <= 0.3 && atS - back >= 0; back += 0.02) raw = frame(atS - back)
   if (raw.length < width * 32) return null
   const cell = Math.floor(width / 40)
   let v = 0
