@@ -11,8 +11,8 @@
 //   3. le moteur rate dès son lancement : Chrome filme ;
 //   4. le moteur rate après 3 s, la page déjà partie en « son seulement » : elle repart avec l'image ;
 //   5. le fichier du moteur manque : Chrome filme ;
-//   6. aucun son voulu : le moteur filme seul, la page n'enregistre rien, le clip n'a que l'image ; puis le son est remis,
-//      et coupé de nouveau.
+//   6. aucun son voulu : le moteur filme seul, la page n'enregistre rien, le clip n'a que l'image, et le raccourci est
+//      pris quand même ; puis le son est remis, et coupé de nouveau.
 // L'heure de l'image se lit contre une horloge posée à l'écran par un programme à part (xflash.py) : un carré qui passe au
 // blanc à des instants irréguliers, notés à la milliseconde. L'heure du son se lit contre les bips de la source d'essai de la
 // page (un à chaque passage de 2 s de l'horloge du système) ; la source est mise en pause un instant, ce qui saute un bip et
@@ -350,15 +350,12 @@ const firstWallOf = (c) => c.at - c.events[0].t * 1000
     const k9 = await nextClip('le clip sans son voulu')
     const th9 = await thumbOf(k9.c.id), jN2 = await since(m)
     check('… un moment gardé s’écrit quand même : l’image seule, à la taille de l’écran, avec sa vignette', k9.n === 1 && !!k9.v && k9.v.w === scr.width && k9.v.h === scr.height && k9.ok === true && !!th9 && !jN2.some((l) => /pas de son|assemblage/.test(l)), { p: k9.p, ok: k9.ok, th9, jN2 })
-    // Relevé seulement, pas un contrôle : dans cette partie, le raccourci n'est pas pris (la page n'enregistre rien, et il
-    // n'est pris que quand elle enregistre). Ce défaut est décrit dans le document d'architecture ; sa correction sera une
-    // PR à part, qui fera de ce relevé un contrôle.
+    // Le raccourci est pris aussi quand le moteur filme seul, et la vraie touche garde un clip : l'image seule.
+    check('… le raccourci Alt+C est pris, même sans aucun son voulu', iN.hotkey === 'Alt+C' && iN.hotkeyRegistered === true, { hotkey: iN.hotkey, pris: iN.hotkeyRegistered })
     m = await mark()
     pressKey()
-    await sleep(2500)
-    const byKey = count(await since(m), OPENED)
-    note(`relevé, sans aucun son voulu : raccourci pris = ${iN.hotkeyRegistered} ; la vraie touche Alt+C ouvre ${byKey} clip`)
-    if (byKey) await nextClip('le clip de la touche, sans son voulu')
+    const k9b = await nextClip('le clip de la touche, sans son voulu')
+    check('… et la vraie touche Alt+C garde un clip, un seul : l’image seule, à la taille de l’écran', count(await since(m), OPENED) === 1 && k9b.c.kind === 'manual' && k9b.n === 1 && !!k9b.v && k9b.v.w === scr.width && k9b.ok === true, { p: k9b.p, ok: k9b.ok })
     // Le son du jeu remis en pleine partie : la page démarre en « son seulement », et la touche garde un clip.
     m = await mark()
     let pidN = engines()[0].pid
@@ -379,6 +376,8 @@ const firstWallOf = (c) => c.at - c.events[0].t * 1000
     const stN4 = await until(async () => { const i = await info(), st = await L('clipsState'); return i.recorder === null && byEngine(st) && (st.bufferSeconds || 0) >= 1 ? st : null }, 20000, 'la page s’arrête, le moteur continue', 200)
     const jN4 = await since(m)
     check('le son coupé de nouveau : la page s’arrête, le moteur continue seul', stN4.audio === undefined && jN4.includes('Enregistreur relancé : réglages changés.') && count(jN4, ASKED) === 0 && count(jN4, TRIED) === 1 && engines().length === 1, { stN4, jN4 })
+    const iN4 = await info()
+    check('… et le raccourci reste pris', iN4.hotkey === 'Alt+C' && iN4.hotkeyRegistered === true, { hotkey: iN4.hotkey, pris: iN4.hotkeyRegistered })
     await endGame()
     const iLast = await info()
     check('à la fin : plus de moteur, tampon vidé, rien dans le dossier temporaire', engines().length === 0 && iLast.recorders === 0 && listDir(iLast.bufferRoot).length === 0 && leftovers().length === 0, { moteurs: engines(), tampon: listDir(iLast.bufferRoot), restes: leftovers() })
