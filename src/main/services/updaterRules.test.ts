@@ -6,7 +6,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 // @ts-ignore TS5097
-import { afterAttempt, chooseNotes, compareVersions, decideInstall, DOWNLOAD_PREFIX, etaSeconds, isNewer, markerBlocks, parseAttempt, parseManifest, parseNotes, reviewNotes, verifySignature, type InstallFacts, type NoteEntry } from './updaterRules.ts'
+import { afterAttempt, chooseNotes, compareVersions, decideInstall, DOWNLOAD_PREFIX, etaSeconds, isNewer, markerBlocks, parseAttempt, parseMarker, parseManifest, parseNotes, reviewNotes, verifySignature, type InstallFacts, type NoteEntry } from './updaterRules.ts'
 // @ts-ignore TS5097 TS7016
 import { appendPublicKey, buildManifest, findSetup, readNotes, readPublicKeys, signBytes } from '../../../scripts/publier-maj.mjs'
 // @ts-ignore TS5097
@@ -232,6 +232,12 @@ test('marqueur d’installation : une ouverture de l’ancienne version se tait 
   assert.equal(markerBlocks(null, '0.7.1', 1_000_000), false)
   // Une horloge qui recule ne bloque pas
   assert.equal(markerBlocks(m, '0.7.1', 900_000), false)
+  // Le Setup est déjà sorti (installation ratée) : la réouverture n'attend plus
+  const mp = { version: '0.7.2', at: 1_000_000, pid: 4242 }
+  assert.equal(markerBlocks(mp, '0.7.1', 1_000_000 + 5_000, () => true), true)
+  assert.equal(markerBlocks(mp, '0.7.1', 1_000_000 + 5_000, () => false), false)
+  assert.equal(parseMarker({ version: '0.7.2', at: 1, pid: 4242 })?.pid, 4242)
+  assert.equal(parseMarker({ version: '0.7.2', at: 1, pid: -3 })?.pid, undefined)
 })
 
 test('avancement : temps restant', () => {

@@ -277,15 +277,20 @@ export const MARKER_MAX_AGE_MS = 2 * 60 * 1000
 export interface MarkerFile {
   version: string
   at: number
+  /** Le processus du Setup, quand il a pu être lancé. */
+  pid?: number
 }
 export function parseMarker(raw: unknown): MarkerFile | null {
   if (!isObj(raw) || !isVersion(raw.version) || typeof raw.at !== 'number' || !Number.isFinite(raw.at)) return null
-  return { version: raw.version, at: raw.at }
+  const pid = typeof raw.pid === 'number' && Number.isInteger(raw.pid) && raw.pid > 0 ? raw.pid : undefined
+  return pid ? { version: raw.version, at: raw.at, pid } : { version: raw.version, at: raw.at }
 }
 /** Une ouverture doit se taire : le marqueur est frais, et cette version est encore celle qui va être remplacée. */
-export function markerBlocks(m: MarkerFile | null, current: string, now: number): boolean {
+/** `alive` : le Setup tourne encore. Un Setup déjà sorti (installation ratée) ne fait plus taire l'ouverture. */
+export function markerBlocks(m: MarkerFile | null, current: string, now: number, alive: (pid: number) => boolean = () => true): boolean {
   if (!m) return false
   const age = now - m.at
+  if (m.pid !== undefined && !alive(m.pid)) return false
   return age >= 0 && age < MARKER_MAX_AGE_MS && isNewer(m.version, current)
 }
 

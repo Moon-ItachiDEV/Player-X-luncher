@@ -90,7 +90,7 @@ export function readNotes(file) {
 /** Le Setup de cette version dans `distDir` : Player-X-…-Setup-<version>.exe (l'artifactName d'electron-builder), un seul. */
 export function findSetup(distDir, version) {
   if (!existsSync(distDir)) fail(`Dossier introuvable : ${distDir}. Fabrique d'abord le Setup (npm run dist).`)
-  const re = new RegExp(`^Player-X-.+-Setup-${version.replace(/[.+-]/g, '\\$&')}\\.exe$`)
+  const re = new RegExp(`^Player-X-(?:.+-)?Setup-${version.replace(/[.+-]/g, '\\$&')}\\.exe$`)
   const found = readdirSync(distDir).filter((f) => re.test(f))
   if (!found.length) fail(`Aucun Setup « Player-X-…-Setup-${version}.exe » dans ${distDir}. Fabrique-le (npm run dist) ou change la version de package.json.`)
   if (found.length > 1) fail(`Plusieurs Setup pour la ${version} dans ${distDir} : ${found.join(', ')}.`)

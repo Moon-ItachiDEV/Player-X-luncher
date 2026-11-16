@@ -10,6 +10,7 @@ import { logError } from '../crashLog'
 import { broadcast } from '../windows'
 import { gameRunning } from './clips'
 import { filmState } from './editFilm'
+import { engineBusy } from './editFfmpeg'
 import { driverState } from './pcDriver'
 import { getSettings, saveSettings } from './settings'
 import { setQuitting } from './tray'
@@ -99,7 +100,7 @@ export function majState(): MajState {
 function isBlocked(): boolean {
   if (simulated && state.blocked) return true
   try {
-    return gameRunning() || filmState().status === 'running' || ['download', 'verify', 'consent', 'install'].includes(driverState().status)
+    return gameRunning() || engineBusy() || filmState().status === 'running' || ['download', 'verify', 'consent', 'install'].includes(driverState().status)
   } catch {
     return false
   }
@@ -480,6 +481,7 @@ function spawnSetup(m: Manifest, args: string[]): ChildProcess | null {
       logError('mise à jour : lancement du Setup', e)
       put('error', { reason: `Windows n’a pas pu lancer l’installation · ta ${current} n’a pas bougé`, quiet: false })
     })
+    if (child.pid) writeFileSync(join(d, MARKER_FILE), JSON.stringify({ version: m.version, at: Date.now(), pid: child.pid }))
     child.unref()
     return child
   } catch (e) {
@@ -586,7 +588,15 @@ function installAtQuit(): void {
 export function installInProgress(): boolean {
   try {
     const m = parseMarker(readJson(join(app.getPath('userData'), 'mise-a-jour', MARKER_FILE)))
-    return markerBlocks(m, current, Date.now())
+    return markerBlocks(m, current, Date.now(), (pid) => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch (e) {
+        // EPERM : le processus existe mais appartient à un autre compte
+        return (e as NodeJS.ErrnoException).code === 'EPERM'
+      }
+    })
   } catch {
     return false
   }

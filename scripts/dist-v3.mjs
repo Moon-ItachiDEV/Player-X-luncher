@@ -14,12 +14,13 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const out = resolve(root, process.argv[2] || 'dist')
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-// Mises à jour dans l'appli : avec PX_MAJ_EXIGER=1, pas de fabrication sans clé publique dans updaterKey.ts (un Setup sans clé ne
-// pourrait jamais se mettre à jour). Sans la variable (fabrication en nuage, essais), la clé n'est pas exigée.
-if (process.env.PX_MAJ_EXIGER === '1') {
-  const keys = readFileSync(join(root, 'src/main/services/updaterKey.ts'), 'utf8').match(/-----BEGIN PUBLIC KEY-----/g)
-  if (!keys) {
-    console.error('Arrêt : src/main/services/updaterKey.ts n’a aucune clé publique, donc ce Setup ne pourrait pas se mettre à jour.\nLance « npm run maj:cle » (une seule fois), commit updaterKey.ts, puis recommence.')
+// Mises à jour dans l'appli : pas de fabrication sans la clé publique de Breezydev dans updaterKey.ts. Un Setup sans elle,
+// une fois publié, ne pourrait plus jamais se mettre à jour chez personne. PX_MAJ_SANS_CLE=1 : seulement pour un essai jetable.
+const MAJ_CLE = 'MCowBQYDK2VwAyEAsE9FqykThj3fwaJo0YmYxqJD6adOmSOpM32JSX0Ugiw='
+if (process.env.PX_MAJ_SANS_CLE !== '1') {
+  const keyTs = readFileSync(join(root, 'src/main/services/updaterKey.ts'), 'utf8').replace(/\\n|\s/g, '')
+  if (!keyTs.includes(MAJ_CLE)) {
+    console.error('Arrêt : src/main/services/updaterKey.ts n’a pas la clé publique attendue, donc ce Setup ne pourrait pas se mettre à jour.\nReprends updaterKey.ts de la branche des mises à jour (ou, si la clé a changé exprès, mets la nouvelle dans MAJ_CLE de ce script).')
     process.exit(1)
   }
 }
