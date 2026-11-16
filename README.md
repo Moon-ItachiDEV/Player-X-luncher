@@ -5,6 +5,8 @@ films et affiche un overlay pendant les parties de Counter-Strike 2.
 
 Il ne se met pas encore à jour tout seul : une nouvelle version s'installe par-dessus.
 
+![Page d'accueil de Player X](docs/captures/accueil.jpg)
+
 ## Installer l'appli
 
 Lancer `Player-X-Installer-<version>.exe` (ou `Player-X-Setup-<version>.exe`) sous Windows 10 ou 11.
