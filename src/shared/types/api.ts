@@ -6,6 +6,7 @@ import type { Account, Cs2OverlayConfig, Cs2OverlayMoment, Cs2OverlayPlace, Cs2O
 import type { Cs2LifetimeResult, Cs2Live, Cs2RecapEvent, Cs2State } from './cs2'
 import type { CaptureTestResult, CaptureTestStep, EditEngine, EditEngineStep, EditMusic, EditMusicTempo, EditProject, FilmState } from './edit'
 import type { GameNews } from './news'
+import type { MajNotes, MajState } from './maj'
 import type { DriverUpdateState, PcState } from './pc'
 import type { Cs2ServersResult, SteamPlayers } from './servers'
 import type { Shelves } from './shelves'
@@ -39,7 +40,34 @@ export interface V3PcApi {
   onPcDriver(cb: (s: DriverUpdateState) => void): () => void
 }
 
-export interface LauncherApi extends V3RoutineApi, V3PcApi {
+/** Mises à jour de Player X (services/updater.ts) : l'état arrive par onMajState, les actions répondent avec l'état à jour. */
+export interface V3MajApi {
+  majState(): Promise<MajState>
+  /** « Vérifier maintenant ». */
+  majCheck(): Promise<MajState>
+  /** « Mettre à jour » : télécharge et vérifie. */
+  majDownload(): Promise<MajState>
+  /** « Plus tard » : téléchargement en silence, installation à la fermeture de Player X. */
+  majLater(): Promise<MajState>
+  /** Annule le téléchargement (la croix de la capsule). */
+  majCancel(): Promise<MajState>
+  /** « Redémarrer » : compte à rebours de 3 s, puis installation. Refusé pendant une partie ou un enregistrement. */
+  majInstall(): Promise<MajState>
+  majInstallCancel(): Promise<MajState>
+  /** « Réessayer » après une erreur. */
+  majRetry(): Promise<MajState>
+  /** « Ignorer cette version » : elle n'est plus proposée. */
+  majSkip(): Promise<MajState>
+  /** Ouvre la page des versions (adresse fixe). */
+  majOpenRelease(): Promise<void>
+  /** Les nouveautés pas encore vues (`fresh`), ou, avec `review`, celles de la version installée et des deux d'avant. */
+  majNotes(review?: boolean): Promise<MajNotes>
+  /** Les nouveautés ont été vues : elles ne reviennent plus. */
+  majNotesSeen(): Promise<void>
+  onMajState(cb: (s: MajState) => void): () => void
+}
+
+export interface LauncherApi extends V3RoutineApi, V3PcApi, V3MajApi {
   getGames(refresh?: boolean): Promise<Game[]>
   /**
    * Lance un jeu. Ne rejette jamais pour un échec de lancement : la phase le dit (`failed`, `already`…).

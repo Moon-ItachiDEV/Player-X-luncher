@@ -61,6 +61,8 @@ import { registerFriendChannels } from './channels/friends'
 import { registerLibraryChannels } from './channels/library'
 import { registerPlayChannels } from './channels/play'
 import { registerPcChannels } from './channels/pc'
+import { registerMajChannels } from './channels/maj'
+import { installInProgress, majInstalling, majRecheck, markSessionEnd, prepareUpdater, startUpdater } from './services/updater'
 
 // .env : clés de développement seulement, jamais lu par la version installée.
 // Bêta 37 : sous Windows, la capture d'écran passe par Windows.Graphics.Capture (celle d'OBS « capture Windows 10 ») au lieu
@@ -144,7 +146,12 @@ function createWindow(): void {
   // Fermée pour de bon (pas rangée près de l'horloge) : l'overlay CS2 se ferme aussi, sinon Player X ne quitterait pas.
   win.on('closed', closeCs2Overlay)
   // Windows se ferme (déconnexion, arrêt) : les dernières écritures de la base partent tout de suite.
-  win.on('session-end', () => db.flushDb())
+  win.on('session-end', () => {
+    markSessionEnd()
+    db.flushDb()
+  })
+  // Windows annonce la fin de session : plus d'installation de mise à jour à la fermeture.
+  win.on('query-session-end', markSessionEnd)
   // Les liens externes s'ouvrent dans le navigateur, pas dans l'appli.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) shell.openExternal(url)
@@ -175,6 +182,8 @@ function updateRunning(): void {
   setCs2Running(running.some((g) => g.id === CS2_GAME_ID), lastPollOk())
   // Clips : le tampon vidéo ne tourne que pendant qu'un jeu tourne (les logiciels Steam ne comptent pas).
   syncClipsRunning(running.filter(isGameEntry))
+  // Mises à jour : un jeu qui démarre ou s'arrête change ce qui peut redémarrer.
+  majRecheck()
 }
 
 // Favoris et lancements du mode démo : gardés à part pour ne jamais toucher la vraie bibliothèque.
@@ -321,6 +330,7 @@ function registerIpc(): void {
   registerPlayChannels(d)
   registerEditChannels()
   registerPcChannels()
+  registerMajChannels()
 }
 
 // ---------- lancement d'un jeu ----------
@@ -473,11 +483,16 @@ app.on('web-contents-created', (_e, contents) => {
 if (process.platform === 'win32') app.setAppUserModelId('dev.breezy.playerx.v3test')
 
 // Une seule instance : deux Player X ouverts écraseraient chacun la base de l'autre (temps de jeu relevé chaque minute).
-const firstInstance = app.requestSingleInstanceLock()
+// Une mise à jour est en train de s'installer (marqueur frais) : cette ouverture de l'ancienne version se tait, sans fenêtre.
+const quietExit = installInProgress()
+if (quietExit) app.exit(0)
+const firstInstance = !quietExit && app.requestSingleInstanceLock()
 if (!firstInstance) app.quit()
 // Une deuxième ouverture montre la fenêtre déjà là ; avec `--launch=<id>` (liste de raccourcis de Windows), elle lance
 // seulement le jeu.
 app.on('second-instance', (_e, argv) => {
+  // Le Setup est lancé et Player X se ferme : pas de fenêtre à montrer.
+  if (majInstalling()) return
   const id = launchArgOf(argv)
   if (id && launches) return launchFromShortcut(id)
   const win = mainWindow()
@@ -490,6 +505,8 @@ app.on('second-instance', (_e, argv) => {
 app.whenReady().then(async () => {
   if (!firstInstance) return
   await db.initDb()
+  // Avant tout enregistrement des réglages : une première installation n'a encore aucun réglage (notes de version).
+  prepareUpdater()
   lockDown()
   launches = await startLaunches()
   // Avant le relevé du temps de jeu : à la mise en veille, les lancements s'arrêtent sans bruit avant qu'il ne coupe les sessions.
@@ -502,7 +519,10 @@ app.whenReady().then(async () => {
     db.flushDb()
   })
   // Arrêt de la machine (Linux, macOS) ; sous Windows, la fenêtre reçoit « session-end » (voir createWindow).
-  powerMonitor.on('shutdown', () => db.flushDb())
+  powerMonitor.on('shutdown', () => {
+    markSessionEnd()
+    db.flushDb()
+  })
   process.on('exit', () => db.flushDb())
   registerIpc()
   startRoutines((gameId, launchId) => launches.start(gameId, sanitizeOpts({ via: 'play', ...(launchId ? { launchId } : {}) })))
@@ -557,6 +577,12 @@ app.whenReady().then(async () => {
   // Premier lancement après l'installeur sur mesure : ses choix (Démarrer avec Windows), avant l'inscription au démarrage.
   applyInstallOptions()
   startTray()
+  startUpdater()
+  // Développement seulement : PX_MAJ_SIM imite la mise à jour (majSim.ts, jamais dans l'installeur).
+  if (!app.isPackaged && process.env.PX_MAJ_SIM) {
+    const mode = process.env.PX_MAJ_SIM
+    import('./services/majSim').then(({ startMajSim }) => startMajSim(mode)).catch((e) => console.warn('[maj-sim]', e))
+  }
   updateRunning()
   // Développement seulement : PX_BF6_SIM simule une partie de Battlefield 6 (bf6Sim.ts, jamais dans l'installeur).
   if (!app.isPackaged && process.env.PX_BF6_SIM) {
