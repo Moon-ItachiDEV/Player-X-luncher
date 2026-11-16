@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, type IpcMainEvent, type Session, type WebContents } from 'electron'
+import { app, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, type IpcMainEvent } from 'electron'
 import { paceLog, rateBetween } from '@shared/clipPace'
 import { CS2_GAME_ID } from '@shared/cs2'
 import { cleanName, isBf6Name } from '@shared/text'
@@ -10,7 +10,7 @@ import type { ClipDisplay, ClipSettings, Game } from '@shared/types'
 import { getKv, setKv } from '../db'
 import { hotkeyRefusal } from '../hotkeys'
 import { handle } from '../ipc'
-import { appWindows, markOverlay } from '../windows'
+import { appWindows } from '../windows'
 import {
   CLIP_ID,
   canMerge,
@@ -24,7 +24,6 @@ import {
   openPending,
   pickRecorder,
   QUALITY,
-  restartDelayMs,
   selectFragments,
   withNeighbours,
   type ClipMoment,
@@ -39,6 +38,7 @@ import { filesBusy, filesDone, forgetFiles, serial } from './clipsQueue'
 import { chooseFolder, clipSettings, folderOf, loadClipSettings, resolved, storeClipSettings, usableFolder } from './clipsSettings'
 import { cleanShareCopies } from './clipsShare'
 import { bufferRoot, capture, emitState, frags, libraryRunning, loadLastGame, noteGamePace, pendings, recorders, setCapture, setFrags, setHotkeyError, setLastProblem, setLibraryRunning, setTestRunning, sleep, stateNow, testRunning, thumbAllowed, writing, type Capture, type Recorder, type RunningGame } from './clipsState'
+import { fromRecorder, launchRecorder, onRecordersChanged, onRecorderStopped, openWindow, recorderLost, requestThumb, send, targetDisplayId, testSource } from './clipsWindow'
 import { showClipToast } from './clipsToast'
 import { cs2IsRunning, cs2MomentContext, onCs2Moment, onCs2Running } from './cs2Live'
 import { buildFlat, collectTracks, cutTracks, firstFrameS, Fmp4Splitter, parseFragment, parseInit, type FlatPlan, type FragmentInfo } from './fmp4'
@@ -65,8 +65,6 @@ import { attemptLabel, engineAttempts, muxArgs, PCM_FRAME_BYTES, PCM_RATE, pcmWi
 // Un autre protocole privilégié devra s'ajouter à cette même liste.
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }])
 
-const PARTITION = 'px-clips-capture'
-const PAGE_NAME = 'clips-recorder.html'
 /** Attente de la dernière image après la fermeture de la fenêtre d'un clip : un fragment arrive au plus toutes les 2 s environ. */
 const GRACE_MS = 6_000
 const TICK_MS = 250
@@ -79,8 +77,6 @@ const QUIT_WAIT_MS = 8_000
 /** Plus que ça en attente d'écriture : le disque ne suit pas, l'enregistreur s'arrête plutôt que de remplir la mémoire. */
 const MAX_QUEUED_BYTES = 256 * 1024 * 1024
 const MAX_THUMB_BYTES = 4 * 1024 * 1024
-/** Enregistreur en bonne santé depuis ce temps : ses relances repartent de la plus courte. */
-const HEALTHY_MS = 30_000
 
 let started = false
 let stopping: Promise<void> | null = null
@@ -91,195 +87,6 @@ let suspended = false
 let windowsGone = false
 let tickTimer: ReturnType<typeof setInterval> | undefined
 let hotkeyNow: string | null = null
-let captureSession: Session | null = null
-
-// ---------- fenêtre de capture ----------
-
-/** La page interne, dans sa fenêtre : rien d'autre n'a droit à l'écran ni au micro. */
-function isRecorderContents(wc: WebContents | null | undefined): boolean {
-  const win = capture?.win
-  if (!wc || !win || win.isDestroyed() || wc !== win.webContents) return false
-  const url = wc.getURL()
-  return !url || isRecorderUrl(url)
-}
-
-function isRecorderUrl(url: string | undefined): boolean {
-  if (!url) return false
-  try {
-    const u = new URL(url)
-    return u.protocol === 'file:' && u.pathname.endsWith(`/renderer/${PAGE_NAME}`)
-  } catch {
-    return false
-  }
-}
-
-function fromRecorder(e: IpcMainEvent): boolean {
-  return isRecorderContents(e.sender) && e.senderFrame?.parent === null && isRecorderUrl(e.senderFrame?.url)
-}
-
-/** Écran à capturer : celui des réglages, sinon l'écran principal. */
-function targetDisplayId(): number {
-  const all = screen.getAllDisplays()
-  return all.find((d) => d.id === clipSettings().display)?.id ?? screen.getPrimaryDisplay().id
-}
-
-/** Session de la fenêtre de capture : la seule où l'écran et le micro peuvent être accordés, et seulement à sa page. */
-function ensureSession(): Session {
-  if (captureSession) return captureSession
-  const ses = session.fromPartition(PARTITION)
-  const allowed = (permission: string): boolean => permission === 'media' || permission === 'display-capture'
-  ses.setPermissionRequestHandler((wc, permission, callback) => callback(allowed(permission) && isRecorderContents(wc)))
-  ses.setPermissionCheckHandler((wc, permission) => allowed(permission) && isRecorderContents(wc))
-  // getDisplayMedia sans aucune invite : la source est choisie ici, jamais par la page.
-  ses.setDisplayMediaRequestHandler((request, callback) => {
-    const win = capture?.win
-    const frame = request.frame
-    if (!win || win.isDestroyed() || !frame || frame !== win.webContents.mainFrame) return callback(null)
-    desktopCapturer
-      .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
-      .then((sources) => {
-        const id = String(targetDisplayId())
-        const source = sources.find((s) => s.display_id === id) ?? sources[0]
-        if (!source) {
-          log('Capture : aucun écran disponible.')
-          return callback(null)
-        }
-        log(`Capture de l’écran ${source.display_id || source.id} (son du système : ${request.audioRequested ? 'demandé' : 'non'}).`)
-        callback({ video: source, ...(request.audioRequested ? { audio: 'loopback' as const } : {}) })
-      })
-      .catch((e) => {
-        log(`Capture : liste des écrans illisible : ${errText(e)}`)
-        callback(null)
-      })
-  })
-  captureSession = ses
-  return ses
-}
-
-function openWindow(c: Capture): void {
-  const w = new BrowserWindow({
-    show: false,
-    width: 640,
-    height: 360,
-    frame: false,
-    skipTaskbar: true,
-    focusable: false,
-    title: 'Player X · capture',
-    webPreferences: {
-      preload: join(__dirname, '../preload/clipsRecorder.js'),
-      session: ensureSession(),
-      sandbox: true,
-      contextIsolation: true,
-      backgroundThrottling: false,
-      autoplayPolicy: 'no-user-gesture-required',
-      devTools: !app.isPackaged
-    }
-  })
-  // Hors de la liste des fenêtres de l'appli (mainWindow, envois) ; et aucun canal clips:* ne lui répond (ipc.ts).
-  markOverlay(w)
-  c.win = w
-  c.ready = false
-  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  // Avertissements de MediaRecorder (changement de taille, encodeur) : au journal, pas plus de 30 par fenêtre.
-  let consoleLines = 0
-  w.webContents.on('console-message', (e) => {
-    if ((e.level === 'warning' || e.level === 'error') && consoleLines++ < 30) log(`Console : ${e.message.slice(0, 300)}`)
-  })
-  w.webContents.on('render-process-gone', (_e, details) => {
-    log(`Page de capture plantée : ${details.reason}.`)
-    if (!w.isDestroyed()) w.destroy()
-  })
-  w.on('closed', () => {
-    if (c.win !== w) return
-    c.win = null
-    c.ready = false
-    if (capture !== c || c.stopping) return
-    if (c.rec) recorderLost(c.rec, 'fenêtre de capture fermée')
-    else scheduleRestart(c, 'fenêtre de capture fermée')
-  })
-  void w.loadFile(join(__dirname, `../renderer/${PAGE_NAME}`))
-}
-
-function send(c: Capture, command: Record<string, unknown>): void {
-  const win = c.win
-  if (win && !win.isDestroyed()) win.webContents.send('clips-rec:command', command)
-}
-
-/** Essais en développement seulement : PX_CLIP_TEST_SOURCE=1 (ou 640x360), un canvas et un oscillateur à la place de l'écran. */
-function testSource(): { width: number; height: number } | null {
-  const v = app.isPackaged ? undefined : process.env.PX_CLIP_TEST_SOURCE
-  if (!v) return null
-  const m = /^(\d{2,4})x(\d{2,4})$/.exec(v)
-  return m ? { width: Number(m[1]), height: Number(m[2]) } : { width: 1280, height: 720 }
-}
-
-/** Essais en développement seulement : PX_CLIP_TEST_MIME impose un format d'enregistrement. */
-const testMime = (): string | null => (app.isPackaged ? null : process.env.PX_CLIP_TEST_MIME || null)
-
-/** Démarre un nouvel enregistreur (le tampon de l'ancien reste). */
-function launchRecorder(c: Capture): void {
-  clearTimeout(c.restartTimer)
-  c.restartTimer = undefined
-  if (capture !== c || c.stopping || c.rec) return
-  if (!c.win) return openWindow(c)
-  if (!c.ready) return
-  // Le moteur vidéo se vérifie au début de la partie (decideEngine) : la page attend de savoir si elle filme l'image.
-  if (c.engMode === undefined) return
-  const audioOnly = c.engMode === true
-  // Le moteur filme l'image et aucun son n'est voulu : la page n'enregistre rien.
-  if (audioOnly && !clipSettings().gameAudio && !clipSettings().mic) return
-  const id = `r${Date.now().toString(36)}${randomBytes(2).toString('hex')}`
-  const now = Date.now()
-  const rec: Recorder = {
-    id,
-    dir: join(bufferRoot(), id),
-    splitter: new Fmp4Splitter(),
-    init: null,
-    anchor: now,
-    startedAt: now,
-    lastDataAt: now,
-    wantedFps: QUALITY[clipSettings().quality].fps,
-    seq: 0,
-    queued: 0,
-    writes: mkdir(join(bufferRoot(), id), { recursive: true }).then(
-      () => {},
-      (e) => log(`Tampon inaccessible : ${errText(e)}`)
-    ),
-    ended: false,
-    restartNow: false,
-    ...(audioOnly ? { audioOnly: true, pcm: [] } : {})
-  }
-  recorders.set(id, rec)
-  c.rec = rec
-  send(c, { type: 'start', recId: id, quality: QUALITY[clipSettings().quality], gameAudio: clipSettings().gameAudio, mic: clipSettings().mic, mimeFrom: c.mimeFrom, test: testSource(), testMime: audioOnly ? null : testMime(), audioOnly })
-  log(`Enregistreur ${id} demandé (${audioOnly ? 'son seulement, image par le moteur' : clipSettings().quality}, son du jeu : ${clipSettings().gameAudio ? 'oui' : 'non'}, micro : ${clipSettings().mic ? 'oui' : 'non'}).`)
-  syncHotkey()
-  emitState()
-}
-
-function scheduleRestart(c: Capture, reason: string, quick = false): void {
-  if (capture !== c || c.stopping || c.restartTimer) return
-  const fast = quick && Date.now() - c.quickAt > 10_000
-  if (fast) c.quickAt = Date.now()
-  const delay = fast ? 300 : restartDelayMs(c.attempts++)
-  c.failure = `Capture interrompue (${reason}) : nouvel essai dans ${Math.max(1, Math.round(delay / 1000))} s.`
-  log(c.failure)
-  c.restartTimer = setTimeout(() => launchRecorder(c), delay)
-  syncHotkey()
-  emitState()
-}
-
-/** L'enregistreur vient de s'arrêter tout seul : ses fragments restent, un nouveau repart après un délai. */
-function recorderLost(rec: Recorder, reason: string, quick = false): void {
-  rec.ended = true
-  const c = capture
-  if (!c || c.rec !== rec) return
-  if (Date.now() - rec.startedAt > HEALTHY_MS && rec.seq > 0) c.attempts = 0
-  // Démarré sans jamais rien produire (encodeur matériel muet, par exemple) : le format suivant au prochain essai.
-  if (rec.mimeIndex !== undefined) c.mimeFrom = rec.init ? rec.mimeIndex : rec.mimeIndex + 1
-  c.rec = null
-  scheduleRestart(c, reason, quick)
-}
 
 // ---------- l'image par le moteur vidéo (bêta 42) ----------
 
@@ -611,13 +418,6 @@ function onMoment(m: ClipMoment, gameId?: string): boolean {
   ensureTick()
   pruneBuffer()
   return true
-}
-
-function requestThumb(id: string): void {
-  const c = capture
-  if (!c?.rec || !c.ready) return
-  thumbAllowed.add(id)
-  send(c, { type: 'thumb', id })
 }
 
 /** Le raccourci, ou le bouton : garde les `before` dernières secondes et les `after` suivantes. */
@@ -1030,34 +830,6 @@ export function syncClipsRunning(running: Game[]): void {
   sync()
 }
 
-function onRecorderStopped(rec: Recorder, info: { reason?: unknown; badSince?: unknown; quick?: unknown }): void {
-  const reason = typeof info.reason === 'string' ? info.reason.slice(0, 200) : 'arrêt inconnu'
-  rec.ended = true
-  // Résolution changée : le dernier morceau a été encodé avec une autre taille que celle de l'en-tête.
-  if (typeof info.badSince === 'number') {
-    const bad = info.badSince
-    rec.writes = rec.writes.then(() => {
-      const gone = frags.filter((f) => f.recId === rec.id && f.startWall >= bad)
-      setFrags(frags.filter((f) => !(f.recId === rec.id && f.startWall >= bad)))
-      for (const f of gone) void unlink(f.file).catch(() => {})
-    })
-  }
-  const done = rec.onEnded
-  rec.onEnded = undefined
-  done?.()
-  const c = capture
-  if (!c || c.rec !== rec || c.stopping) return
-  if (rec.restartNow) {
-    c.rec = null
-    c.attempts = 0
-    c.failure = undefined
-    launchRecorder(c)
-    return
-  }
-  log(`Enregistreur ${rec.id} arrêté : ${reason}.`)
-  recorderLost(rec, reason, info.quick === true)
-}
-
 function registerRecorderIpc(): void {
   const live = (e: IpcMainEvent, recId: unknown): Recorder | null => {
     if (!fromRecorder(e) || typeof recId !== 'string') return null
@@ -1191,6 +963,7 @@ async function cleanLeftovers(): Promise<void> {
 /** Après l'ouverture de la base. */
 export function startClips(): void {
   if (started) return
+  onRecordersChanged(syncHotkey)
   loadClipSettings()
   loadClipIndex()
   loadLastGame()
