@@ -2,6 +2,7 @@ import { cleanProfileName, isProfileAvatar } from '@shared/profile'
 import { discordGuildIdFrom } from '@shared/text'
 import { DEFAULT_OVERLAY_HOTKEY, isValidHotkey } from '@shared/hotkey'
 import type { Settings } from '@shared/types'
+import { isVersion } from './updaterRules'
 
 // Règles des réglages, sans Electron ni base (testées par settingsRules.test.ts).
 
@@ -33,7 +34,10 @@ export function defaults(env: Record<string, string | undefined> = {}, platform:
     overlayHotkey: DEFAULT_OVERLAY_HOTKEY,
     profileName: '',
     profileAvatar: '',
-    gameReadyAlert: true
+    gameReadyAlert: true,
+    updateOnQuit: true,
+    updateSkipped: null,
+    notesSeen: ''
   }
 }
 
@@ -87,6 +91,9 @@ export function cleanPatch(patch: unknown, demoAllowed = false): Partial<Setting
   if (typeof p.cs2Live === 'boolean') clean.cs2Live = p.cs2Live
   if (typeof p.cs2RecapOpen === 'boolean') clean.cs2RecapOpen = p.cs2RecapOpen
   if (typeof p.gameReadyAlert === 'boolean') clean.gameReadyAlert = p.gameReadyAlert
+  if (typeof p.updateOnQuit === 'boolean') clean.updateOnQuit = p.updateOnQuit
+  if (p.updateSkipped === null || isVersion(p.updateSkipped)) clean.updateSkipped = p.updateSkipped
+  if (isVersion(p.notesSeen)) clean.notesSeen = p.notesSeen
   if (typeof p.friendAlerts === 'string' && ALERT_MODES.includes(p.friendAlerts)) clean.friendAlerts = p.friendAlerts as Settings['friendAlerts']
   if (Array.isArray(p.friendWatch)) clean.friendWatch = [...new Set(p.friendWatch.filter((x): x is string => typeof x === 'string' && /^(steam|psn):[\w-]{1,64}$/.test(x)))].slice(0, 200)
   if (typeof p.launchWindow === 'string' && WINDOW_MODES.includes(p.launchWindow)) clean.launchWindow = p.launchWindow as Settings['launchWindow']

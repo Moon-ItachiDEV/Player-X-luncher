@@ -154,6 +154,12 @@ export interface Settings {
   profileAvatar: string
   /** Prêt à jouer : une alerte quand Steam a fini de télécharger la mise à jour (ou l'installation) d'un jeu. */
   gameReadyAlert: boolean
+  /** Mises à jour : installer à la fermeture de Player X quand une version est prête (jamais pendant une partie). */
+  updateOnQuit: boolean
+  /** Version à ne plus proposer (« Ignorer cette version »), ou null. */
+  updateSkipped: string | null
+  /** Dernière version dont les nouveautés ont été montrées ('' : jamais). */
+  notesSeen: string
 }
 
 /**

@@ -1,0 +1,31 @@
+[
+  {
+    "version": "0.7.2",
+    "date": "2026-11-17",
+    "items": [
+      {
+        "kind": "nouveau",
+        "title": "Les mises à jour arrivent dans l’appli",
+        "text": "Player X te prévient quand une version sort. Tu choisis : maintenant, ou à la fermeture. Jamais pendant une partie.",
+        "page": "set-about"
+      }
+    ]
+  },
+  {
+    "version": "0.7.1",
+    "date": "2026-11-16",
+    "items": [
+      {
+        "kind": "nouveau",
+        "title": "Éditeur de films",
+        "text": "Ton montage est gardé, la musique joue dans l’aperçu avec sa tête de lecture, et le tempo se corrige à la main.",
+        "page": "clips"
+      },
+      {
+        "kind": "corrige",
+        "title": "Son des clips",
+        "text": "Il arrive 85 ms plus tôt sur les clips filmés par le moteur."
+      }
+    ]
+  }
+]
