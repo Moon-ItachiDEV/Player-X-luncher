@@ -1,0 +1,23 @@
+// Essai des nouveautés au démarrage : première installation (rien, version notée vue), puis mise à jour (notes montrées une fois).
+//   xvfb-run -a node tools/essais/maj-notes.cjs
+const { _electron } = require('playwright')
+const path = require('path'), fs = require('fs'), os = require('os'), assert = require('assert')
+const ROOT = path.resolve(__dirname, '../..')
+const launch = (dir) => _electron.launch({ executablePath: path.join(ROOT, 'node_modules/electron/dist/electron'), args: ['--no-sandbox', '--user-data-dir=' + dir, '.'], cwd: ROOT, env: { ...process.env, PX_SOFTGL: '1' } })
+;(async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'px-notes-'))
+  let app = await launch(dir), p = await app.firstWindow(); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(3000)
+  let n = await p.evaluate(() => window.launcher.majNotes(false)), s = await p.evaluate(() => window.launcher.getSettings())
+  assert.strictEqual(n.fresh, false); assert.strictEqual(s.notesSeen, '0.7.1'); assert.strictEqual(s.updateOnQuit, true); assert.strictEqual(s.updateSkipped, null)
+  console.log('ok 1 : première installation, aucune note, notesSeen =', s.notesSeen)
+  await p.evaluate(() => window.launcher.saveSettings({ notesSeen: '0.7.0' })); await app.close()
+  app = await launch(dir); p = await app.firstWindow(); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(3000)
+  n = await p.evaluate(() => window.launcher.majNotes(false))
+  assert.strictEqual(n.fresh, true); assert.deepStrictEqual(n.entries.map((e) => e.version), ['0.7.1']); assert.strictEqual(n.from, '0.7.0')
+  console.log('ok 2 : de 0.7.0 à 0.7.1, notes montrées :', n.entries.length)
+  await p.evaluate(() => window.launcher.majNotesSeen()); await app.close()
+  app = await launch(dir); p = await app.firstWindow(); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(3000)
+  n = await p.evaluate(() => window.launcher.majNotes(false)); assert.strictEqual(n.fresh, false); console.log('ok 3 : une seule fois')
+  const rev = await p.evaluate(() => window.launcher.majNotes(true)); assert.ok(rev.entries.length >= 1); console.log('ok 4 : revoir les nouveautés :', rev.entries.map((e) => e.version).join(', '))
+  await app.close()
+})().catch((e) => { console.error(e); process.exit(1) })

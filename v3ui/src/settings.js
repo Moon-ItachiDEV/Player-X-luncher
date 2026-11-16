@@ -41,7 +41,7 @@ const Settings = (() => {
     ['library', 'r-news', 'Actus des jeux', 'patch événements nouvelles badge'], ['library', 'r-hid', 'Jeux masqués', 'cacher réafficher'], ['library', 'r-col', 'Collections', 'ranger'], ['library', 'r-scan', 'Chercher mes jeux', 'scan analyse détecter dossiers'],
     ['general', 'r-home', 'Style de l’accueil', 'vitrine arsenal roue étagère viseur accueil essai'], ['general', 'r-sol', 'Sol de l’Arsenal', 'brume fumée laqué reflet sol arsenal'], ['general', 'r-motion', 'Fond qui suit la souris', 'animation mouvement parallaxe'], ['general', 'r-win', 'Démarrer avec Windows', 'lancement session démarrage'], ['general', 'r-tray', 'Quand je ferme la fenêtre', 'croix quitter horloge zone de notification'], ['general', 'r-launch', 'Quand un jeu démarre', 'réduire rester fenêtre'], ['general', 'r-fr', 'Alertes d’amis', 'steam playstation psn notification connexion'], ['general', 'r-ready', 'Jeu prêt après une mise à jour', 'alerte steam téléchargement notification'], ['general', 'r-live', 'Suivre mes matchs de Counter-Strike 2', 'gsi score direct bilan clips auto'], ['general', 'r-cs2open', 'Ouvrir le bilan à la fin du match', 'counter-strike story résumé'], ['general', 'r-bfrecap', 'Bilan après chaque session de Battlefield 6', 'résumé stats'],
     ['keys', 'k-clip', 'Clipper à la main', 'raccourci touche clip'], ['keys', 'k-overlay', 'Masquer l’overlay', 'raccourci touche hud'], ['keys', 'k-search', 'Tout rechercher', 'raccourci touche palette'], ['keys', 'k-find', 'Chercher un réglage', 'raccourci touche'], ['keys', 'k-rt', 'Lancer une routine', 'raccourci touche'], ['keys', 'k-set', 'Ouvrir les paramètres', 'raccourci touche'],
-    ['about', 'r-ver', 'Version installée', 'build test mise à jour'], ['about', 'r-setup', 'Revoir l’accueil', 'première ouverture'],
+    ['about', 'r-ver', 'Version installée', 'build numéro'], ['about', 'r-maj', 'Mises à jour', 'vérifier nouvelle version télécharger installer'], ['about', 'r-maj-quit', 'Installer à la fermeture de Player X', 'mise à jour automatique quitter fermer'], ['about', 'r-maj-skip', 'Version ignorée', 'ne plus ignorer mise à jour'], ['about', 'r-maj-notes', 'Revoir les nouveautés', 'notes de version changements nouveautés'], ['about', 'r-setup', 'Revoir l’accueil', 'première ouverture'],
     ['pc', 'r-gpu', 'Pilote de la carte graphique', 'nvidia geforce amd radeon adrenalin intel arc version mise à jour driver gpu'], ['pc', 'r-hz', 'Fréquence de l’écran', 'hz 144 165 240 60 rafraîchissement moniteur affichage'],
     ['rec', 'r-hot', 'Clipper à la main', 'raccourci touche clip manuel'], ['overlay', 'r-ovkey', 'Masquer ou afficher l’overlay', 'raccourci touche hud']
   ]
@@ -1043,9 +1043,11 @@ const Settings = (() => {
     const rs = $('#pcRstr', b); if (rs) rs.onclick = () => Promise.resolve(API.pcSystemRestore()).catch(failed)
   }
   function pAbout(b, d) {
-    b.innerHTML = `${d}${group('', `<div class="sr ab" id="r-ver"><div class="ab-l">${logo('ab-logo')}</div><div class="sr-t"><b>Player X V3 Test</b><span>Version ${esc(API.version)}. À part de ton Player X, sans mise à jour automatique.</span></div></div>
+    b.innerHTML = `${d}${group('', `<div class="sr ab" id="r-ver"><div class="ab-l">${logo('ab-logo')}</div><div class="sr-t"><b>Player X</b><span>Version ${esc(API.version)}</span></div></div>
       ${row('r-setup', 'Première ouverture', '', '<button class="btn sm" id="abSetup">Revoir l’accueil</button>')}
-      ${row('r-ffm', 'Moteur vidéo', `FFmpeg${eng ? ' ' + esc(eng.version) : ''}, un logiciel libre (licence LGPL).`, '<button class="btn sm" id="abFf">Ouvrir sa licence</button>')}`)}`
+      ${row('r-ffm', 'Moteur vidéo', `FFmpeg${eng ? ' ' + esc(eng.version) : ''}, un logiciel libre (licence LGPL).`, '<button class="btn sm" id="abFf">Ouvrir sa licence</button>')}`)}
+      ${Maj.block({ row, group, sw })}`
+    Maj.bind(b, { save })
     $('#abSetup', b).onclick = () => { close(true); go('play'); setTimeout(() => Setup.open(), 340) }
     $('#abFf', b).onclick = () => API.editEngineFolder().catch(failed)
   }

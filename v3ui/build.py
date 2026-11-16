@@ -22,7 +22,7 @@ for fam, f, w, it in [('PX Neon', 'chakra-petch-700', 700, 0), ('PX Stade', 'bar
     css += f"@font-face{{font-family:'{fam}';src:url(data:font/woff2;base64,{b64(U + '/fonts/' + f + '.woff2')}) format('woff2');font-weight:{w};font-style:{'italic' if it else 'normal'};font-display:swap}}\n"
 for f in sorted(glob.glob(S + '/*.css')):
     css += open(f, encoding='utf8').read() + '\n'
-ORDER = ['data.js', 'core.js', 'real.js', 'real-friends.js', 'fluid.js', 'pxtype.js', 'style.js', 'play.js', 'bar.js', 'live.js', 'clips.js', 'edit.js', 'pages.js', 'board.js', 'stats.js', 'atelier.js', 'news.js', 'settings.js', 'flows.js', 'moments.js', 'main.js']
+ORDER = ['data.js', 'core.js', 'real.js', 'real-friends.js', 'fluid.js', 'pxtype.js', 'style.js', 'play.js', 'bar.js', 'live.js', 'clips.js', 'edit.js', 'pages.js', 'board.js', 'stats.js', 'atelier.js', 'news.js', 'settings.js', 'flows.js', 'maj.js', 'moments.js', 'main.js']
 js = open(U + '/constants.js', encoding='utf8').read() + '\n' + open(U + '/.shared.js', encoding='utf8').read() + '\n'
 # Un fichier de ORDER absent, ou un fichier de src/ hors de ORDER, arrête le build : rien ne disparaît en silence
 manque = [f for f in ORDER if not os.path.exists(f'{S}/{f}')]

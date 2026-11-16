@@ -99,6 +99,7 @@ async function boot() {
   if (bootFailed) toast(`Tes jeux n’ont pas pu être lus. ${esc(errText(bootFailed))}`, { tone: 'warn', ms: 20000, action: { label: 'Réessayer', fn: () => location.reload() } })
   Palette.mount(win)
   Install.mount(win)
+  Maj.mount(win)
   Recap.mount()
   const syncInert = () => { const kids = [...win.children], open = kids.filter((c) => c.matches('[data-modal]:not([hidden])')).pop(); kids.forEach((c) => { if (c.id !== 'toasts') c.inert = (!!open && c !== open) || c.hasAttribute('data-ck-inert') }) }
   new MutationObserver(syncInert).observe(win, { childList: true })
