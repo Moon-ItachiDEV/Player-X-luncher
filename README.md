@@ -7,7 +7,7 @@ Il ne se met pas encore à jour tout seul : une nouvelle version s'installe par-
 
 ## Installer l'appli
 
-Lancer l'installeur (`…-Installer-<version>.exe`, ou `…-Setup-<version>.exe`) sous Windows 10 ou 11.
+Lancer `Player-X-Installer-<version>.exe` (ou `Player-X-Setup-<version>.exe`) sous Windows 10 ou 11.
 Rien d'autre à installer : tout ce dont l'appli a besoin, FFmpeg compris, est livré dedans.
 
 ## Développement

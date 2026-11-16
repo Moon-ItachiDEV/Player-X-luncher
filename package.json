@@ -95,7 +95,7 @@
       "uninstallDisplayName": "Player X V3 Test",
       "installerIcon": "resources/icon.ico",
       "uninstallerIcon": "resources/icon.ico",
-      "artifactName": "Player-X-V3-Test-Setup-${version}.${ext}",
+      "artifactName": "Player-X-Setup-${version}.${ext}",
       "deleteAppDataOnUninstall": true,
       "language": "1036",
       "installerLanguages": [
