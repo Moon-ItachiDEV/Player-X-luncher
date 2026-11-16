@@ -183,17 +183,16 @@ const Maj = (() => {
     if (!n.entries.length || notesOpen) return
     back = document.activeElement
     notesOpen = n
-    const { entries, fresh, from, to } = n
-    const sub = !fresh ? `Version installée : ${esc(to)}` : from ? `De la ${esc(from)} à la ${esc(to)} · ${entries.length} version${entries.length > 1 ? 's' : ''} que tu n’avais pas vues` : `Nouveautés de la ${esc(to)}`
+    const { entries, fresh, to } = n
     dimEl.dataset.k = 'notes'
     dimEl.innerHTML = `<div class="mj-cl mj-gl" role="dialog" aria-modal="true" aria-labelledby="mjT">
-      <div class="mj-hd">${SHIELD}<div><div class="mj-ver" id="mjT">${fresh ? 'Player X est à jour' : 'Nouveautés de Player X'}</div><div class="mj-meta">${sub}</div></div><span class="mj-sp"></span><span class="mj-vb">${esc(to)}</span></div>
+      <div class="mj-hd">${SHIELD}<div class="mj-ver" id="mjT">${fresh ? 'Player X est à jour' : 'Nouveautés de Player X'}</div><span class="mj-sp"></span><span class="mj-vb">${esc(to)}</span></div>
       <div class="mj-body">${entries.map((e) => `<div class="mj-vh">${esc(e.version)} <span class="mj-meta">${esc(dateFr(e.date))}</span></div>${e.items.map((i) => {
         const [lab, cls] = KIND[i.kind] || KIND.nouveau
         const ok = i.page && (PAGES[i.page] || (i.page.startsWith('set-') && SECTIONS.includes(i.page.slice(4))))
         return `<div class="mj-grp"><span class="mj-gk ${cls}">${lab}</span><div class="mj-it"><b>${esc(i.title)}</b><span>${esc(i.text)}</span></div>${ok ? `<button class="mj-lnk" data-page="${esc(i.page)}">Voir</button>` : '<span></span>'}</div>`
       }).join('')}`).join('')}</div>
-      <div class="mj-ft"><button class="mj-pill pri" id="mjOk">${fresh ? 'C’est parti' : 'Fermer'}</button><span class="mj-sp"></span>${fresh ? '<span class="mj-meta">Ces notes ne s’affichent qu’une fois</span>' : ''}</div></div>`
+      <div class="mj-ft"><button class="mj-pill pri" id="mjOk">${fresh ? 'C’est parti' : 'Fermer'}</button></div></div>`
     dimEl.hidden = false
     $('#mjOk', dimEl).onclick = () => closeNotes()
     $$('[data-page]', dimEl).forEach((b) => b.onclick = () => { const p = b.dataset.page; closeNotes(); setTimeout(() => goPage(p), 220) })
