@@ -1,7 +1,10 @@
 # Player X V3 Test
 
-Version d'essai de la nouvelle interface de Player X (« V3 »), lanceur de jeux pour Windows fait avec Electron.
-Elle s'installe à part du vrai Player X et n'a pas de mise à jour automatique.
+Player X est un lanceur de jeux pour Windows. Il réunit les jeux du PC, les lance, enregistre des clips, en monte des
+films et affiche un overlay pendant les parties de Counter-Strike 2.
+
+Player X V3 Test est la version d'essai de sa nouvelle interface. Elle s'installe à côté de Player X, sans toucher à ses
+fichiers ni à ses données. Elle ne se met pas encore à jour toute seule : une nouvelle version s'installe par-dessus.
 
 ## Installer l'appli
 
