@@ -435,7 +435,8 @@ export async function majCancel(): Promise<MajState> {
 }
 
 export async function majSkip(): Promise<MajState> {
-  const v = manifest?.version
+  // En simulation (développement), pas de maj.json : la version vient de l'état simulé.
+  const v = manifest?.version ?? (simulated ? state.version : undefined)
   if (!v || (state.status !== 'available' && state.status !== 'error')) return state
   saveSettings({ updateSkipped: v })
   purge()

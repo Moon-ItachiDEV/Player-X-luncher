@@ -35,7 +35,7 @@ const Maj = (() => {
   const act = (fn) => (...a) => Promise.resolve(fn(...a)).then((s) => s && apply(s)).catch((e) => toast(esc(errText(e)), { tone: 'warn', ms: 4000 }))
   const doDownload = act(() => API.majDownload()), doLater = act(() => API.majLater()), doCancel = act(() => API.majCancel())
   const doInstall = act(() => API.majInstall()), doInstallCancel = act(() => API.majInstallCancel()), doRetry = act(() => API.majRetry())
-  const doSkip = act(() => API.majSkip()), doCheck = act(() => API.majCheck())
+  const doSkip = act(async () => { const r = await API.majSkip(); await Real.loadSettingsOnly().catch(() => {}); syncBlock(); return r }), doCheck = act(() => API.majCheck())
 
   function mount(win) {
     if (!API.majState) return
