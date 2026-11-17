@@ -7,6 +7,7 @@ import { hasName } from '@shared/steamApps'
 import { cleanName, isBf6Name } from '@shared/text'
 import type {   FriendsResult, Game } from '@shared/types'
 import { logError } from './crashLog'
+import { installGuards, startupFailed } from './guard'
 import * as db from './db'
 import { appWindows, broadcast, mainWindow } from './windows'
 import {  onRareUnlocks, startAchievementsWatcher } from './services/achievements'
@@ -604,13 +605,13 @@ app.whenReady().then(async () => {
 }).catch((e) => {
   // Démarrage raté (base illisible, disque plein…) : un message clair et l'appli se ferme. Sans ça, elle restait cachée,
   // gardait le verrou d'instance unique, et la relancer ne faisait plus rien.
-  logError('démarrage', e)
-  dialog.showErrorBox('Player X V3 Test n’a pas pu démarrer', `${e instanceof Error ? e.message : String(e)}\n\nLe détail est dans erreurs.log, dans ${app.getPath('userData')}.`)
-  app.exit(1)
+  startupFailed(e)
 })
 
 // Une promesse rejetée que personne n'attend : notée dans le journal au lieu de disparaître sans trace.
 process.on('unhandledRejection', (e) => logError('promesse non gérée', e))
+// Erreur imprévue, page qui plante, base reprise de la copie de secours : voir guard.ts.
+installGuards()
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
