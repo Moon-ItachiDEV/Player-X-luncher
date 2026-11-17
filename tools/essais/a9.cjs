@@ -11,6 +11,8 @@ const { start, shot, settle, go, check, done, failed } = require('./h.cjs')
     await p.fill('#atP-optic', 'CCO 2.00X'); await p.keyboard.press('Tab'); await p.fill('#atN-optic', '10'); await p.waitForTimeout(800); await shot(p, 'a9-at1')
     await p.click('#atSave'); await p.waitForTimeout(1500); await shot(p, 'a9-at-saved')
     console.log(await p.evaluate(async () => ({ builds: BUILDS.map((b) => [b.id, b.w, b.name, b.parts.optic]), real: (await API.getBf6Loadouts()).map((l) => [l.id, l.weapon, l.name, l.parts.optic, l.cat]) , weapons: (await API.getMyBf6Weapons()).map((w) => w.name) })))
+    // L'enregistrement rend le volet de l'arme : il est modal, la barre ne se clique plus tant qu'il est ouvert
+    await p.click('.vl-x'); await p.waitForTimeout(400)
     // Collection
     await go(p, 'lib'); await p.click('#lbNew'); await p.waitForTimeout(500); await p.fill('#pnN', 'Avec les potes'); await p.click('.pn-t'); await p.click('.pn-t:nth-child(2)'); await p.waitForTimeout(200); await shot(p, 'a9-col'); await p.click('#pnOk'); await p.waitForTimeout(1200); await shot(p, 'a9-col2')
     console.log(await p.evaluate(async () => ({ shelves: await API.getShelves(), filter: S.libFilter })))

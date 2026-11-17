@@ -22,19 +22,24 @@ const stats = (name, platform, kd, kills) => ({ account: { name, platform }, kil
     await p.fill('.sf-search input', 'Inconnu'); await p.click('.ps-go'); await p.waitForTimeout(500); await shot(p, 'a7-none')
     await p.fill('.sf-search input', 'Breezy'); await p.click('.ps-go'); await p.waitForTimeout(500); await shot(p, 'a7-res')
     await p.click('[data-pick="0"]'); await p.waitForTimeout(2600); await shot(p, 'a7-over')
-    for (const t of ['arsenal', 'maps']) { await p.click(`.sp-tabs [data-t=${t}]`); await p.waitForTimeout(1200); await shot(p, 'a7-' + t) }
-    await p.click('.sp-tabs [data-t=board]'); await p.waitForTimeout(1200); await shot(p, 'a7-solo')
-    await p.click('#rkAddBtn'); await p.waitForTimeout(300)
+    // Plus d'onglets : chaque section s'ouvre en volet depuis le Cockpit (lien « Toutes les armes », « Cartes et modes », bouton « Classement »)
+    // et `.vl-x` le ferme ; tant qu'un volet est ouvert, le reste de la page est inerte
+    for (const [t, sel] of [['arsenal', '.k-more[data-open=arsenal]'], ['maps', '.k-more[data-open=bfmaps]']]) { await p.click(sel); await p.waitForTimeout(1200); await shot(p, 'a7-' + t); await p.click('.vl-x') }
+    await p.click('#ckHR [data-open=board]'); await p.waitForTimeout(1200); await shot(p, 'a7-solo')
+    // « Suivre un joueur » ouvre un volet de recherche au-dessus du classement ; un joueur suivi le referme, un échec le laisse ouvert
+    await p.click('.vl [data-open=follow]'); await p.waitForTimeout(300)
     for (const n of ['Draxx', 'Fantome', 'NeoKai']) {
-      if (!(await p.evaluate(() => { const x = document.querySelector('#rkAdd'); return x && !x.hidden }))) await p.click('#rkAddBtn')
-      await p.fill('#rkQ', n); await p.click('#rkGo'); await p.waitForTimeout(400); await p.click('#rkRes [data-pick="0"]'); await p.waitForTimeout(1400)
+      if (!(await p.$('.vl .sf-search'))) await p.click('.vl [data-open=follow]')
+      await p.fill('.vl .sf-search input', n); await p.click('.vl .ps-go'); await p.waitForTimeout(400); await p.click('.vl [data-pick="0"]'); await p.waitForTimeout(1400)
     }
     await shot(p, 'a7-board')
-    await p.click('th[data-m=rev] .rk-s'); await p.waitForTimeout(900); await shot(p, 'a7-board2')
+    await p.click('.vl [data-act=metric][data-v=rev]'); await p.waitForTimeout(900); await shot(p, 'a7-board2')
     console.log(await p.evaluate(() => ({ badge: Board.badge(), rank: Board.rankLine(), tracked: Real.st.tracked })))
-    await p.click('#rkRefresh'); await p.waitForTimeout(1600)
-    await p.click('.sp-tabs [data-t=overview]'); await p.waitForTimeout(1500); await shot(p, 'a7-over2')
-    await p.click('#spLast .mt'); await p.waitForTimeout(1800); await shot(p, 'a7-recap1'); await p.keyboard.press('ArrowRight'); await p.waitForTimeout(1200); await shot(p, 'a7-recap2'); await p.keyboard.press('Escape'); await p.waitForTimeout(600)
+    // Le Cockpit est la vue d'ensemble : on ferme le volet, puis « Relire mes stats » relit aussi tout le classement
+    await p.click('.vl-x'); await p.click('#ckHR [data-act=refresh]'); await p.waitForTimeout(1600)
+    await p.waitForTimeout(1500); await shot(p, 'a7-over2')
+    // « Ouvrir le bilan » de la tuile « Dernière session » lit le bilan en story
+    await p.click('#ckBody [data-act=story]'); await p.waitForTimeout(1800); await shot(p, 'a7-recap1'); await p.keyboard.press('ArrowRight'); await p.waitForTimeout(1200); await shot(p, 'a7-recap2'); await p.keyboard.press('Escape'); await p.waitForTimeout(600)
     done(errs)
   } catch (e) { failed(e, errs) }
   await app.close()

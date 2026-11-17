@@ -2,15 +2,15 @@
 const H = require('./h.cjs')
 const { start, sleep, until, launcher, test, simRunning, freshDirs } = H
 const { execFileSync } = require('child_process')
-const OUT = process.env.PX_SHOTS || '/tmp/claude-0/shots'
+const OUT = process.env.PX_SHOTS || require('path').join(require('os').tmpdir(), 'px-essais-t27')
 require('fs').mkdirSync(OUT, { recursive: true })
 let bad = 0
 const check = (ok, what) => { console.log(ok ? 'OK ' : 'RATÉ', what); if (!ok) bad++ }
-const grab = (name) => execFileSync('/usr/bin/ffmpeg', ['-v', 'error', '-y', '-f', 'x11grab', '-video_size', process.env.PX_SCR || '1600x940', '-i', process.env.DISPLAY, '-frames:v', '1', `${OUT}/${name}.png`])
+const grab = (name) => execFileSync('/usr/bin/ffmpeg', ['-v', 'error', '-y', '-f', 'x11grab', ...(process.env.PX_SCR ? ['-video_size', process.env.PX_SCR] : []), '-i', process.env.DISPLAY, '-frames:v', '1', `${OUT}/${name}.png`])
 const hints = (logs) => logs.join('').split('\n').filter((l) => l.includes('Rappel du raccourci')).length
 
 ;(async () => {
-  const dirs = freshDirs('t25')
+  const dirs = freshDirs('t27')
   const { app, p, logs } = await start(dirs, { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '1', PX_FFMPEG: '/usr/bin/ffmpeg', PX_FFMPEG_ENCODER: 'libx264' })
   try {
     await until(() => app.evaluate(() => !!globalThis.pxCs2Sim && !!globalThis.pxClipsTest), 15000, 'prêt')

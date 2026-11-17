@@ -6,6 +6,10 @@ const { start, shot, settle, check, done, failed } = require('./h.cjs')
   const log = (...a) => console.log(...a.map((x) => (typeof x === 'string' ? x : String(JSON.stringify(x)).slice(0, 900))))
   // renderer/index.html ne sert qu'à l'overlay (la fenêtre principale charge renderer/v3/index.html). Avant, a13 cherchait
   // une adresse en « #overlay » qui n'existe plus : il ne trouvait jamais la fenêtre et ne vérifiait rien.
+  // Racine de l'overlay : étendard, viseur et régie sont rendus en « ov-root ov3 te|tv|tr » (parfois suivi de « ov3-still »), les
+  // autres styles en « ov-root ov-<style> ».
+  const THREE = { etendard: 'te', viseur: 'tv', regie: 'tr' }
+  const racineOk = (racine, style) => (THREE[style] ? String(racine).replace(/ ov3-still$/, '') === `ov-root ov3 ${THREE[style]}` : racine === `ov-root ov-${style}`)
   const overlay = () => app.windows().find((w) => /\/renderer\/index\.html/.test(w.url()))
   const seen = (w) => w.evaluate(() => ({ racine: document.querySelector('.ov-root')?.className || null, texte: document.body.innerText.replace(/\s+/g, ' ').trim().slice(0, 300), fond: getComputedStyle(document.documentElement).backgroundColor, taille: [innerWidth, innerHeight] }))
   const bar = () => p.evaluate(() => document.querySelector('#bT2').textContent)
@@ -26,7 +30,7 @@ const { start, shot, settle, check, done, failed } = require('./h.cjs')
     await ov.waitForTimeout(1500)
     const o = await seen(ov)
     log('overlay', o)
-    check('aperçu : une carte au style choisi, sur fond transparent, dite « chiffres d’exemple »', o.racine === `ov-root ov-${style}` && /Aperçu · chiffres d’exemple/.test(o.texte) && o.fond === 'rgba(0, 0, 0, 0)', o)
+    check('aperçu : une carte au style choisi, sur fond transparent, dite « chiffres d’exemple »', racineOk(o.racine, style) && /Aperçu · chiffres d’exemple/.test(o.texte) && o.fond === 'rgba(0, 0, 0, 0)', o)
     await ov.screenshot({ path: __dirname + '/shots/a13-apercu.png' })
     await p.evaluate(() => Settings.close()); await settle(p, 400)
     await app.evaluate(() => { globalThis.pxCs2Sim.running(true) })
@@ -51,7 +55,7 @@ const { start, shot, settle, check, done, failed } = require('./h.cjs')
       log('en match, retour au jeu', m, avant)
       if (!memes) await p.waitForTimeout(700)
     }
-    check('en match, retour au jeu : l’overlay montre la partie, au style choisi', montre && m.racine === `ov-root ov-${style}` && !/Aperçu/.test(m.texte), m)
+    check('en match, retour au jeu : l’overlay montre la partie, au style choisi', montre && racineOk(m.racine, style) && !/Aperçu/.test(m.texte), m)
     check('en match, retour au jeu : les mêmes K/D/A que la barre de Player X', memes, m && m.texte)
     await ov2.screenshot({ path: __dirname + '/shots/a13-match.png' })
     done(errs, 12)
