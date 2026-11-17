@@ -8,7 +8,8 @@ un overlay en partie sur Counter-Strike 2.
 ## Installer
 
 Lancer `Player-X-Installer-<version>.exe` (ou `Player-X-Setup-<version>.exe`) sous Windows 10 ou 11. Rien d'autre à
-installer. Pas encore de mise à jour automatique : une nouvelle version s'installe par-dessus.
+installer. Les mises à jour se font ensuite dans l'appli : elle prévient quand une nouvelle version est publiée, et ne
+l'installe jamais pendant une partie.
 
 ## Licences
 
