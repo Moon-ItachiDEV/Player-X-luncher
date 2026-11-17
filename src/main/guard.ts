@@ -79,11 +79,14 @@ function reloadPage(contents: WebContents): void {
 function onPageGone(contents: WebContents, details: Electron.RenderProcessGoneDetails): void {
   if (quitting || details.reason === 'clean-exit') return
   if (mainWindow()?.webContents !== contents) return
-  logError('page', `la page de la fenêtre principale s’est arrêtée (raison : ${details.reason}, code : ${details.exitCode})`)
+  const what = `la page de la fenêtre principale s’est arrêtée (raison : ${details.reason}, code : ${details.exitCode})`
+  // Deux lignes différentes : le journal n'écrit qu'une fois toutes les dix minutes une même erreur (voir crashLog.ts).
   if (crashAction(Date.now(), lastReloadAt) === 'reload') {
+    logError('page', `${what} : rechargée`)
     reloadPage(contents)
     return
   }
+  logError('page', `${what} : encore arrêtée moins d’une minute après son rechargement, pas de nouveau rechargement sans demander`)
   if (pageBoxOpen) return
   pageBoxOpen = true
   const ask = (parent: BrowserWindow): void =>
