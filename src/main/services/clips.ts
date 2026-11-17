@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, type IpcMainEvent } from 'electron'
-import { paceLog } from '@shared/clipPace'
+import { paceLog, paceOfCounts } from '@shared/clipPace'
 import { CS2_GAME_ID } from '@shared/cs2'
 import { cleanName, isBf6Name } from '@shared/text'
 import type { ClipDisplay, ClipSettings, Game } from '@shared/types'
@@ -223,7 +223,11 @@ async function writeClip(p: PendingClip): Promise<void> {
   // Le fichier commence sur une image clé, souvent avant la fenêtre demandée : les événements se situent depuis cette image-là.
   const firstWall = rec.anchor + firstFrameS(cut) * 1000
   // Bêta 46 : le rythme réel du clip, d'après l'instant de chacune de ses images.
-  const pace = paceOfTracks(cut, plan.durationS, rec.wantedFps)
+  // 0.7.4 : le moteur sort à cadence fixe (images répétées comprises), son rythme vient de son compteur d'images reçues ;
+  // inconnu si les relevés ne couvrent pas le clip.
+  const pace = rec.engine
+    ? (paceOfCounts(rec.engine.marks, firstWall, firstWall + plan.durationS * 1000, rec.wantedFps) ?? undefined)
+    : paceOfTracks(cut, plan.durationS, rec.wantedFps)
   const events = clipEvents(p.events, firstWall, plan.durationS)
   const kills = clipKills(p)
   const title = clipTitle(p.kind, kills, p.headshots, p.peak)

@@ -199,7 +199,7 @@ const firstWallOf = (c) => c.at - c.events[0].t * 1000
     const gap = img.length && snd.length ? Math.round(mean(snd) - mean(img)) : null
     note(`écart moyen du son sur l’image dans ce clip : ${gap} ms`)
     check('l’écart du son sur l’image : de -40 à 60 ms (85 ms de trop avant la correction de la datation du son)', gap !== null && gap >= -40 && gap <= 60, gap)
-    const speed = (await since(mGame)).map((l) => /^Moteur : ([\d.]+) images\/s \((\d+) images depuis le début/.exec(l)).filter(Boolean)
+    const speed = (await since(mGame)).map((l) => /^Moteur : ([\d.]+) images\/s dans le clip \((\d+) images, \d+ reçues de la capture/.exec(l)).filter(Boolean)
     check('le journal donne le rythme du moteur : 30 images/s', speed.length >= 1 && speed.every((x) => Math.abs(+x[1] - 30) <= 2 && +x[2] > 200), speed.map((x) => x[0]))
 
     // ----- le moteur est tué en pleine partie

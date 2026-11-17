@@ -33,18 +33,32 @@ export function engineAttempts(exeRegex: string | null, monitor: number): Engine
 const SAFE_REGEX = /^[\w()?^$.[\]*|+ -]{1,80}$/
 const ENCODERS = ['h264_nvenc', 'h264_amf', 'libx264']
 
+/**
+ * 0.7.4 : la capture est demandée à 4 fois la cadence du clip (240 images/s au plus). Pourquoi : `max_framerate` de gfxcapture
+ * devient l'intervalle minimal de Windows.Graphics.Capture (16,7 ms à 60), et Windows ne donne une image qu'au rythme de
+ * l'écran (6,9 ms à 144 Hz). La première image après 16,7 ms arrive donc à 20,8 ms, parfois à 13,9 : des écarts inégaux et
+ * moins de 60 images/s (51 sur BF6, 58 sur CS2, relevés du 16/11). Même chose pour ddagrab. En pratique, l'écran fixe la limite.
+ */
+export const GRAB_X = 4
+export const GRAB_MAX = 240
+export function captureRate(fps: number): number {
+  return Math.min(GRAB_MAX, fps * GRAB_X)
+}
+
 /** Une image clé toutes les 2 s (le tampon coupe un clip sur une image clé), un fragment toutes les 0,5 s au plus. */
 export const KEY_S = 2
 export const FRAG_US = 500_000
 
 /**
  * La commande d'enregistrement : capture, encodage au débit demandé, MP4 fragmenté sur la sortie standard. L'avancement
- * (images, images/s) part sur la sortie d'erreur toutes les 10 s. `x11` et `libx264` : essais sous Linux seulement.
+ * (images, images/s) part sur la sortie d'erreur chaque seconde (0.7.4 : pour le rythme des clips, paceOfCounts). `x11` et `libx264` : essais sous Linux seulement.
  */
 export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number }): string[] {
   if (!ENCODERS.includes(a.encoder)) throw new Error('Encodeur refusé.')
   const fps = Math.min(120, Math.max(1, Math.round(q.fps)))
   const m = a.method
+  // 0.7.4 : la capture est demandée plus vite que le clip (voir GRAB_X), puis le clip est remis à cadence fixe plus bas.
+  const grab = captureRate(fps)
   let input: string[]
   if (m.id === 'x11') {
     if (!/^:\d{1,3}(\.\d)?$/.test(m.display)) throw new Error('Écran refusé.')
@@ -53,9 +67,9 @@ export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number 
     let src: string
     if (m.id === 'fenetre') {
       if (!SAFE_REGEX.test(m.exeRegex) || /['\\:,;]/.test(m.exeRegex)) throw new Error('Programme refusé.')
-      src = `gfxcapture=window_exe='${m.exeRegex}':max_framerate=${fps}:capture_cursor=0`
-    } else if (m.id === 'ecran-wgc') src = `gfxcapture=monitor_idx=${m.monitor | 0}:max_framerate=${fps}:capture_cursor=0`
-    else src = `ddagrab=output_idx=${m.monitor | 0}:framerate=${fps}:dup_frames=0:draw_mouse=0`
+      src = `gfxcapture=window_exe='${m.exeRegex}':max_framerate=${grab}:capture_cursor=0`
+    } else if (m.id === 'ecran-wgc') src = `gfxcapture=monitor_idx=${m.monitor | 0}:max_framerate=${grab}:capture_cursor=0`
+    else src = `ddagrab=output_idx=${m.monitor | 0}:framerate=${grab}:dup_frames=0:draw_mouse=0`
     input = [...(a.mode === 'gpu' ? ['-init_hw_device', 'd3d11va=px', '-filter_hw_device', 'px'] : []), '-filter_complex', `${src}${a.mode === 'copie' ? ',hwdownload,format=bgra' : ''}[v]`, '-map', '[v]']
   }
   const bps = Math.round(q.videoBps)
@@ -66,10 +80,12 @@ export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number 
         ? ['-usage', 'lowlatency', '-rc', 'cbr', '-b:v', String(bps), '-maxrate', String(bps), '-bufsize', String(bps)]
         : ['-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-b:v', String(bps), '-maxrate', String(bps), '-bufsize', String(bps)]
   return [
-    '-hide_banner', '-nostdin', '-loglevel', 'warning', '-stats_period', '10', '-progress', 'pipe:2',
+    '-hide_banner', '-nostdin', '-loglevel', 'warning', '-stats_period', '1', '-progress', 'pipe:2',
     ...input,
-    // Les instants réels de la capture : une image non reçue n'est pas inventée.
-    '-fps_mode', 'passthrough',
+    // 0.7.4 : cadence fixe. Pour chaque instant du clip (1/60 s), l'image reçue la plus proche ; la précédente est répétée si le
+    // jeu n'en a pas donné de nouvelle. Avant (passthrough), les écarts entre images suivaient la capture : 57 à 58 images/s
+    // aux écarts inégaux chez Breezydev (CS2, 16/11), le clip saccadait dans Player X comme dans VLC.
+    '-fps_mode', 'cfr', '-r', String(fps),
     '-c:v', a.encoder, ...rate,
     // Image clé à heure fixe (toutes les 2 s), quelle que soit la cadence reçue.
     '-g', String(fps * KEY_S), '-force_key_frames', `expr:gte(t,n_forced*${KEY_S})`,
@@ -79,12 +95,21 @@ export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number 
   ]
 }
 
-/** Le dernier bloc d'avancement (-progress) : images et images/s. */
-export function readEngineProgress(text: string): { frames: number; fps: number } | null {
-  const f = [...text.matchAll(/^frame=(\d+)\s*$/gm)]
-  const r = [...text.matchAll(/^fps=([\d.]+)\s*$/gm)]
-  if (!f.length) return null
-  return { frames: Number(f[f.length - 1][1]), fps: r.length ? Number(r[r.length - 1][1]) : 0 }
+/**
+ * Le dernier bloc d'avancement (-progress) : images écrites et images/s. 0.7.4 : `received`, les images vraiment reçues de la
+ * capture (écrites − répétées + écartées), car le clip est maintenant à cadence fixe et `frames` ne dit plus ce que la capture
+ * tient.
+ */
+export function readEngineProgress(text: string): { frames: number; fps: number; received: number } | null {
+  const last = (re: RegExp): number | null => {
+    const all = [...text.matchAll(re)]
+    return all.length ? Number(all[all.length - 1][1]) : null
+  }
+  const frames = last(/^frame=(\d+)\s*$/gm)
+  if (frames === null) return null
+  const dup = last(/^dup_frames=(\d+)\s*$/gm) ?? 0
+  const drop = last(/^drop_frames=(\d+)\s*$/gm) ?? 0
+  return { frames, fps: last(/^fps=([\d.]+)\s*$/gm) ?? 0, received: Math.max(0, frames - dup + drop) }
 }
 
 /**

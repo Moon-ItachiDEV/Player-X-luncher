@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { app, type BrowserWindow } from 'electron'
-import { cleanGamePace, cleanPace, gamePace, gamePaceLine, type GamePace } from '@shared/clipPace'
+import { cleanGamePace, cleanPace, gamePace, gamePaceLine, type CountMark, type GamePace } from '@shared/clipPace'
 import type { ClipsState } from '@shared/types'
 import { getKv, setKv } from '../db'
 import { broadcast } from '../windows'
@@ -55,7 +55,16 @@ export interface Recorder {
   /** Bêta 42 : le son lu par la page en PCM, daté à l'heure du système, gardé en mémoire le temps du tampon. */
   pcm?: PcmPart[]
   /** Bêta 42 : enregistreur d'image du moteur vidéo. */
-  engine?: { proc: ChildProcess; attempt: EngineAttempt; err: string; progress: string; loggedAt: number; last?: { frames: number; at: number } }
+  engine?: {
+    proc: ChildProcess
+    attempt: EngineAttempt
+    err: string
+    progress: string
+    loggedAt: number
+    last?: { frames: number; at: number }
+    /** 0.7.4 : le compteur d'images reçues, relevé chaque seconde (le temps du tampon), pour le rythme des clips. */
+    marks: CountMark[]
+  }
 }
 
 export interface Capture {

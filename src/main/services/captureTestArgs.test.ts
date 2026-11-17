@@ -124,5 +124,5 @@ test('bêta 46, les vrais clips ne sont pas réduits : la capture de la partie i
   // Et même si une méthode en portait une, la commande d'enregistrement ne la lit pas.
   const [, winSmall] = trialsFor('(?i)^cs2[.]exe$', { width: 2560, height: 1440 })
   const rec = recordArgs({ method: winSmall, encoder: 'h264_nvenc', mode: 'gpu' }, { fps: 60, videoBps: 20_000_000 })
-  assert.equal(graph(rec), "gfxcapture=window_exe='(?i)^cs2[.]exe$':max_framerate=60:capture_cursor=0[v]")
+  assert.equal(graph(rec), "gfxcapture=window_exe='(?i)^cs2[.]exe$':max_framerate=240:capture_cursor=0[v]")
 })

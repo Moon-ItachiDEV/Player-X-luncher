@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-ignore TS5097
-import { attemptLabel, engineAttempts, muxArgs, pcmWindow, readEngineProgress, recordArgs } from './engineCapture.ts'
+import { attemptLabel, captureRate, engineAttempts, muxArgs, pcmWindow, readEngineProgress, recordArgs } from './engineCapture.ts'
 
 const Q = { fps: 60, videoBps: 40_000_000 }
 const graph = (a: string[]) => a[a.indexOf('-filter_complex') + 1]
@@ -18,7 +18,7 @@ test('ordre : fenêtre du jeu, puis écran Windows 10/11, puis copie de bureau ;
 
 test('commande : fenêtre du jeu, NVENC au débit constant demandé, image clé toutes les 2 s, MP4 fragmenté sur la sortie', () => {
   const a = recordArgs(engineAttempts('(?i)^cs2[.]exe$', 0)[0], Q)
-  assert.equal(graph(a), "gfxcapture=window_exe='(?i)^cs2[.]exe$':max_framerate=60:capture_cursor=0[v]")
+  assert.equal(graph(a), "gfxcapture=window_exe='(?i)^cs2[.]exe$':max_framerate=240:capture_cursor=0[v]")
   assert.ok(a.includes('-init_hw_device'))
   const at = (k: string) => a[a.indexOf(k) + 1]
   assert.equal(at('-c:v'), 'h264_nvenc')
@@ -27,7 +27,9 @@ test('commande : fenêtre du jeu, NVENC au débit constant demandé, image clé 
   assert.equal(at('-maxrate'), '40000000')
   assert.equal(at('-g'), '120')
   assert.equal(at('-force_key_frames'), 'expr:gte(t,n_forced*2)')
-  assert.equal(at('-fps_mode'), 'passthrough')
+  // Cadence fixe à la qualité demandée ; la capture est demandée à 4 fois plus (240 au plus).
+  assert.equal(at('-fps_mode'), 'cfr')
+  assert.equal(at('-r'), '60')
   assert.equal(at('-movflags'), '+frag_keyframe+empty_moov+default_base_moof')
   assert.equal(at('-frag_duration'), '500000')
   assert.equal(at('-progress'), 'pipe:2')
@@ -38,7 +40,8 @@ test('commande : fenêtre du jeu, NVENC au débit constant demandé, image clé 
 test('commande : copie de bureau copiée avant AMF ; essai Linux x11grab + libx264', () => {
   const dda = engineAttempts(null, 0).find((x) => x.method.id === 'ecran-dda' && x.mode === 'copie' && x.encoder === 'h264_amf')!
   const a = recordArgs(dda, { fps: 30, videoBps: 10_000_000 })
-  assert.equal(graph(a), 'ddagrab=output_idx=0:framerate=30:dup_frames=0:draw_mouse=0,hwdownload,format=bgra[v]')
+  assert.equal(graph(a), 'ddagrab=output_idx=0:framerate=120:dup_frames=0:draw_mouse=0,hwdownload,format=bgra[v]')
+  assert.equal(a[a.indexOf('-r') + 1], '30')
   assert.ok(!a.includes('-init_hw_device'))
   assert.equal(a[a.indexOf('-usage') + 1], 'lowlatency')
   assert.equal(a[a.indexOf('-g') + 1], '60')
@@ -49,8 +52,16 @@ test('commande : copie de bureau copiée avant AMF ; essai Linux x11grab + libx2
   assert.match(attemptLabel(dda), /copie de bureau, h264_amf, copie/)
 })
 
+test('capture demandée à 4 fois la cadence du clip, 240 au plus', () => {
+  assert.equal(captureRate(30), 120)
+  assert.equal(captureRate(60), 240)
+  assert.equal(captureRate(120), 240)
+})
+
 test('avancement : dernières images et images/s', () => {
-  assert.deepEqual(readEngineProgress('frame=10\nfps=12.0\nprogress=continue\nframe=600\nfps=59.8\nprogress=continue\n'), { frames: 600, fps: 59.8 })
+  assert.deepEqual(readEngineProgress('frame=10\nfps=12.0\nprogress=continue\nframe=600\nfps=59.8\nprogress=continue\n'), { frames: 600, fps: 59.8, received: 600 })
+  // Cadence fixe : images reçues = écrites − répétées + écartées.
+  assert.deepEqual(readEngineProgress('frame=600\nfps=60.0\ndup_frames=40\ndrop_frames=300\nprogress=continue\n'), { frames: 600, fps: 60, received: 860 })
   assert.equal(readEngineProgress('rien'), null)
 })
 
