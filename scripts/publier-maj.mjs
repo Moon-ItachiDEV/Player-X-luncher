@@ -6,8 +6,13 @@
 //   node scripts/publier-maj.mjs              prépare la publication de la version de package.json : dist/maj/maj.json + maj.json.sig
 //     options : --dist <dossier>              où est le Setup (par défaut dist)
 //               --cle-fichier <fichier>       la clé privée (par défaut %USERPROFILE%\.player-x\cle-maj.pem)
+//   node scripts/publier-maj.mjs --coffre     (une seule fois, Windows) range la clé, ouverte avec son mot de passe, dans le coffre
+//                                             de Windows (DPAPI, liée à ce PC et à cette session), et le jeton GitHub s'il est donné.
+//                                             Ensuite la publication ne demande plus rien.
 //
-// Rien n'est envoyé nulle part : le script écrit des fichiers et dit quoi publier à la main sur GitHub.
+// Avec un jeton GitHub dans le coffre, la Release est créée en brouillon, les 3 fichiers envoyés, puis elle est publiée en dernier.
+// Sans jeton, le script écrit les fichiers et dit quoi publier à la main sur GitHub (code de sortie 10).
+import { spawnSync } from 'node:child_process'
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -18,6 +23,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const KEY_FILE = join(root, 'src/main/services/updaterKey.ts')
 export const DEFAULT_PRIVATE = join(homedir(), '.player-x', 'cle-maj.pem')
 const RELEASES = 'https://github.com/Moon-ItachiDEV/player-x-luncher/releases'
+export const REPO = 'Moon-ItachiDEV/player-x-luncher'
+export const VAULT_KEY = join(homedir(), '.player-x', 'cle-maj.coffre')
+export const VAULT_TOKEN = join(homedir(), '.player-x', 'jeton-github.coffre')
+export const MANUAL_EXIT = 10
 const MAX_SETUP = 400 * 1024 * 1024
 const MAX_MANIFEST = 256 * 1024
 const KEEP_NOTES = 20
@@ -187,6 +196,79 @@ function argValue(name) {
   return i > 0 ? process.argv[i + 1] : undefined
 }
 
+// ---------- coffre de Windows (DPAPI) ----------
+
+/** Chiffre ou déchiffre avec le coffre de Windows : seul ce compte Windows, sur ce PC, peut rouvrir. Les données passent par l'entrée standard. */
+function vault(mode, data) {
+  if (process.platform !== 'win32') fail('Le coffre de Windows ne marche que sous Windows.')
+  const ps = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Security; $e=[Text.Encoding]::UTF8.GetBytes('player-x-maj'); $b=[Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()); $r=[Security.Cryptography.ProtectedData]::${mode}($b,$e,'CurrentUser'); [Console]::Out.Write([Convert]::ToBase64String($r))`
+  const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], { input: data.toString('base64'), encoding: 'utf8', windowsHide: true, maxBuffer: 1 << 20 })
+  if (r.status !== 0 || !r.stdout) fail(mode === 'Unprotect' ? 'Le coffre de Windows n’a pas pu rouvrir la clé (autre PC ou autre compte Windows ?). Relance la mise en place.' : 'Le coffre de Windows a refusé d’enregistrer.')
+  return Buffer.from(r.stdout.trim(), 'base64')
+}
+const vaultSave = (file, buf) => {
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, vault('Protect', buf).toString('base64') + '\n', { mode: 0o600 })
+}
+const vaultRead = (file) => vault('Unprotect', Buffer.from(readFileSync(file, 'utf8').trim(), 'base64'))
+
+// ---------- GitHub ----------
+
+/** Le texte de la Release : les notes de cette version. */
+export function releaseBody(entry) {
+  const lab = { nouveau: 'Nouveau', ameliore: 'Amélioré', corrige: 'Corrigé' }
+  return entry.items.map((i) => `- **${lab[i.kind]}** · ${i.title} : ${i.text}`).join('\n')
+}
+
+/**
+ * Ordre des fichiers : le Setup, la signature, maj.json EN DERNIER (dans une Release déjà publiée, l'appli ne voit rien avant lui).
+ * Crée la Release en brouillon (ou reprend un brouillon de la même étiquette), envoie les fichiers, puis publie EN DERNIER :
+ * les Player X installés ne voient rien tant que les trois fichiers ne sont pas tous là. `http` : fetch (remplacé dans les tests).
+ */
+export async function githubRelease({ token, version, files, body, http = fetch, repo = REPO }) {
+  const api = `https://api.github.com/repos/${repo}`
+  const h = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'player-x-publier' }
+  const call = async (method, url, json, okCodes = [200, 201]) => {
+    const res = await http(url, { method, headers: json ? { ...h, 'Content-Type': 'application/json' } : h, body: json ? JSON.stringify(json) : undefined })
+    if (!okCodes.includes(res.status)) {
+      const t = await res.text().catch(() => '')
+      if (res.status === 401) fail('GitHub refuse le jeton (expiré ou faux). Relance la mise en place pour en donner un nouveau.')
+      if (res.status === 403 || res.status === 404) fail(`GitHub refuse l’accès au dépôt (${res.status}). Le jeton doit avoir « Contents : Read and write » sur ${repo}.`)
+      fail(`GitHub a répondu ${res.status} : ${t.slice(0, 200)}`)
+    }
+    return res.status === 204 ? null : res.json()
+  }
+  const tag = `v${version}`
+  const found = await call('GET', `${api}/releases/tags/${tag}`, null, [200, 404])
+  let rel
+  if (found && found.id) {
+    // Déjà publiée : on ne complète que si elle n'a encore aucun de ces fichiers (Release créée vide). Sinon, c'est une autre version qu'il faut.
+    const has = (found.assets || []).filter((a) => files.some((f) => basename(f) === a.name))
+    if (!found.draft && has.length) fail(`La Release ${tag} est déjà publiée sur GitHub avec ses fichiers. Change la version avant de republier.`)
+    rel = found
+    for (const a of has) await call('DELETE', `${api}/releases/assets/${a.id}`, null, [204])
+  } else {
+    rel = await call('POST', `${api}/releases`, { tag_name: tag, target_commitish: 'main', name: `Player X ${version}`, body, draft: true, prerelease: false })
+  }
+  for (const f of files) {
+    const data = readFileSync(f)
+    const name = basename(f)
+    console.log(`  envoi de ${name} (${(data.length / 1024 / 1024).toFixed(1)} Mo)…`)
+    const res = await http(`https://uploads.github.com/repos/${repo}/releases/${rel.id}/assets?name=${encodeURIComponent(name)}`, { method: 'POST', headers: { ...h, 'Content-Type': 'application/octet-stream' }, body: data })
+    if (res.status !== 201) fail(`L’envoi de ${name} a échoué (${res.status}). La Release reste en brouillon : relance Publier.bat.`)
+  }
+  if (!rel.draft && rel.html_url) return rel.html_url
+  const done = await call('PATCH', `${api}/releases/${rel.id}`, { draft: false, make_latest: 'true' })
+  return done.html_url
+}
+
+async function checkToken(token, http = fetch) {
+  const res = await http(`https://api.github.com/repos/${REPO}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'player-x-publier' } })
+  if (res.status !== 200) fail(`GitHub refuse ce jeton (${res.status}).`)
+  const j = await res.json()
+  if (!j.permissions || !j.permissions.push) fail(`Ce jeton ne peut pas écrire dans ${REPO} : il faut « Contents : Read and write ».`)
+}
+
 // ---------- commandes ----------
 
 async function makeKey() {
@@ -208,22 +290,51 @@ async function makeKey() {
   console.log(added ? `Clé publique ajoutée à ${KEY_FILE}.\nCommit ce fichier : l'appli ne vérifiera que cette clé.` : 'Clé publique déjà dans updaterKey.ts.')
 }
 
+async function setupVault() {
+  if (!existsSync(DEFAULT_PRIVATE)) fail(`Clé privée introuvable : ${DEFAULT_PRIVATE}`)
+  console.log('Mise en place, une seule fois : ta clé va dans le coffre de Windows (liée à ce PC et à ta session).\n')
+  const pass = await askSecret('Mot de passe de la clé de signature : ')
+  let pem
+  try {
+    pem = createPrivateKey({ key: readFileSync(DEFAULT_PRIVATE, 'utf8'), format: 'pem', passphrase: pass }).export({ type: 'pkcs8', format: 'pem' })
+  } catch {
+    fail('Mot de passe faux, ou clé illisible.')
+  }
+  const probe = Buffer.from('player-x')
+  if (!readPublicKeys().some((k) => verify(null, probe, createPublicKey(k), sign(null, probe, createPrivateKey(pem))))) fail('Cette clé ne correspond à aucune clé de updaterKey.ts.')
+  vaultSave(VAULT_KEY, Buffer.from(pem))
+  console.log('Clé rangée dans le coffre.\n')
+  console.log('Jeton GitHub, pour envoyer la Release tout seul (laisse vide pour continuer à la faire à la main).')
+  const token = (await askSecret('Jeton GitHub : ')).trim()
+  if (token) {
+    await checkToken(token)
+    vaultSave(VAULT_TOKEN, Buffer.from(token))
+    console.log('Jeton rangé dans le coffre.')
+  }
+  console.log('\nC’est fini. Désormais, un double-clic sur Publier.bat suffit.')
+}
+
 async function publish() {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
   const version = pkg.version
   const distDir = resolve(root, argValue('--dist') || 'dist')
   const keyFile = resolve(argValue('--cle-fichier') || DEFAULT_PRIVATE)
   if (!readPublicKeys().length) fail('updaterKey.ts n’a aucune clé publique : lance d’abord « npm run maj:cle ».')
-  if (!existsSync(keyFile)) fail(`Clé privée introuvable : ${keyFile}\nLance « npm run maj:cle » pour la créer.`)
+  const fromVault = !argValue('--cle-fichier') && existsSync(VAULT_KEY)
+  if (!fromVault && !existsSync(keyFile)) fail(`Clé privée introuvable : ${keyFile}\nLance « npm run maj:cle » pour la créer.`)
   const notes = readNotes(join(root, 'notes-de-version.json'))
   const setup = findSetup(distDir, version)
   const { manifest, bytes } = buildManifest({ version, setup, notes })
-  const pass = await askSecret('Mot de passe de la clé de signature : ')
   let sig
-  try {
-    sig = signBytes(bytes, readFileSync(keyFile, 'utf8'), pass)
-  } catch {
-    fail('Mot de passe faux, ou clé illisible.')
+  if (fromVault) {
+    sig = sign(null, bytes, createPrivateKey(vaultRead(VAULT_KEY).toString('utf8')))
+  } else {
+    const pass = await askSecret('Mot de passe de la clé de signature : ')
+    try {
+      sig = signBytes(bytes, readFileSync(keyFile, 'utf8'), pass)
+    } catch {
+      fail('Mot de passe faux, ou clé illisible.')
+    }
   }
   // La clé qui signe doit être une de celles que l'appli connaît, sinon l'appli refuserait tout.
   if (!readPublicKeys().some((k) => verify(null, bytes, createPublicKey(k), sig))) fail('Cette clé privée ne correspond à aucune clé de updaterKey.ts : l’appli refuserait ce maj.json.')
@@ -234,6 +345,13 @@ async function publish() {
   const mo = (manifest.size / 1024 / 1024).toFixed(1)
   console.log(`\nPrêt : version ${version}, ${manifest.file} (${mo} Mo), notes de ${manifest.notes.length} version(s).`)
   console.log(`Fichiers écrits dans ${out} :\n  maj.json\n  maj.json.sig\n`)
+  if (existsSync(VAULT_TOKEN)) {
+    console.log('Envoi sur GitHub :')
+    const url = await githubRelease({ token: vaultRead(VAULT_TOKEN).toString('utf8').trim(), version, files: [setup, join(out, 'maj.json.sig'), join(out, 'maj.json')], body: releaseBody(notes.find((e) => e.version === version)) })
+    console.log(`\nPublié : ${url}\nLes Player X installés la proposeront d'eux-mêmes.`)
+    return
+  }
+  process.exitCode = MANUAL_EXIT
   console.log(`À faire sur GitHub (Moon-ItachiDEV/player-x-luncher), dans cet ordre :
   1. Releases › « Draft a new release » (un BROUILLON), étiquette  v${version}  (crée-la sur la bonne branche).
   2. Glisse dans la Release : ${manifest.file}, maj.json et maj.json.sig (les trois, noms inchangés).
@@ -242,7 +360,7 @@ async function publish() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const run = process.argv.includes('--cle') ? makeKey : publish
+  const run = process.argv.includes('--cle') ? makeKey : process.argv.includes('--coffre') ? setupVault : publish
   run().catch((e) => {
     console.error(`\nErreur : ${e.message}`)
     process.exit(1)

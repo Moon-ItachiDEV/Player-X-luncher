@@ -8,7 +8,7 @@ import { join } from 'node:path'
 // @ts-ignore TS5097
 import { afterAttempt, chooseNotes, compareVersions, decideInstall, DOWNLOAD_PREFIX, etaSeconds, isNewer, markerBlocks, parseAttempt, parseMarker, parseManifest, parseNotes, reviewNotes, verifySignature, type InstallFacts, type NoteEntry } from './updaterRules.ts'
 // @ts-ignore TS5097 TS7016
-import { appendPublicKey, buildManifest, findSetup, readNotes, readPublicKeys, signBytes } from '../../../scripts/publier-maj.mjs'
+import { appendPublicKey, buildManifest, findSetup, githubRelease, readNotes, readPublicKeys, releaseBody, signBytes } from '../../../scripts/publier-maj.mjs'
 // @ts-ignore TS5097
 import { cleanPatch, defaults } from './settingsRules.ts'
 
@@ -305,4 +305,37 @@ test('publication : la clé publique s’ajoute à updaterKey.ts sans effacer le
   assert.equal(appendPublicKey(a, f), false)
   assert.equal(appendPublicKey(b, f), true)
   assert.deepEqual(readPublicKeys(f).map((k: string) => k.trim()), [...before, a.trim(), b.trim()])
+})
+
+test('publication : la Release est créée en brouillon, les 3 fichiers envoyés, publiée en dernier', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'maj-gh-'))
+  const files = ['Player-X-Setup-0.7.7.exe', 'maj.json', 'maj.json.sig'].map((n) => { writeFileSync(join(tmp, n), Buffer.alloc(8, 1)); return join(tmp, n) })
+  const calls: string[] = []
+  const reply = (status: number, json: unknown = {}) => ({ status, json: async () => json, text: async () => JSON.stringify(json) })
+  const http = async (url: string, o: { method?: string; body?: unknown }) => {
+    const m = o.method || 'GET'
+    calls.push(`${m} ${url.replace(/^https:\/\/(api|uploads)\.github\.com\/repos\/o\/r/, '')}`)
+    if (m === 'GET') return reply(404)
+    if (m === 'POST' && url.includes('/assets?')) return reply(201)
+    if (m === 'POST') { assert.equal(JSON.parse(String(o.body)).draft, true); return reply(201, { id: 9 }) }
+    if (m === 'PATCH') { assert.equal(JSON.parse(String(o.body)).draft, false); return reply(200, { html_url: 'https://x/v0.7.7' }) }
+    return reply(500)
+  }
+  const url = await githubRelease({ token: 't', version: '0.7.7', files, body: 'b', http, repo: 'o/r' })
+  assert.equal(url, 'https://x/v0.7.7')
+  assert.deepEqual(calls, ['GET /releases/tags/v0.7.7', 'POST /releases', 'POST /releases/9/assets?name=Player-X-Setup-0.7.7.exe', 'POST /releases/9/assets?name=maj.json', 'POST /releases/9/assets?name=maj.json.sig', 'PATCH /releases/9'])
+  // Déjà publiée : refus, rien d'envoyé
+  const http2 = async () => reply(200, { id: 3, draft: false, assets: [{ id: 1, name: 'maj.json' }] })
+  await assert.rejects(githubRelease({ token: 't', version: '0.7.7', files, body: 'b', http: http2, repo: 'o/r' }), /déjà publiée/)
+  // Un envoi raté : pas de publication
+  const seen: string[] = []
+  const http3 = async (url: string, o: { method?: string }) => { seen.push(o.method || 'GET'); return url.includes('/assets?') ? reply(500) : (o.method === 'POST' ? reply(201, { id: 4 }) : reply(404)) }
+  await assert.rejects(githubRelease({ token: 't', version: '0.7.7', files, body: 'b', http: http3, repo: 'o/r' }), /brouillon/)
+  assert.ok(!seen.includes('PATCH'))
+  // Publiée mais vide : complétée, sans republier
+  const seen4: string[] = []
+  const http4 = async (url: string, o: { method?: string }) => { seen4.push(o.method || 'GET'); return (o.method || 'GET') === 'GET' ? reply(200, { id: 5, draft: false, assets: [], html_url: 'https://x/vide' }) : reply(201) }
+  assert.equal(await githubRelease({ token: 't', version: '0.7.7', files, body: 'b', http: http4, repo: 'o/r' }), 'https://x/vide')
+  assert.deepEqual(seen4, ['GET', 'POST', 'POST', 'POST'])
+  assert.equal(releaseBody({ items: [{ kind: 'corrige', title: 'A', text: 'B.' }] }), '- **Corrigé** · A : B.')
 })
