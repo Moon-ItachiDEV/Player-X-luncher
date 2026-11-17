@@ -26,7 +26,8 @@ export function isBf6Name(name: string): boolean {
 export function hue(name: string): number {
   let h = 0
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360
-  return h
+  // Pas de rose (règle de la bêta 50) : les teintes 285 à 345 sont ramenées dans 0 à 250, toujours la même pour un nom
+  return h >= 285 && h <= 345 ? Math.round(((h - 285) * 250) / 60) : h
 }
 
 /** « il y a 2 h », « à l'instant »… (sans majuscule, pour s'insérer dans une phrase). */

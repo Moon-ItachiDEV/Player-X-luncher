@@ -19,6 +19,7 @@ import { recentGames } from './recentGames'
 import { getSettings } from './settings'
 import { isSteamSoftware, ownedForNews, ownedSteamGame } from './steamLibrary'
 import { setRecentGames, setTrayPlaying } from './tray'
+import { majRecheck } from './updater'
 
 // La bibliothèque vue par toute l'appli : les jeux (vrais ou de démo), le scan des stores, les jaquettes qui arrivent en
 // arrière-plan, et « quels jeux tournent » redistribué aux services qui en dépendent (icône près de l'horloge, bilans
@@ -59,6 +60,8 @@ export function updateRunning(): void {
   setCs2Running(running.some((g) => g.id === CS2_GAME_ID), lastPollOk())
   // Clips : le tampon vidéo ne tourne que pendant qu'un jeu tourne (les logiciels Steam ne comptent pas).
   syncClipsRunning(running.filter(isGameEntry))
+  // Mises à jour : un jeu qui démarre ou s'arrête change ce qui peut redémarrer.
+  majRecheck()
 }
 
 // Favoris et lancements du mode démo : gardés à part pour ne jamais toucher la vraie bibliothèque.

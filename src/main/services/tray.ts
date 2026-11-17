@@ -122,6 +122,11 @@ function showHint(): void {
   hint.show()
 }
 
+/** Une fermeture voulue (mise à jour qui s'installe) : la croix ne doit pas la retenir en rangeant la fenêtre. */
+export function setQuitting(): void {
+  quitting = true
+}
+
 /** La croix range la fenêtre près de l'horloge (si le réglage le demande et que l'icône existe). */
 export function attachWindow(win: BrowserWindow): void {
   win.on('close', (e) => {

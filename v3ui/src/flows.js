@@ -168,5 +168,5 @@ const Recap = (() => {
       if (e.reason === 'ready') toast(`${ic('check')} Bilan de session Battlefield 6 prêt : ${fr(e.recap.kills)} éliminations`, { ms: 12000, action: { label: 'Voir le bilan', fn: () => openBf6(e.recap) } })
     })
   }
-  return { mount, listInto }
+  return { mount, listInto, openCs2, openBf6 }
 })()

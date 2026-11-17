@@ -139,8 +139,13 @@ export interface Settings {
   cs2Live: boolean
   /** À la fermeture de CS2, Player X s'ouvre de lui-même sur le dernier bilan (sinon une notification Windows). */
   cs2RecapOpen: boolean
-  /** Overlay CS2 (bêta) : coupé, ou un des trois styles à essayer en jeu. Proposé seulement sur le canal Bêta. */
+  /** Overlay CS2 : coupé, ou un de ses styles. */
   cs2Overlay: Cs2OverlayStyle
+  /** Taille de l'overlay CS2 (Petite, Normale, Grande). */
+  overlaySize: Cs2OverlaySize
+  /** Place de chaque bloc de l'overlay, choisie dans Paramètres › Overlay : décalage [x, y] en part de l'écran (-1 à 1)
+   *  et échelle (0,5 à 1,6), par style et par moment (« etendard.buy », « regie.end »…). Absent : la place d'origine. */
+  overlayPos: Cs2OverlayPos
   /** Raccourci global qui masque ou réaffiche l'overlay (accélérateur Electron, « Alt+X » par défaut ; voir shared/hotkey.ts). */
   overlayHotkey: string
   /** Ton pseudo dans Player X (Profil › Modifier) : passe avant celui de Steam. '' : celui du compte principal. */
@@ -149,19 +154,51 @@ export interface Settings {
   profileAvatar: string
   /** Prêt à jouer : une alerte quand Steam a fini de télécharger la mise à jour (ou l'installation) d'un jeu. */
   gameReadyAlert: boolean
+  /** Mises à jour : installer à la fermeture de Player X quand une version est prête (jamais pendant une partie). */
+  updateOnQuit: boolean
+  /** Version à ne plus proposer (« Ignorer cette version »), ou null. */
+  updateSkipped: string | null
+  /** Dernière version dont les nouveautés ont été montrées ('' : jamais). */
+  notesSeen: string
 }
 
-/** `a` : façon Apple (matériaux, ressorts, sheet) ; `b` : verre ; `c` : finition du style Player X. */
-export type Cs2OverlayStyle = 'off' | 'a' | 'b' | 'c'
+/**
+ * Styles de l'overlay CS2 (0.6.2, à tester en jeu) : `etendard` (le blason qui déroule une bannière), `viseur` (lignes et
+ * crochets collés au HUD), `regie` (bandeaux de retransmission), et `c`, le style Player X de la 0.6.1. Les anciens
+ * 'a' (Apple) et 'b' (Verre) deviennent 'c'.
+ */
+export type Cs2OverlayStyle = 'off' | 'c' | 'etendard' | 'viseur' | 'regie'
+
+/** Les trois styles de la 0.6.2, ceux dont on peut régler la place. */
+export type Cs2OverlayThree = 'etendard' | 'viseur' | 'regie'
+
+/** Taille de l'overlay : petite, normale, grande (le reste suit la hauteur de l'écran). */
+export type Cs2OverlaySize = 's' | 'n' | 'l'
+
+/** Place d'un bloc : décalage [x, y] en part de la largeur et de la hauteur de l'écran, puis son échelle (absente : 1). */
+export type Cs2OverlayPlace = [number, number, number?]
+
+/** Places des blocs de l'overlay, par « style.moment » (« regie.buy »…). */
+export type Cs2OverlayPos = Record<string, Cs2OverlayPlace>
+
+/** Les quatre moments de l'overlay : temps d'achat, en plein round, mi-temps, bilan. */
+export type Cs2OverlayMoment = 'buy' | 'pill' | 'half' | 'end'
 
 /** Ce que l'overlay doit faire : son style, masqué par son raccourci, ou un aperçu en cours (chiffres d'exemple). */
 export interface Cs2OverlayConfig {
   style: Cs2OverlayStyle
+  /** Taille choisie ; absente : normale. */
+  size?: Cs2OverlaySize
+  /** Décalages choisis par l'utilisateur (voir Settings.overlayPos). */
+  pos?: Cs2OverlayPos
   hidden: boolean
   /** Le raccourci choisi (« Alt+X »), pour l'afficher dans l'aperçu. */
   hotkey: string
   /** Aperçu lancé depuis Paramètres : l'overlay passe ses pièces avec des chiffres d'exemple. */
   previewAt?: number
+  /** Réglage en plein écran lancé depuis Paramètres : le style et le moment montrés en premier. La fenêtre prend alors
+   *  la souris et le clavier, jusqu'à « Terminé » ou Échap. */
+  edit?: { style: Cs2OverlayThree; moment: Cs2OverlayMoment }
 }
 
 /** Démarrage avec Windows : `unavailable` hors de la version installée sur Windows, `blocked` si Windows l'a désactivé (Gestionnaire des tâches). */

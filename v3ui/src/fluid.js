@@ -1,4 +1,4 @@
-// Le fond de l'appli, au choix dans Paramètres.
+// Le fond de l'appli. Depuis la 0.6.2, toujours Verre (plus de choix dans Paramètres) ; les autres approches restent dans ce fichier.
 // Verre : la vraie image, nette, sous des zones floutées. Lignes et Écran : une trame nette, calculée au pixel de l'écran, qui tire sa lumière de l'image du jeu.
 const Fluid = (() => {
   const MODES = [
@@ -309,7 +309,8 @@ const Fluid = (() => {
   }
 
   // Changer d'approche
-  const savedMode = () => { let m = null; try { m = localStorage.getItem('pxv3-fond') } catch { /* stockage indisponible */ } return PRESET[m] ? m : 'verre' }
+  // Plus de choix du fond depuis la 0.6.2 (Vitrine et Arsenal ont leur propre décor) : Verre partout, l'ancien choix gardé est oublié
+  const savedMode = () => { try { localStorage.removeItem('pxv3-fond') } catch { /* stockage indisponible */ } return 'verre' }
   function applyMode() {
     const w = $('#win'); w.dataset.bg = mode
     bgVars()
@@ -318,8 +319,6 @@ const Fluid = (() => {
     if (gl) { size(bw, bh); applySource() }
     showHero()
     wake()
-    $$('[data-fond]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.fond === mode))
-    const d = $('#pFondD'); if (d) d.textContent = MODES.find((x) => x.k === mode).d
   }
   function setMode(m) {
     if (!PRESET[m] || m === mode) return
@@ -329,7 +328,6 @@ const Fluid = (() => {
   }
   return {
     init, set, game, stop, modes: MODES, mode: setMode, current: () => mode,
-    next() { const i = MODES.findIndex((x) => x.k === mode), n = MODES[(i + 1) % MODES.length]; setMode(n.k); return n },
     dim: (v) => { dimTo = v; bgVars(); wake() },
     even: (v) => { evenK = v ? 1 : 0; dirty = true; if (gl) draw() },
     // Sur les pages à lire, le fond baisse : le texte reste lisible partout

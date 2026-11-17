@@ -2,6 +2,7 @@
 export * as text from '../src/shared/text'
 export * as cs2 from '../src/shared/cs2'
 export * as cs2Lifetime from '../src/shared/cs2Lifetime'
+export * as statsCockpit from '../src/shared/statsCockpit'
 export * as events from '../src/shared/gameEvents'
 export * as hotkey from '../src/shared/hotkey'
 export * as servers from '../src/shared/servers'

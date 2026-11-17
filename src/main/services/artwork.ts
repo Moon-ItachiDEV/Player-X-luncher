@@ -1,5 +1,5 @@
 import { cleanName as clean, norm } from '@shared/text'
-import { NOT_FOUND_RETRY_MS, pickExact, searchTerms } from './artworkMatch'
+import { MATCH_VERSION, NOT_FOUND_RETRY_MS, firstWithCover, looseIds, matchIds, searchTerms } from './artworkMatch'
 import type { Game } from '@shared/types'
 import { getKv, kvStamp, setKv } from '../db'
 
@@ -23,24 +23,36 @@ interface Art {
   assetsFetched?: boolean
   /** Tags Steam du jeu (identifiants, les plus votés d'abord), pour le style de l'accueil. Absent : pas encore demandé. */
   tagIds?: number[]
+  /** Jeu EA / Epic / GOG : les autres jeux Steam au même nom, essayés si `appId` n'a pas de jaquette (0.6.2). */
+  alts?: string[]
+  /** Jeu EA / Epic / GOG : version des règles de recherche qui l'a retrouvé (MATCH_VERSION). */
+  m?: number
   at: number
 }
 
 type ArtCache = Record<string, Art>
 
-/** Appid Steam d'un jeu non-Steam, seulement si le nom correspond vraiment (pas le premier résultat venu). */
-async function findSteamAppId(name: string): Promise<string | null> {
+/**
+ * Appids Steam d'un jeu non-Steam, du plus sûr au moins sûr, seulement si le nom correspond vraiment (pas le premier
+ * résultat venu). Vide : pas trouvé.
+ */
+async function findSteamAppIds(name: string): Promise<string[]> {
   // Plusieurs façons d'écrire la recherche : Steam ne retrouve pas toujours un titre avec « : » ou une édition. Une erreur
   // du réseau remonte (rien n'est gardé en cache), un « pas trouvé » ne sort qu'après tous les essais.
+  const seen: { id: number; name: string }[] = []
   for (const term of searchTerms(name)) {
     const res = await fetch(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(term)}&l=french&cc=FR`, { signal: AbortSignal.timeout(20_000) })
     if (!res.ok) throw new Error(`storesearch ${res.status}`)
     const items = ((await res.json()) as { items?: { id: number; name: string }[] }).items ?? []
-    const id = pickExact(items, name)
-    if (id) return id
+    const ids = matchIds(items, name)
+    if (ids.length) return ids
+    seen.push(...items)
   }
+  // Rien d'exact : le nom sans ses mots d'édition (« … Remastered », « … GOTY »)
+  const loose = looseIds(seen, name)
+  if (loose.length) return loose
   console.warn('[artwork] jeu introuvable sur Steam :', name, '| recherches :', searchTerms(name).join(' ; '))
-  return null
+  return []
 }
 
 interface StoreItem {
@@ -98,8 +110,13 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
   const now = Date.now()
   const fresh = (g: Game): Art | undefined => {
     const a = cache[g.id]
-    // Un « pas trouvé » (appId null) est réessayé au bout de 6 h seulement : une semaine était trop long.
-    return a && now - a.at < (a.appId ? MAX_AGE : NOT_FOUND_RETRY_MS) ? a : undefined
+    if (!a) return undefined
+    // Jeu EA / Epic / GOG retrouvé avec d'anciennes règles : recherché une fois de plus (0.6.2, The Witcher 3 de Breezydev)
+    if (g.store !== 'steam' && a.m !== MATCH_VERSION) return undefined
+    // Un « pas trouvé » (appId null), ou un jeu retrouvé mais sans jaquette, est réessayé au bout de 6 h seulement :
+    // une semaine était trop long.
+    const ok = a.appId && (g.store === 'steam' || !a.assetsFetched || a.cover)
+    return now - a.at < (ok ? MAX_AGE : NOT_FOUND_RETRY_MS) ? a : undefined
   }
   /** Ce que cette recherche a trouvé : seul écrit à la fin, par-dessus le cache relu (une autre recherche a pu finir entre-temps). */
   const found: ArtCache = {}
@@ -111,7 +128,8 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
     await Promise.all(
       unknown.slice(i, i + 4).map(async (g) => {
         try {
-          cache[g.id] = found[g.id] = { appId: await findSteamAppId(g.name), at: now }
+          const ids = await findSteamAppIds(g.name)
+          cache[g.id] = found[g.id] = { appId: ids[0] ?? null, ...(ids.length > 1 ? { alts: ids.slice(1, 4) } : {}), m: MATCH_VERSION, at: now }
           changed = true
         } catch {
           /* hors ligne : on réessaiera au prochain scan */
@@ -120,21 +138,24 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
     )
   }
 
-  // 2. Chemins d'images exacts pour tout ce qui a un appid.
-  const toFetch = new Map<string, string[]>() // appid -> ids de jeux
+  // 2. Chemins d'images exacts pour tout ce qui a un appid. Un jeu EA / Epic / GOG peut avoir plusieurs jeux Steam au même
+  // nom (le jeu et sa fiche « Game of the Year Edition ») : on garde le premier qui a une jaquette.
+  const want = new Map<string, string[]>() // id du jeu -> appids candidats
   for (const g of games) {
     const appId = g.store === 'steam' ? g.storeId : cache[g.id]?.appId
     // Un cache d'avant les logos ou les tags (absents) est redemandé une fois.
     const f = fresh(g)
     if (!appId || (f?.assetsFetched && f.logo !== undefined && f.tagIds !== undefined)) continue
-    toFetch.set(appId, [...(toFetch.get(appId) ?? []), g.id])
+    want.set(g.id, [appId, ...(g.store === 'steam' ? [] : (cache[g.id]?.alts ?? []))])
   }
-  if (toFetch.size) {
+  if (want.size) {
     try {
-      const assets = await fetchAssets([...toFetch.keys()])
-      for (const [appId, ids] of toFetch) {
+      const assets = await fetchAssets([...new Set([...want.values()].flat())])
+      for (const [id, cands] of want) {
+        const appId = firstWithCover(cands, (c) => !!assets.get(c)?.cover) ?? cands[0]
         const a = assets.get(appId)
-        for (const id of ids) cache[id] = found[id] = { appId, cover: a?.cover, hero: a?.hero, logo: a?.logo ?? null, tagIds: a?.tagIds ?? [], assetsFetched: true, at: now }
+        const m = cache[id]?.m
+        cache[id] = found[id] = { appId, cover: a?.cover, hero: a?.hero, logo: a?.logo ?? null, tagIds: a?.tagIds ?? [], assetsFetched: true, ...(m ? { m } : {}), at: now }
       }
       changed = true
     } catch (e) {

@@ -3,14 +3,17 @@
 const Settings = (() => {
   let newFor = null
   let el, sec = 'rec', routine = null, back = null, savedT = 0, q = '', hit = 0, waiting = null, addKind = null
-  // Rangé par intention : en jeu, l'appli, toi. Le troisième champ (icône) n'est plus affiché, gardé pour les autres listes
+  // Rangé par intention : l'essentiel d'abord, puis ce qu'on règle en jeu, l'appli et ton PC, ce qu'on règle une fois. NAVL : le nom de chaque groupe (le premier n'en a pas)
   const NAV = [
-    [['rec', 'Enregistrement', 'clip'], ['edit', 'Montage', 'clip'], ['overlay', 'Overlay', 'overlay'], ['routine', 'Routines', 'queue']],
-    [['general', 'Général', 'gear'], ['library', 'Bibliothèque', 'lib'], ['keys', 'Raccourcis', 'keys']],
-    [['accounts', 'Comptes', 'users'], ['about', 'À propos', 'info']]
+    [['home', 'Essentiel', 'bolt']],
+    [['rec', 'Enregistrement', 'clip'], ['overlay', 'Overlay', 'overlay'], ['routine', 'Routines', 'queue'], ['keys', 'Raccourcis', 'keys']],
+    [['general', 'Général', 'gear'], ['library', 'Bibliothèque', 'lib'], ['pc', 'Mon PC', 'pc']],
+    [['accounts', 'Comptes', 'users'], ['edit', 'Montage', 'cut'], ['about', 'À propos', 'info']]
   ]
+  const NAVL = ['', 'En jeu', 'Player X et ton PC', 'Une fois pour toutes']
   // Une phrase seulement quand elle aide à décider : ici, coller une clé
   const META = {
+    home: ['Essentiel', ''],
     accounts: ['Comptes', 'Tes clés restent sur ce PC.'],
     rec: ['Enregistrement', ''],
     edit: ['Montage', ''],
@@ -19,20 +22,27 @@ const Settings = (() => {
     library: ['Bibliothèque', ''],
     general: ['Général', ''],
     keys: ['Raccourcis', ''],
+    pc: ['Mon PC', 'Ta carte graphique, son pilote et tes écrans. Pour NVIDIA, Player X peut aussi installer le nouveau pilote officiel.'],
     about: ['À propos', '']
   }
-  const OVSTYLE = { b: 'Verre', a: 'Apple', c: 'Player X' }
+  // 0.6.2 (test) : trois overlays au choix, plus l'actuel pour comparer. Le dernier choisi revient quand on le rallume.
+  const OVSTYLE = { etendard: 'Étendard', viseur: 'Viseur', regie: 'Régie', c: 'Actuel', a: 'Actuel', b: 'Actuel' }
+  const OVSTYLES = [['etendard', 'Étendard'], ['viseur', 'Viseur'], ['regie', 'Régie'], ['c', 'Actuel']]
+  const OVLAST = 'pxv3-ovstyle'
+  const ovLast = () => { try { const v = localStorage.getItem(OVLAST); return OVSTYLES.some(([k]) => k === v) ? v : 'etendard' } catch { return 'etendard' } }
+  const ovKeep = (v) => { try { localStorage.setItem(OVLAST, v) } catch {} }
   // La recherche lit les noms des réglages et quelques synonymes
   const IDX = [
     ['accounts', 'r-steam', 'Steam', 'compte clé api web key déconnecter clé web api'], ['accounts', 'r-discord', 'Discord', 'serveur vocal membres client secret widget id serveur application avancé'], ['accounts', 'r-bf6', 'Profil Battlefield 6', 'ea stats compte bf6 pseudo'], ['accounts', 'r-psn', 'PlayStation', 'psn compte npsso sony jeton'], ['accounts', 'r-epic', 'Epic Games, EA app et GOG', 'origin compte gog galaxy'], ['accounts', 'r-me', 'Pseudo et photo', 'profil nom avatar'],
-    ['rec', 'r-rec', 'Garder mes moments', 'autorecord enregistrement rec clip nvidia highlights kills'], ['rec', 'r-dur', 'Durée d’un clip', 'avant après secondes longueur'], ['rec', 'r-merge', 'Réunir les kills proches', 'doublé fusion multi'], ['rec', 'r-trig', 'Ce qui garde un clip', 'déclencheurs kill headshot triple quadra ace mort automatique'], ['rec', 'r-qual', 'Qualité', 'bitrate mbit résolution fps images légère équilibrée haute'], ['rec', 'r-capm', 'Capture de l’image', 'moteur vidéo chrome obs carte graphique fluide fenêtre du jeu'], ['rec', 'r-game', 'Son du PC', 'audio son du jeu discord'], ['rec', 'r-mic', 'Micro', 'voix microphone piste'], ['rec', 'r-folder', 'Dossier des clips', 'emplacement vidéos chemin'], ['rec', 'r-limit', 'Place maximale', 'stockage disque go espace effacer favoris'], ['rec', 'r-disp', 'Écran filmé', 'moniteur display'], ['rec', 'r-gms', 'Jeux filmés', 'jeux enregistrés tous cs2 bf6'], ['rec', 'r-log', 'Copier le journal', 'diagnostic erreur log souci problème'], ['rec', 'r-cap', 'Essayer la capture comme OBS', 'obs fluide images par seconde saccade freeze essai capture 1080p réduit'], ['rec', 'r-disc', 'Mon Discord', 'nitro basic partage partager copier limite poids taille 20 mo 50 mo 500 mo envoyer fichier trop lourd'],
-    ['overlay', 'r-ovcs', 'Overlay de Counter-Strike 2', 'cs2 hud style verre apple'],
+    ['rec', 'r-rec', 'Garder mes moments', 'autorecord enregistrement rec clip nvidia highlights kills'], ['rec', 'r-dur', 'Durée d’un clip', 'avant après secondes longueur'], ['rec', 'r-merge', 'Réunir les kills proches', 'doublé fusion multi'], ['rec', 'r-cstyle', 'Style de la page Clips', 'viseur régie apparence page clips affichage essai'], ['rec', 'r-trig', 'Ce qui garde un clip', 'déclencheurs kill headshot triple quadra ace mort automatique'], ['rec', 'r-qual', 'Qualité', 'bitrate mbit résolution fps images légère équilibrée haute'], ['rec', 'r-capm', 'Capture de l’image', 'moteur vidéo chrome obs carte graphique fluide fenêtre du jeu'], ['rec', 'r-game', 'Son du PC', 'audio son du jeu discord'], ['rec', 'r-mic', 'Micro', 'voix microphone piste'], ['rec', 'r-folder', 'Dossier des clips', 'emplacement vidéos chemin'], ['rec', 'r-limit', 'Place maximale', 'stockage disque go espace effacer favoris'], ['rec', 'r-disp', 'Écran filmé', 'moniteur display'], ['rec', 'r-gms', 'Jeux filmés', 'jeux enregistrés tous cs2 bf6'], ['rec', 'r-log', 'Copier le journal', 'diagnostic erreur log souci problème'], ['rec', 'r-cap', 'Essayer la capture comme OBS', 'obs fluide images par seconde saccade freeze essai capture 1080p réduit'], ['rec', 'r-disc', 'Mon Discord', 'nitro basic partage partager copier limite poids taille 20 mo 50 mo 500 mo envoyer fichier trop lourd'],
+    ['overlay', 'r-ovcs', 'Overlay de Counter-Strike 2', 'cs2 hud blason player x'], ['overlay', 'r-ovst', 'Style de l’overlay', 'étendard viseur régie actuel apparence bannière tournoi'], ['overlay', 'r-ovpos', 'Position et taille de l’overlay', 'placer déplacer glisser coin endroit emplacement bouger taille échelle plein écran grand'], ['overlay', 'r-ovsz', 'Taille de l’overlay', 'petite normale grande écran 1080p 1440p 4k gêne place'],
     ['edit', 'r-eng', 'Moteur vidéo', 'montage film frag movie export rendu ffmpeg encodeur carte graphique nvidia amd intel essai tester'], ['about', 'r-ffm', 'Licence du moteur vidéo', 'ffmpeg lgpl sources logiciel libre'],
     ['routine', 'r-rt', 'Créer une routine', 'étapes jouer discord salon fermer appli lancer ordre'],
     ['library', 'r-news', 'Actus des jeux', 'patch événements nouvelles badge'], ['library', 'r-hid', 'Jeux masqués', 'cacher réafficher'], ['library', 'r-col', 'Collections', 'ranger'], ['library', 'r-scan', 'Chercher mes jeux', 'scan analyse détecter dossiers'],
-    ['general', 'r-fond', 'Fond de l’accueil', 'verre cannelé lignes écran mur fluide apparence image thème'], ['general', 'r-motion', 'Fond qui suit la souris', 'animation mouvement parallaxe'], ['general', 'r-win', 'Démarrer avec Windows', 'lancement session démarrage'], ['general', 'r-tray', 'Quand je ferme la fenêtre', 'croix quitter horloge zone de notification'], ['general', 'r-launch', 'Quand un jeu démarre', 'réduire rester fenêtre'], ['general', 'r-fr', 'Alertes d’amis', 'steam playstation psn notification connexion'], ['general', 'r-ready', 'Jeu prêt après une mise à jour', 'alerte steam téléchargement notification'], ['general', 'r-live', 'Suivre mes matchs de Counter-Strike 2', 'gsi score direct bilan clips auto'], ['general', 'r-cs2open', 'Ouvrir le bilan à la fin du match', 'counter-strike story résumé'], ['general', 'r-bfrecap', 'Bilan après chaque session de Battlefield 6', 'résumé stats'],
+    ['general', 'r-home', 'Style de l’accueil', 'vitrine arsenal roue étagère viseur accueil essai'], ['general', 'r-sol', 'Sol de l’Arsenal', 'brume fumée laqué reflet sol arsenal'], ['general', 'r-motion', 'Fond qui suit la souris', 'animation mouvement parallaxe'], ['general', 'r-win', 'Démarrer avec Windows', 'lancement session démarrage'], ['general', 'r-tray', 'Quand je ferme la fenêtre', 'croix quitter horloge zone de notification'], ['general', 'r-launch', 'Quand un jeu démarre', 'réduire rester fenêtre'], ['general', 'r-fr', 'Alertes d’amis', 'steam playstation psn notification connexion'], ['general', 'r-ready', 'Jeu prêt après une mise à jour', 'alerte steam téléchargement notification'], ['general', 'r-live', 'Suivre mes matchs de Counter-Strike 2', 'gsi score direct bilan clips auto'], ['general', 'r-cs2open', 'Ouvrir le bilan à la fin du match', 'counter-strike story résumé'], ['general', 'r-bfrecap', 'Bilan après chaque session de Battlefield 6', 'résumé stats'],
     ['keys', 'k-clip', 'Clipper à la main', 'raccourci touche clip'], ['keys', 'k-overlay', 'Masquer l’overlay', 'raccourci touche hud'], ['keys', 'k-search', 'Tout rechercher', 'raccourci touche palette'], ['keys', 'k-find', 'Chercher un réglage', 'raccourci touche'], ['keys', 'k-rt', 'Lancer une routine', 'raccourci touche'], ['keys', 'k-set', 'Ouvrir les paramètres', 'raccourci touche'],
-    ['about', 'r-ver', 'Version installée', 'build test mise à jour'], ['about', 'r-setup', 'Revoir l’accueil', 'première ouverture'],
+    ['about', 'r-ver', 'Version installée', 'build numéro'], ['about', 'r-maj', 'Mises à jour', 'vérifier nouvelle version télécharger installer'], ['about', 'r-maj-quit', 'Installer à la fermeture de Player X', 'mise à jour automatique quitter fermer'], ['about', 'r-maj-skip', 'Version ignorée', 'ne plus ignorer mise à jour'], ['about', 'r-maj-notes', 'Revoir les nouveautés', 'notes de version changements nouveautés'], ['about', 'r-setup', 'Revoir l’accueil', 'première ouverture'],
+    ['pc', 'r-gpu', 'Pilote de la carte graphique', 'nvidia geforce amd radeon adrenalin intel arc version mise à jour driver gpu'], ['pc', 'r-hz', 'Fréquence de l’écran', 'hz 144 165 240 60 rafraîchissement moniteur affichage'],
     ['rec', 'r-hot', 'Clipper à la main', 'raccourci touche clip manuel'], ['overlay', 'r-ovkey', 'Masquer ou afficher l’overlay', 'raccourci touche hud']
   ]
   const QUAL = { light: ['Légère', '1080p, 30 images/s', 10.13], balanced: ['Équilibrée', '1080p, 60 images/s', 20.16], high: ['Haute', 'Ton écran, 60 images/s', 40.19] }
@@ -52,18 +62,18 @@ const Settings = (() => {
   const keysOf = (accel) => kbds(Shared.hotkey.hotkeyLabel(accel))
 
   function mount(win) {
-    el = h(`<div id="sheet" hidden data-modal><section class="sh" role="dialog" aria-modal="true" aria-labelledby="shName">
-      <header class="sh-top"><h2 id="shName">Paramètres</h2>
+    el = h(`<div id="sheet" hidden data-modal><section class="sh" role="dialog" aria-modal="true" aria-labelledby="shName"><i class="sh-art" id="shArt" aria-hidden="true"></i>
+      <header class="sh-top"><h2 id="shName"><span class="sh-mark" aria-hidden="true">${logoS()}</span>Paramètres</h2>
         <label class="sh-q" for="shQ">${ic('search')}<span class="sh-q-l">Chercher un réglage</span><input id="shQ" type="search" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="shRes"><kbd class="kb">Ctrl F</kbd></label>
         <div class="sh-end"><button class="btn sm icon" id="shX" aria-label="Fermer les paramètres" data-tip="Fermer, Échap" data-tip-b data-tip-r>${ic('close')}</button></div></header>
       <nav class="sh-nav" id="shNav" aria-label="Rubriques"></nav>
-      <div class="sh-main"><div class="sh-head"><h1 id="shTitle"></h1><span class="sh-saved" id="shSaved" role="status"></span></div><div class="sh-body" id="shBody" tabindex="-1"></div>
+      <div class="sh-main"><div class="sh-head"><span class="sh-badge" id="shBadge" aria-hidden="true"></span><h1 id="shTitle"></h1><span class="sh-saved" id="shSaved" role="status"></span></div><div class="sh-body" id="shBody" tabindex="-1"></div>
         <div class="sh-res" id="shRes" role="listbox" aria-label="Réglages trouvés" hidden></div><p class="vh" id="shResN" role="status"></p></div></section></div>`)
     win.append(el)
     if (!fluidOn()) Fluid.freeze(true)
     syncBar()
     $('#shX', el).onclick = () => close()
-    $('#shNav', el).innerHTML = NAV.map((g) => `<div class="sh-g">${g.map(([k, l]) => `<button class="sh-t" data-s="${k}" tabindex="-1"><span>${l}</span><em data-st="${k}"></em></button>`).join('')}</div>`).join('')
+    $('#shNav', el).innerHTML = NAV.map((g, n) => `<div class="sh-g">${NAVL[n] ? `<p class="sh-gl">${NAVL[n]}</p>` : ''}${g.map(([k, l, i]) => `<button class="sh-t" data-s="${k}" tabindex="-1"><i class="sh-i" aria-hidden="true">${ic(i)}</i><span>${l}</span><em data-st="${k}"></em></button>`).join('')}</div>`).join('')
     $$('.sh-t', el).forEach((b) => { b.onclick = () => { clearSearch(); show(b.dataset.s) } })
     // Le sommaire : une seule tabulation, puis les flèches. La rubrique suit le focus
     $('#shNav', el).addEventListener('keydown', (e) => {
@@ -95,14 +105,27 @@ const Settings = (() => {
   function repaint() { const b = $('#shBody', el), y = b.scrollTop; paint(); b.scrollTop = y; paintNav() }
   function open(p) {
     if (!el.hidden && !p) return
-    if (el.hidden) back = document.activeElement
+    if (el.hidden) { back = document.activeElement; cancelKey() }
+    // La roue ouvre toujours Essentiel ; un raccourci (avatar, « Voir mes comptes »…) ne vaut que pour sa visite
+    if (!p && el.hidden) { sec = 'home'; paint.prev = null }
+    else if (el.hidden) paint.prev = null
     const gr = GAMES[S.focus]?.routine; if (p === 'routine' && gr && !newFor && ROUTINES[gr] && !open.keep) routine = gr
     if (p) { sec = p === 'interface' ? 'general' : p; $('#shBody', el).scrollTop = 0 }
-    el.hidden = false; void el.offsetWidth; el.classList.add('on'); clearSearch(); paintNav(); paint(); navBtn().focus({ preventScroll: true })
+    tint(); el.hidden = false; void el.offsetWidth; el.classList.add('on'); clearSearch(); paintNav(); paint(); navBtn().focus({ preventScroll: true })
+    if (!p) $('#shBody', el).scrollTop = 0
     // L'état du moteur vidéo se demande à la première ouverture des paramètres, pas au démarrage de l'appli
     if (!eng && !engLoad) loadEngine()
   }
-  function close(silent) { if (el.hidden) return; el.classList.remove('on'); setTimeout(() => { el.hidden = true; if (silent !== true) giveFocus(back) }, 200) }
+  // Le fond de la page : la jaquette du jeu en cours, floutée derrière le verre, et sa couleur dans la lueur (comme le menu d'un jeu).
+  // Les commandes, elles, restent au rouge de Player X. Sans jaquette ou sans style : la lueur rouge seule
+  function tint() {
+    const g = GAMES[S.focus], art = $('#shArt', el), url = g?.cover && g.id !== '__all' ? A(g.cover) : ''
+    art.style.backgroundImage = url ? `url("${url.replace(/["\\\n]/g, '')}")` : ''
+    const st = GameStyle.on() ? GameStyle.now(g) : null
+    if (st?.accent) el.style.setProperty('--sh-acc', st.accent); else el.style.removeProperty('--sh-acc')
+  }
+  // « Créer » depuis Essentiel ne vaut que pour cette visite : sans ça, la création du jeu d'avant reviendrait à chaque ouverture de Routines
+  function close(silent) { if (el.hidden) return; cancelKey(); if (newFor) { newFor = null; if (routine === NEW_RT) routine = null } el.classList.remove('on'); setTimeout(() => { el.hidden = true; if (silent !== true) giveFocus(back) }, 200) }
   function show(p, rowId) {
     sec = p; paintNav(); paint(); const b = $('#shBody', el); b.scrollTop = 0
     if (rowId) {
@@ -122,10 +145,12 @@ const Settings = (() => {
     $$('.sh-t', el).forEach((b) => { const on = b.dataset.s === sec; if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); b.tabIndex = on ? 0 : -1 })
     const ov = s().cs2Overlay, n = (Real.st.accounts || []).length
     const st = {
+      home: todoList().length ? `<i class="dot w"></i>${todoList().length} à voir` : '',
       rec: Real.clipsCfg ? (Real.clipsOn?.() ? '<i class="dot"></i>Activé' : 'Coupé') : '',
       edit: !eng ? '' : engRun ? 'Essai en cours' : eng.status !== 'ready' ? 'À réparer' : eng.test && !eng.test.best ? 'Essai raté' : 'Prêt',
       overlay: ov === 'off' ? 'Coupé' : OVSTYLE[ov] || '',
-      accounts: n ? Shared.text.plural(n, 'relié', 'reliés') : ''
+      accounts: n ? Shared.text.plural(n, 'relié', 'reliés') : '',
+      pc: drvRunning() ? '<i class="dot"></i>Mise à jour…' : pc?.badge ? `<i class="dot"></i>${esc(pc.badge)}` : ''
     }
     $$('[data-st]', el).forEach((e) => { const t = st[e.dataset.st] || ''; e.innerHTML = t; e.classList.toggle('off', t === 'Coupé') })
   }
@@ -200,7 +225,64 @@ const Settings = (() => {
   function paint() {
     const b = $('#shBody', el), [t, d] = META[sec]
     $('#shTitle', el).textContent = t
-    ;({ rec: pRec, edit: pEdit, routine: pRoutine, overlay: pOverlay, accounts: pAccounts, library: pLibrary, general: pGeneral, keys: pKeys, about: pAbout })[sec](b, d ? `<p class="sh-d">${d}</p>` : '')
+    const bd = $('#shBadge', el), icn = NAV.flat().find((x) => x[0] === sec)?.[2] || 'gear'
+    if (bd.dataset.i !== icn) { bd.dataset.i = icn; bd.innerHTML = ic(icn); bd.classList.remove('pop'); void bd.offsetWidth; bd.classList.add('pop') }
+    // Les cartes d'Essentiel arrivent en fondu une seule fois, à l'entrée dans la page
+    if (paint.prev !== sec) pHome.fresh = true
+    b.classList.remove('hm-in')
+    paint.prev = sec
+    ;({ home: pHome, rec: pRec, edit: pEdit, routine: pRoutine, overlay: pOverlay, accounts: pAccounts, library: pLibrary, general: pGeneral, keys: pKeys, pc: pPc, about: pAbout })[sec](b, d ? `<p class="sh-d">${d}</p>` : '')
+  }
+
+  /* Essentiel : les réglages de tous les jours, chacun avec son dessin, et ce qui demande un geste. Chaque réglage est celui de sa rubrique */
+  const todoList = () => {
+    const c = Real.clipsCfg, l = []
+    if (!c) l.push(['rec', 'Enregistrement indisponible', 'Le moteur d’enregistrement n’a pas répondu', 'Voir'])
+    else if (Real.clipsLive?.error) l.push(['rec', 'L’enregistrement est en panne', esc(Real.clipsLive.error), 'Voir'])
+    if (eng && eng.status !== 'ready') l.push(['edit', 'Le moteur vidéo est à réparer', 'Il fabrique tes films', 'Réparer'])
+    if (pc?.badge) l.push(['pc', 'Mon PC', esc(pc.badge), 'Voir'])
+    if (!(Real.st.accounts || []).length) l.push(['accounts', 'Aucun compte relié', 'Steam apporte tes amis, tes succès et tes jeux', 'Relier'])
+    return l
+  }
+  const todoSig = () => todoList().map((x) => x.join('~')).join('|')
+  // Ce que la page Essentiel montre : si rien de cela ne change, un nouvel état du moteur ne la repeint pas
+  const homeSig = () => [Real.clipsCfg?.enabled, Real.clipsLive?.status, Real.clipsLive?.error, Real.clipsLive?.game, todoSig()].join('|')
+  // Repeindre Essentiel sans perdre le focus : il revient sur la commande qu'on utilisait
+  function homeRepaint() {
+    const b = $('#shBody', el), a = document.activeElement
+    const k = a && b.contains(a) ? (a.id ? `#${a.id}` : a.dataset.key ? `.kc[data-key="${a.dataset.key}"]` : a.dataset.v && a.closest('[id]') ? `#${a.closest('[id]').id} [data-v="${a.dataset.v}"]` : a.dataset.go ? `${a.classList.contains('hm-more') ? '.hm-more' : a.classList.contains('hm-rd') ? '.hm-rd' : '.btn'}[data-go="${a.dataset.go}"]` : '') : ''
+    repaint(); if (k) $(k, el)?.focus({ preventScroll: true })
+  }
+  function homeSync() { if (waiting || homeSig() === pHome.sig) return; homeRepaint() }
+  function pHome(b, d) {
+    const c = Real.clipsCfg, ov = s().cs2Overlay, ovOn = ov !== 'off', cur = ovOn ? (OVSTYLE[ov] === 'Actuel' ? 'c' : ov) : ovLast()
+    const g = GAMES[S.focus], game = g && g.id !== '__all' ? g : null, rt = game ? ROUTINES[game.routine] : null
+    const head = (k, icn, t) => `<i class="sh-i hm-i" aria-hidden="true">${ic(icn)}</i>${t}<button class="hm-more" data-go="${k}" aria-label="Tout régler : ${t}" data-tip="Tout régler" data-tip-r>${ic('chev')}</button>`
+    const todo = todoList(), stt = Real.clipsLive
+    const recSub = !c ? '' : !c.enabled ? 'Coupé, aucun clip n’est gardé' : stt?.error ? '<em class="rc-err">En panne</em>' : stt?.status === 'recording' ? `En cours${stt.game ? ` sur ${esc(stt.game)}` : ''}` : 'Prêt, démarre avec ton jeu'
+    const ovSub = !ovOn ? 'Coupé : le style choisi servira quand tu le rallumeras' : cur === 'c' ? 'Style Actuel, à changer dans Overlay' : ''
+    // La durée se lit sur le même dessin que dans Enregistrement : avant, le moment, après
+    const rd = () => { const be = c.before, af = c.after, span = Math.max(66, be + af + 14), pct = (x) => x / span * 100, x = span - af - 7; return `<i class="rd-t"></i><i class="rd-c" style="left:${pct(x - be)}%;width:${pct(be + af)}%"></i><span class="rd-l" style="left:${pct(x - be / 2)}%">${be} s</span><span class="rd-l" style="left:${pct(x + af / 2)}%">${af} s</span><span class="rd-x big" style="left:${pct(x)}%">${xm()}</span>` }
+    const mo = c ? Math.round((c.before + c.after) * QUAL[c.quality][2] / 8) : 0
+    const steps = rt ? rt.steps.filter((x) => x.fixed || x.on !== false) : []
+    b.innerHTML = `${todo.length ? group(`<i class="sh-i hm-i w" aria-hidden="true">${ic('warn')}</i>À voir`, todo.map(([k, t, sub, a]) => `<div class="sr hm-todo"><div class="sr-t"><b>${t}</b>${sub ? `<span>${sub}</span>` : ''}</div><div class="sr-c"><button class="btn sm" data-go="${k}">${a}</button></div></div>`).join('')) : ''}
+      ${c ? group(head('rec', 'clip', 'Enregistrement'), `<div class="sr hm-rec ${c.enabled ? 'on' : ''}" id="h-rec"><span class="hm-lamp" aria-hidden="true"><i></i></span><div class="sr-t"><b>Garder mes moments</b><span>${recSub}</span></div><div class="sr-c">${sw('hMaster', c.enabled, 'Garder mes moments')}</div></div>
+        <div class="hm-rest" ${c.enabled ? '' : 'inert'}>
+        <div class="sr" id="h-dur"><div class="sr-t"><b>Durée d’un clip</b><span>${c.before + c.after} s, environ ${mo} Mo</span></div><button class="hm-rd" data-go="rec" data-row="r-dur" aria-label="Régler la durée : ${c.before} secondes avant, ${c.after} secondes après" data-tip="Régler la durée" data-tip-r><span class="rd">${rd()}</span></button></div>
+        <div class="sr" id="h-qual"><div class="sr-t"><b>Qualité</b><span>${c.capture === 'chrome' ? QUAL[c.quality][1] : QUAL_ENGINE[c.quality]}</span></div><div class="sr-c"><div class="seg hm-q" role="radiogroup" aria-label="Qualité">${Object.entries(QUAL).map(([k, [n]], i) => `<button role="radio" data-v="${k}" aria-checked="${k === c.quality}" tabindex="${k === c.quality ? 0 : -1}"><i class="hm-bars" data-n="${i + 1}" aria-hidden="true"><i></i><i></i><i></i></i>${n}</button>`).join('')}</div></div></div>
+        ${row('h-hot', KEYNAME.clip, noSub, kcap('clip'))}</div>`) : ''}
+      ${group(head('overlay', 'overlay', 'Overlay'), `<div class="sr" id="h-ov"><div class="sr-t"><b>Counter-Strike 2</b>${ovSub ? `<span>${ovSub}</span>` : ''}</div><div class="sr-c">${sw('hOv', ovOn, 'Overlay de Counter-Strike 2')}</div></div>
+        <div class="hm-ovs ${ovOn ? '' : 'off'}" id="h-ovst" role="radiogroup" aria-label="Style de l’overlay">${OVSTYLES.filter(([k]) => k !== 'c').map(([k, l], i) => `<button class="hm-ov" role="radio" data-v="${k}" aria-checked="${k === cur}" tabindex="${k === cur || (cur === 'c' && !i) ? 0 : -1}"><span class="hm-ov-i"><img src="${esc(A('ov_' + k))}" alt=""></span><b>${l}</b></button>`).join('')}</div>`)}
+      ${game && (rt || game.installed) ? group(head('routine', 'queue', 'Routines'), `<div class="sr hm-rt" id="h-rt"><span class="hm-cov" aria-hidden="true">${game.cover ? `<img src="${esc(A(game.cover))}" alt="">` : esc(game.name.slice(0, 1))}</span><div class="sr-t"><b>${esc(game.name)}</b>${rt ? `<span class="hm-steps" role="img" aria-label="${esc(steps.map(stepT).join(', puis '))}">${steps.map((x) => `<i class="hm-st ${x.fixed ? 'go' : ''}" data-tip="${esc(stepT(x))}">${ic(x.ic || 'play')}</i>`).join('<i class="hm-ln"></i>')}</span>` : '<span>Aucune routine avant ce jeu</span>'}</div><div class="sr-c"><button class="btn sm" data-go="routine">${rt ? 'Modifier' : 'Créer'}</button></div></div>`) : ''}`
+    b.classList.toggle('hm-in', !!pHome.fresh); pHome.fresh = false; pHome.sig = homeSig()
+    ON('hMaster', (v) => saveClips({ enabled: v }).then(() => { repaint(); $('#hMaster', el)?.focus() }))
+    ON('hOv', (x) => save({ cs2Overlay: x ? ovLast() : 'off' }).then(() => { repaint(); $('#hOv', el)?.focus() }))
+    const q = $('#h-qual .seg', b); if (q) bindSeg(q, (v) => saveClips({ quality: v }).then(() => { repaint(); $('#h-qual [aria-checked=true]', el)?.focus() }))
+    bindSeg($('#h-ovst', b), (x) => { ovKeep(x); const again = () => { repaint(); $('#h-ovst [aria-checked=true]', el)?.focus() }; if (s().cs2Overlay === 'off') again(); else save({ cs2Overlay: x }).then(again) })
+    markNoSub(b); bindKc(b)
+    // La CSP interdit les attributs onerror : l'écouteur se pose ici
+    $('.hm-cov img', b)?.addEventListener('error', (e) => e.currentTarget.replaceWith(game.name.slice(0, 1)))
+    $$('[data-go]', b).forEach((x) => x.onclick = () => { if (x.dataset.go === 'routine') { if (rt) { routine = rt.id; newFor = null } else newFor = game?.id || null } show(x.dataset.go, x.dataset.row); if (!x.dataset.row) navBtn().focus({ preventScroll: true }) })
   }
 
   /* Les replis « Plus de réglages » : ce qu'on règle une fois. Ouverts ou fermés, ils le restent d'un passage à l'autre */
@@ -215,12 +297,20 @@ const Settings = (() => {
   const noSub = '<i class="rc-0">&#8203;</i>'
   const markNoSub = (b) => $$('.rc-0', b).forEach((i) => i.parentElement.classList.add('rc-h'))
 
+  // Le journal du moteur dans le presse-papiers : le même geste dans Paramètres et sur la page Clips
+  const copyLog = async () => { const t = await API.clipsLogTail().catch(() => ''); try { await navigator.clipboard.writeText(t || 'Journal vide'); toast(`${ic('check')} Journal copié`, { ms: 1800 }) } catch { toast('Le journal n’a pas pu être copié. Réessaie dans un instant.', { tone: 'warn', ms: 3000 }) } }
+  // La taille d'un clip d'après les réglages (la même ligne dans Paramètres et sur la page Clips)
+  const clipMo = (c) => Math.round((c.before + c.after) * (QUAL[c.quality] || QUAL.balanced)[2] / 8)
+  // Le style de la page Clips (Viseur ou Régie) se choisit ici : une ligne comme « Style de l'accueil »
+  const cStyleRow = () => row('r-cstyle', 'Style de la page Clips', 'Essai : Viseur (un écran de caméra, les réglages dessus) ou Régie (les réglages à gauche, tes clips à droite)', seg('Style de la page Clips', [['b', 'Viseur'], ['a', 'Régie']], Clips.style()))
+
   /* Enregistrement : d'abord ce qu'on change souvent, le reste replié */
   function pRec(b, d) {
     const c = Real.clipsCfg
     if (!c) {
-      b.innerHTML = `${d}<div class="empty"><h2>Enregistrement indisponible</h2><p>Le moteur d’enregistrement n’a pas répondu. Réessaie, ou relance Player X si ça continue.</p><button class="btn sm" id="rRetry">${ic('refresh')}Réessayer</button></div>`
+      b.innerHTML = `${d}<div class="empty"><h2>Enregistrement indisponible</h2><p>Le moteur d’enregistrement n’a pas répondu. Réessaie, ou relance Player X si ça continue.</p><button class="btn sm" id="rRetry">${ic('refresh')}Réessayer</button></div>${group('Page Clips', cStyleRow())}`
       $('#rRetry', b).onclick = async (e) => { e.currentTarget.disabled = true; await Real.loadClipsCfg().catch(() => null); repaint() }
+      bindSeg($('#r-cstyle .seg', b), (v) => { Clips.setStyle(v); saved() })
       return
     }
     const stt = Real.clipsLive, on = c.enabled, live = Real.st.settings?.cs2Live !== false
@@ -246,6 +336,7 @@ const Settings = (() => {
         ${row('r-game', 'Son du PC', '', sw('rGame', c.gameAudio, 'Son du PC'))}
         ${row('r-mic', 'Micro', '', sw('rMic', c.mic, 'Micro'))}`)}
       </div>
+      ${group('Page Clips', cStyleRow())}
       ${group('Partage', row('r-disc', 'Mon Discord', `<span id="rDiscS">${discordSub(c.discord)}</span>`, seg('Mon Discord', DISCORD.map(([k, l]) => [k, l]), c.discord || 'free')))}
       <div class="rec-rest ${on ? '' : 'off'}" ${on ? '' : 'inert'}>
       ${group('Essai', row('r-cap', 'Essayer la capture comme OBS', '<span id="rCapS">Pendant une partie : lance l’essai, retourne dans ton jeu, il filme moins d’une minute.</span>', '<button class="btn sm" id="rCap">Lancer l’essai</button>'))}
@@ -263,6 +354,7 @@ const Settings = (() => {
     bindSeg($('#r-gms .seg', b), (v) => saveClips({ games: v }))
     bindSeg($('#r-capm .seg', b), (v) => saveClips({ capture: v }).then(() => { const y = b.scrollTop; paint(); b.scrollTop = y; $('#r-capm [aria-checked=true]', el)?.focus() }))
     // Le partage se règle même quand l'enregistrement est coupé : les clips déjà gardés se copient toujours
+    bindSeg($('#r-cstyle .seg', b), (v) => { Clips.setStyle(v); saved() })
     bindSeg($('#r-disc .seg', b), (v) => { $('#rDiscS', b).textContent = discordSub(v); saveClips({ discord: v }) })
     // Chaque enregistrement remplace Real.clipsCfg : le curseur écrit dans la version du moment, pas dans celle de l'ouverture
     const bind = (id, key) => { const i = $('#' + id, b); i.oninput = () => { Real.clipsCfg[key] = +i.value; diag() }; i.onchange = () => saveClips({ [key]: +i.value }).then(diag) }
@@ -271,7 +363,6 @@ const Settings = (() => {
     $('#rLiveOn', b)?.addEventListener('click', async () => { try { await Real.saveSettings({ cs2Live: true }); saved(); repaint() } catch (e) { failed(e) } })
     $('#rFolder', b).onclick = async () => { const f = await API.clipsChooseFolder().catch((e) => { failed(e); return null }); if (f) { await Real.loadClipsCfg(); saved(); repaint() } }
     $('#rOpen', b).onclick = () => API.clipsOpenFolder().catch(failed)
-    const copyLog = async () => { const t = await API.clipsLogTail().catch(() => ''); try { await navigator.clipboard.writeText(t || 'Journal vide'); toast(`${ic('check')} Journal copié`, { ms: 1800 }) } catch { toast('Le journal n’a pas pu être copié. Réessaie dans un instant.', { tone: 'warn', ms: 3000 }) } }
     $('#rLog', b).onclick = copyLog; $('#rLog2', b)?.addEventListener('click', copyLog)
     // Essai « capture comme OBS » : avancement dans la ligne, résultat dans la ligne et dans un message
     $('#rCap', b).onclick = async (e) => {
@@ -329,8 +420,9 @@ const Settings = (() => {
   // Le temps qu'il faudrait pour une minute de film, d'après un essai de quelques secondes
   const perMinute = (seconds, sampleS) => { const x = Math.max(1, Math.round(seconds * 60 / sampleS)); return x < 60 ? `${x} s` : `${Math.floor(x / 60)} min${x % 60 ? ' ' + String(x % 60).padStart(2, '0') : ''}` }
   function loadEngine() {
+    const was = todoSig()
     engLoad = API.editEngine().then((e) => { eng = e; engErr = ''; engRun = e.testing }, (e) => { engErr = errText(e) })
-      .then(() => { paintNav(); if (!el.hidden && (sec === 'edit' || sec === 'about')) repaint() })
+      .then(() => { paintNav(); if (!el.hidden && (sec === 'edit' || sec === 'about')) repaint(); else if (!el.hidden && sec === 'home' && todoSig() !== was) homeRepaint() })
     return engLoad
   }
   async function testEngine() {
@@ -524,14 +616,113 @@ const Settings = (() => {
   }
 
   /* Overlay */
+  const OVSUB = {
+    etendard: 'Le blason de Player X à droite : il compte tes élim. du round et sort des bandes horizontales au temps d’achat et aux pauses.',
+    viseur: 'Des lignes et des crochets rouges collés au HUD, sans fond : on voit la carte à travers.',
+    regie: 'Des bandeaux de retransmission en biais ; un triplé, un quadruplé ou un ace lance un gros bandeau 2,5 s.',
+    c: 'La carte au blason de la 0.6.1, pour comparer.'
+  }
+  // Place de chaque bloc, mesurée sur un écran 1920 × 1080 en taille Normale : [x, y, largeur, hauteur] en pixels. Ses images
+  // (assets/ovpos) sont le vrai bloc de l'overlay, pris en mode réglage (chiffres d'exemple). « Régler en plein écran » montre
+  // le vrai overlay, à sa vraie taille, sur tout l'écran.
+  const OVBOX = {
+    etendard: { buy: [1374, 300, 513, 209], pill: [1518, 300, 369, 154], half: [1371, 300, 516, 192], end: [1338, 300, 549, 257] },
+    viseur: { buy: [20, 340, 395, 333], pill: [1021, 902, 874, 82], half: [536, 118, 848, 156], end: [430, 190, 1060, 538] },
+    regie: { buy: [48, 691, 597, 269], pill: [0, 470, 654, 460], half: [0, 785, 1083, 185], end: [1416, 200, 504, 465] }
+  }
+  const OVMOM = [['buy', 'Achat'], ['pill', 'En round'], ['half', 'Mi-temps'], ['end', 'Bilan']]
+  const OVZ = { s: 0.72 / 0.84, n: 1, l: 1 / 0.84 }
+  const OVK = [0.5, 1.6]
+  let ovMom = 'buy'
+  // Réglage en plein écran ouvert depuis ici : à sa fin, Paramètres relit les places.
+  let ovEditing = false
+  API.onCs2OverlayConfig?.((c) => {
+    if (!ovEditing || c.edit) return
+    ovEditing = false
+    Real.loadSettingsOnly().then(() => { if ($('#r-ovpos')) repaint() }).catch(() => {})
+  })
+  /** Le bloc en part de l'image (0 à 1), à sa place d'origine, pour la taille choisie et son échelle (il grandit depuis son bord collé). */
+  function ovBox(style, mom, k = 1) {
+    const [x, y, w, h] = OVBOX[style][mom], z = (OVZ[s().overlaySize] || 1) * k, W = 1920, H = 1080
+    const w2 = w * z, h2 = h * z
+    const x2 = x < 100 ? x : x + w > W - 100 ? x + w - w2 : x + (w - w2) / 2
+    const y2 = y + h > H - 180 ? y + h - h2 : y
+    return [x2 / W, y2 / H, w2 / W, h2 / H]
+  }
+  const ovPlace = (key) => { const [dx = 0, dy = 0, k = 1] = (s().overlayPos || {})[key] || []; return [dx, dy, k] }
+  function ovPosUi(style) {
+    if (!OVBOX[style]) return row('r-ovpos', 'Position et taille', 'Le style Actuel garde sa place d’origine. Choisis Étendard, Viseur ou Régie pour placer les blocs.', '')
+    const [dx, dy, k] = ovPlace(`${style}.${ovMom}`), [x, y, w, h] = ovBox(style, ovMom, k), [gx, gy, gw, gh] = ovBox(style, ovMom)
+    const pc = (n) => (n * 100).toFixed(2) + '%', name = OVMOM.find(([m]) => m === ovMom)[1]
+    return `${row('r-ovpos', 'Position et taille', 'Glisse le bloc, ou tire son coin pour sa taille. Gardé pour ce style.', `<button class="btn sm" id="oPosFull">${ic('play')}Régler en plein écran</button>`)}
+      <div class="ovpos-bar">${seg('Bloc à placer', OVMOM, ovMom)}<button class="btn sm" id="oPosReset" ${dx || dy || k !== 1 ? '' : 'disabled'}>Par défaut</button></div>
+      <div class="ovpos" id="oPos"><img src="${esc(A('cs_dust2'))}" alt="" draggable="false"><i class="ovpos-g" style="left:${pc(gx)};top:${pc(gy)};width:${pc(gw)};height:${pc(gh)}"></i>
+        <b class="ovpos-b" id="oPosB" tabindex="0" role="slider" aria-label="Place du bloc ${esc(name)}" aria-valuetext="${Math.round(dx * 100)} % à droite, ${Math.round(dy * 100)} % en bas, taille ${Math.round(k * 100)} %" style="left:${pc(x + dx)};top:${pc(y + dy)};width:${pc(w)};height:${pc(h)}"><img src="${esc(A(`ovpos/${style}-${ovMom}`))}" alt="" draggable="false"><i class="ovpos-k" title="Taille"></i><span class="ovpos-t">${esc(name)} · ${Math.round(k * 100)} %</span></b></div>`
+  }
+  function bindOvPos(b, d, style) {
+    if (!OVBOX[style]) return
+    const key = `${style}.${ovMom}`, frame = $('#oPos', b), box = $('#oPosB', b), tag = $('.ovpos-t', box)
+    let [dx, dy, k] = ovPlace(key)
+    let [x, y, w, h] = ovBox(style, ovMom, k)
+    const name = OVMOM.find(([m]) => m === ovMom)[1]
+    const put = () => {
+      ;[x, y, w, h] = ovBox(style, ovMom, k)
+      Object.assign(box.style, { left: (x + dx) * 100 + '%', top: (y + dy) * 100 + '%', width: w * 100 + '%', height: h * 100 + '%' })
+      tag.textContent = `${name} · ${Math.round(k * 100)} %`
+    }
+    const fit = () => { k = Math.round(clamp(k, OVK[0], OVK[1]) * 100) / 100; ;[x, y, w, h] = ovBox(style, ovMom, k); dx = clamp(dx, -x, 1 - x - w); dy = clamp(dy, -y, 1 - y - h) }
+    const keep = () => {
+      const all = { ...(s().overlayPos || {}) }
+      const r = (n) => Math.round(n * 1000) / 1000
+      if (Math.abs(dx) < 0.002 && Math.abs(dy) < 0.002 && k === 1) delete all[key]; else all[key] = k === 1 ? [r(dx), r(dy)] : [r(dx), r(dy), k]
+      return save({ overlayPos: all }).then(() => { const f = $('#oPosReset', b); if (f) f.disabled = !all[key] })
+    }
+    let from = null, timer
+    const later = () => { clearTimeout(timer); timer = setTimeout(keep, 350) }
+    box.onpointerdown = (e) => {
+      e.preventDefault(); box.setPointerCapture(e.pointerId); box.focus()
+      const r = frame.getBoundingClientRect(), bx = box.getBoundingClientRect()
+      // Le coin change la taille : la distance au centre du bloc, comme en plein écran.
+      const size = e.target.classList.contains('ovpos-k'), cx = bx.left + bx.width / 2, cy = bx.top + bx.height / 2
+      from = { x: e.clientX, y: e.clientY, dx, dy, k, size, cx, cy, d0: Math.max(6, Math.hypot(e.clientX - cx, e.clientY - cy)), r }
+      box.classList.add(size ? 'size' : 'drag')
+    }
+    box.onpointermove = (e) => {
+      if (!from) return
+      if (from.size) k = from.k * (Math.hypot(e.clientX - from.cx, e.clientY - from.cy) / from.d0)
+      else { dx = from.dx + (e.clientX - from.x) / from.r.width; dy = from.dy + (e.clientY - from.y) / from.r.height }
+      fit(); put()
+    }
+    box.onpointerup = box.onpointercancel = () => { if (!from) return; from = null; box.classList.remove('drag', 'size'); keep() }
+    box.onkeydown = (e) => {
+      if (e.key === '+' || e.key === '=' || e.key === '-') { e.preventDefault(); k *= e.key === '-' ? 1 / 1.05 : 1.05; fit(); put(); later(); return }
+      const st = e.shiftKey ? 0.05 : 0.01, m = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key]
+      if (!m) return
+      e.preventDefault(); dx += m[0]; dy += m[1]; fit(); put(); later()
+    }
+    $('#oPosReset', b).onclick = () => { dx = dy = 0; k = 1; put(); keep() }
+    $('#oPosFull', b).onclick = () => { ovEditing = true; API.cs2OverlayEdit(style, ovMom).catch((e) => { ovEditing = false; failed(e) }) }
+    bindSeg($('.ovpos-bar .seg', b), (m) => { ovMom = m; pOverlay(b, d); $('#oPosB', b)?.focus() })
+  }
   function pOverlay(b, d) {
-    const v = s().cs2Overlay, on = v !== 'off'
+    // Coupé, les choix restent visibles : le style choisi est gardé et sert quand tu rallumes l'overlay.
+    const v = s().cs2Overlay, on = v !== 'off', cur = on ? (OVSTYLE[v] === 'Actuel' ? 'c' : v) : ovLast()
+    const stSub = (OVSUB[cur] || OVSUB.c) + (on ? '' : ' Il servira quand tu allumeras l’overlay.')
     b.innerHTML = `${d}
       <section class="sg" id="r-ovcs"><div class="sg-l"><div class="ovc"><div class="ovc-img"><img src="${esc(A('cs_dust2'))}" alt=""></div>
-        <div class="ovc-t"><div class="ovc-h"><h2>Counter-Strike 2</h2>${sw('oOn', on, 'Overlay de Counter-Strike 2')}</div>${on ? `${seg('Style de l’overlay', [['b', 'Verre'], ['a', 'Apple'], ['c', 'Player X']], v)}<button class="btn sm rc-prev" id="oPrev" data-tip="Quelques secondes, avec des chiffres d’exemple">${ic('play')}Voir l’aperçu</button>` : '<p>Coupé</p>'}</div></div>
-        ${on ? row('r-ovkey', 'Masquer ou afficher en jeu', noSub, kcap('overlay')) : ''}</div></section>`
-    ON('oOn', (x) => save({ cs2Overlay: x ? (pOverlay.last || 'b') : 'off' }).then(() => pOverlay(b, d)))
-    if (on) { bindSeg($('.seg', b), (x) => { pOverlay.last = x; save({ cs2Overlay: x }) }); $('#oPrev', b).onclick = () => API.cs2OverlayPreview().catch(failed); markNoSub(b); bindKc(b) }
+        <div class="ovc-t"><div class="ovc-h"><h2>Counter-Strike 2</h2>${sw('oOn', on, 'Overlay de Counter-Strike 2')}</div>${on ? `<button class="btn sm rc-prev" id="oPrev" data-tip="Quelques secondes, avec des chiffres d’exemple">${ic('play')}Voir l’aperçu</button>` : '<p>Coupé</p>'}</div></div>
+        ${row('r-ovst', 'Style', stSub, seg('Style de l’overlay', OVSTYLES, cur))}
+        ${row('r-ovsz', 'Taille', 'Elle suit aussi la hauteur de ton écran, un peu moins vite : en 4K, l’overlay prend un peu moins de place qu’en 1080p.', seg('Taille de l’overlay', [['s', 'Petite'], ['n', 'Normale'], ['l', 'Grande']], s().overlaySize || 'n'))}
+        ${ovPosUi(cur)}
+        ${row('r-ovkey', 'Masquer ou afficher en jeu', noSub, kcap('overlay'))}</div></section>`
+    ON('oOn', (x) => save({ cs2Overlay: x ? ovLast() : 'off' }).then(() => pOverlay(b, d)))
+    if (on) $('#oPrev', b).onclick = () => API.cs2OverlayPreview().catch(failed)
+    markNoSub(b); bindKc(b)
+    // Coupé : on garde seulement le choix (l'overlay reste coupé) ; allumé : il change tout de suite.
+    const again = () => { pOverlay(b, d); $('#r-ovst [aria-checked=true]', b)?.focus() }
+    bindSeg($('#r-ovst .seg', b), (x) => { ovKeep(x); if (s().cs2Overlay === 'off') again(); else save({ cs2Overlay: x }).then(again) })
+    bindSeg($('#r-ovsz .seg', b), (x) => save({ overlaySize: x }).then(() => pOverlay(b, d)))
+    bindOvPos(b, d, cur)
   }
 
   /* Comptes */
@@ -586,7 +777,7 @@ const Settings = (() => {
     const missing = !disc || !guild || !hasApp || !steam || !sKey || (!psn && !tok)
     const pxRow = pxConn && missing ? group('', line('r-px', 'Reprendre de Player X', 'Ton serveur Discord, ta clé Steam et tes comptes, sans rien retaper', '', '<button class="btn sm rose" id="pxImp">Reprendre mes connexions</button>')) : ''
     b.innerHTML = `${d}
-      ${group('', `<div class="sr" id="r-me"><span class="ac-av" id="acAv">${me.avatar ? `<img src="${esc(me.avatar)}" alt="">` : `<span class="av me" style="--h:338;width:44px;height:44px;font-size:18px">${esc(me.name[0].toUpperCase())}</span>`}</span><div class="sr-t"><div class="cell-edit" id="meCell"><button type="button" class="cell-display" id="meName" aria-label="Changer ton pseudo : ${esc(me.name)}"><b>${esc(me.name)}</b>${ic('edit', 'cell-ic')}</button><input class="cell-input" id="meInput" hidden maxlength="${Shared.profile.PROFILE_NAME_MAX}" value="${esc(s().profileName || me.name)}" aria-label="Ton pseudo dans Player X" autocomplete="off" spellcheck="false"></div><span>Ton profil dans Player X</span></div><div class="sr-c"><label class="btn sm" for="mePhoto">Changer la photo</label><input id="mePhoto" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>${S0.profileAvatar ? '<button class="btn sm" id="meNoPhoto">Retirer la photo</button>' : ''}</div></div>`)}
+      ${group('', `<div class="sr" id="r-me"><span class="ac-av" id="acAv">${me.avatar ? `<img src="${esc(me.avatar)}" alt="">` : `<span class="av me" style="--h:350;width:44px;height:44px;font-size:18px">${esc(me.name[0].toUpperCase())}</span>`}</span><div class="sr-t"><div class="cell-edit" id="meCell"><button type="button" class="cell-display" id="meName" aria-label="Changer ton pseudo : ${esc(me.name)}"><b>${esc(me.name)}</b>${ic('edit', 'cell-ic')}</button><input class="cell-input" id="meInput" hidden maxlength="${Shared.profile.PROFILE_NAME_MAX}" value="${esc(s().profileName || me.name)}" aria-label="Ton pseudo dans Player X" autocomplete="off" spellcheck="false"></div><span>Ton profil dans Player X</span></div><div class="sr-c"><label class="btn sm" for="mePhoto">Changer la photo</label><input id="mePhoto" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>${S0.profileAvatar ? '<button class="btn sm" id="meNoPhoto">Retirer la photo</button>' : ''}</div></div>`)}
       ${pxRow}
       ${group('', `${line('r-steam', 'Steam', steamSub, tone('steam', steam), pend('steam') ? cancel('Steam') : steam ? out('steam', 'Steam') : btn('Steam', 'data-in="steam"', 'Connecter', !pxRow))}
         ${accMore('steam', 'Clé Steam Web API', field('fSteamKey', 'Clé Steam Web API', S0.steamApiKey, { secret: true, placeholder: '32 caractères', help: `Gratuite. Ta liste d’amis Steam doit être publique. ${link(STEAM_KEY, 'Obtenir ma clé')}${errs.steam ? ` ou ${link(PRIVACY, 'ouvrir ma confidentialité Steam')}` : ''}` }), (steam && !sKey) || !!errs.steam)}`)}
@@ -653,22 +844,12 @@ const Settings = (() => {
   }
 
   /* Général */
-  const fondThumb = (k) => {
-    if (k === 'fluide') return ''
-    if (k !== 'mur') return `--im:url('${A('bf_redsec')}')`
-    // Adresse mise entre guillemets dans du CSS : un guillemet, une barre oblique inverse ou un retour à la ligne y sont échappés
-    // à la manière du CSS (esc() ne protège que le HTML), pour qu'une adresse de jaquette ne puisse rien ajouter au style
-    const cssUrl = (u) => String(u).replace(/["'\\\n\r\f]/g, (ch) => `\\${ch.charCodeAt(0).toString(16)} `)
-    const c = GAMES.map((g) => cssUrl(A(g.cover))); if (!c.length) return ''
-    const at = [[0, 0], [33.33, 0], [66.66, 0], [100, 0], [0, 100], [33.33, 100], [66.66, 100], [100, 100]]
-    return `background:${at.map(([x, y], i) => `url("${c[(i * 3) % c.length]}") ${x}% ${y}%/25% auto no-repeat`).join(',')},#0b0810`
-  }
-  // Ce que fait chaque fond : dans l'infobulle de sa vignette, plus sous la grille
-  const fondHelp = (k) => Fluid.modes.find((m) => m.k === k)?.d || ''
   function pGeneral(b, d) {
     const v = s(), live = v.cs2Live !== false
     b.innerHTML = `${d}
-      <section class="sg" id="r-fond"><h2>Fond de l’accueil</h2><div class="sg-l"><div class="sb"><div class="fd" role="group" aria-label="Fond de l’accueil">${Fluid.modes.map((m) => `<button class="fd-b" data-fond="${m.k}" aria-pressed="${m.k === Fluid.current()}" data-tip="${esc(fondHelp(m.k))}"><i class="fd-p fd-${m.k}" style="${esc(fondThumb(m.k))}" aria-hidden="true"></i><b>${m.t}</b></button>`).join('')}</div></div>
+      <section class="sg" id="r-accueil"><h2>Accueil</h2><div class="sg-l">
+        ${row('r-home', 'Style de l’accueil', 'Essai : Vitrine (le jeu en plein écran, ta pile en étagère) ou Arsenal (tes jeux sur une roue, un viseur dessus)', seg('Style de l’accueil', [['0', 'Actuel'], ['v', 'Vitrine'], ['r', 'Arsenal']], Play.home()))}
+        ${row('r-sol', 'Sol de l’Arsenal', 'Avec le style Arsenal. Sur l’accueil, F2 passe de l’un à l’autre.', seg('Sol de l’Arsenal', [['brume', 'Brume'], ['laque', 'Laqué']], Play.sol()))}
         ${row('r-motion', 'Fond qui suit la souris', '', sw('iFluid', fluidOn(), 'Fond qui suit la souris'))}
         ${row('r-gstyle', 'Boutons au style du jeu', 'Couleur et lettrage tirés de la jaquette et des tags Steam', sw('iGStyle', GameStyle.on(), 'Boutons au style du jeu'))}</div></section>
       ${group('Alertes', `${row('r-fr', 'Amis Steam et PlayStation', '', `<select class="sel" id="iFr" aria-label="Alertes d’amis Steam et PlayStation"><option value="all" ${v.friendAlerts === 'all' ? 'selected' : ''}>Quand ils se connectent ou jouent</option><option value="games" ${v.friendAlerts === 'games' ? 'selected' : ''}>Quand ils lancent un jeu</option><option value="off" ${v.friendAlerts === 'off' ? 'selected' : ''}>Jamais</option></select><button class="btn sm" id="iFrT" data-tip="Envoie une alerte d’exemple">Essayer</button>`)}
@@ -682,8 +863,9 @@ const Settings = (() => {
     // Le bilan de CS2 vient du suivi des matchs : sans lui, il n'y a rien à ouvrir
     const openRow = () => { const on = s().cs2Live !== false, r = $('#r-cs2open', b); r.classList.toggle('rc-dim', !on); r.toggleAttribute('inert', !on); $('#iOpenS', b).textContent = on ? (s().cs2RecapOpen ? '' : 'Sinon, une notification') : 'Demande le suivi des matchs' }
     openRow()
-    $$('[data-fond]', b).forEach((x) => x.onclick = () => { Fluid.mode(x.dataset.fond); $$('[data-fond]', b).forEach((y) => y.setAttribute('aria-pressed', y === x)); saved() })
     ON('iGStyle', (x) => { GameStyle.set(x); saved() })
+    bindSeg($('#r-home .seg', b), (x) => { Play.setHome(x); saved() })
+    bindSeg($('#r-sol .seg', b), (x) => { Play.setSol(x); saved() })
     ON('iFluid', (x) => { try { localStorage.setItem(FLUID, x ? '0' : '1') } catch { /* gardé pour cette session */ } Fluid.freeze(!x); saved() })
     ON('iWin', (x) => save({ startWithWindows: x }).then(startup)); ON('iReady', (x) => save({ gameReadyAlert: x })); ON('iBf', (x) => save({ bf6Recap: x }))
     ON('iLive', (x) => save({ cs2Live: x }).then(openRow)); ON('iOpen', (x) => save({ cs2RecapOpen: x }).then(openRow))
@@ -703,7 +885,7 @@ const Settings = (() => {
   /* Raccourcis : deux se changent, les autres sont fixes */
   const KEYNAME = { clip: 'Clipper à la main', overlay: 'Masquer l’overlay', search: 'Tout rechercher', find: 'Chercher un réglage', settings: 'Ouvrir les paramètres', rt: 'Lancer une routine' }
   const accelOf = (k) => (k === 'clip' ? Real.clipsCfg?.hotkey : s().overlayHotkey)
-  const kcap = (k) => `<button class="kc" data-key="${k}" aria-label="${KEYNAME[k]} : ${esc(Shared.hotkey.hotkeyText(accelOf(k)))}. Changer le raccourci" data-tip="Changer le raccourci" data-tip-r>${keysOf(accelOf(k))}</button>`
+  const kcap = (k, cls = '') => `<button class="kc${cls ? ' ' + cls : ''}" data-key="${k}" aria-label="${KEYNAME[k]} : ${esc(Shared.hotkey.hotkeyText(accelOf(k)))}. Changer le raccourci" data-tip="Changer le raccourci" data-tip-r>${keysOf(accelOf(k))}</button>`
   // Un raccourci se change là où il s'affiche : ici, dans Enregistrement et dans Overlay
   function bindKc(b) {
     $$('.kc[data-key]', b).forEach((x) => x.onclick = () => {
@@ -719,14 +901,24 @@ const Settings = (() => {
     markNoSub(b); bindKc(b)
   }
   function helpOf(x, msg) {
-    const r = x.closest('.sr'), t = $('.sr-t span', r)
+    const r = x.closest('.sr'), t = r && $('.sr-t span', r)
+    // Sur la page Clips il n'y a pas de ligne de réglage : le problème se dit dans un message
+    if (!t) { if (msg) toast(esc(msg), { tone: 'warn', ms: 4000 }); return }
     if (!t.dataset.h) t.dataset.h = t.textContent
     t.textContent = msg || t.dataset.h; t.classList.toggle('err', !!msg)
   }
+  // Abandonne la capture en cours : plus rien n'attend une touche, et tout bouton resté sur « Appuie sur les touches » retrouve son raccourci (sans bouger le focus)
+  function cancelKey() {
+    waiting = null
+    $$('.kc.wait').forEach((x) => { const k = x.dataset.key; helpOf(x); x.classList.remove('wait'); x.innerHTML = keysOf(accelOf(k)); x.setAttribute('aria-label', `${KEYNAME[k]} : ${Shared.hotkey.hotkeyText(accelOf(k))}. Changer le raccourci`) })
+  }
   async function captureKey(e) {
-    if (!waiting || el.hidden) return
+    if (!waiting) return
+    // La capture marche dans la feuille des paramètres et sur place sur la page Clips
+    const btn = $(`.kc.wait[data-key=${waiting}]`, el.hidden ? document : el) || (el.hidden ? null : $(`.kc[data-key=${waiting}]`, el))
+    if (!btn || !btn.checkVisibility({ visibilityProperty: true })) { cancelKey(); return }
     e.preventDefault(); e.stopPropagation()
-    const btn = $(`.kc[data-key=${waiting}]`, el), key = waiting, stop = () => { waiting = null; btn.classList.remove('wait'); btn.innerHTML = keysOf(accelOf(key)); btn.setAttribute('aria-label', `${KEYNAME[key]} : ${Shared.hotkey.hotkeyText(accelOf(key))}. Changer le raccourci`); btn.focus() }
+    const key = waiting, stop = () => { waiting = null; btn.classList.remove('wait'); btn.innerHTML = keysOf(accelOf(key)); btn.setAttribute('aria-label', `${KEYNAME[key]} : ${Shared.hotkey.hotkeyText(accelOf(key))}. Changer le raccourci`); btn.focus() }
     if (e.key === 'Escape') { helpOf(btn); stop(); return }
     const got = Shared.hotkey.hotkeyFromPress(e)
     if (!got) return
@@ -742,10 +934,120 @@ const Settings = (() => {
   }
 
   /* À propos */
+  /* Mon PC : lecture seule. La carte graphique et son pilote, les écrans et leur fréquence. Lu à l'ouverture de la rubrique */
+  let pc = null, pcLoad = null, pcErr = '', drv = { status: 'idle' }, drvSub = false
+  const DRV_RUN = ['download', 'verify', 'consent', 'install']
+  const drvRunning = () => DRV_RUN.includes(drv.status)
+  // L'avancement de la mise à jour du pilote : seule sa ligne change pendant le téléchargement, le reste attend la fin
+  function subDrv() {
+    if (drvSub) return
+    drvSub = true
+    API.onPcDriver((st) => {
+      const was = drv.status; drv = st; paintNav()
+      if (el.hidden || sec !== 'pc') return
+      const t = $('#pcDrv', el)
+      if (t && st.status === was && st.status === 'download') t.textContent = drvText(st)
+      else repaint()
+    })
+    API.pcDriverState().then((st) => { drv = st; if (!el.hidden && sec === 'pc') repaint() }, () => {})
+  }
+  const drvText = (st) => st.status === 'download' ? `Téléchargement du pilote officiel chez NVIDIA… ${st.pct != null ? `${st.pct} %` : ''}${st.totalMb ? ` (${st.mb} sur ${st.totalMb} Mo)` : st.mb ? ` (${st.mb} Mo)` : ''}`
+    : st.status === 'verify' ? 'Vérification de la signature NVIDIA du fichier…'
+    : st.status === 'consent' ? 'Accepte la demande de Windows. Ensuite : point de restauration, puis installation (2 à 5 min, l’écran peut s’éteindre quelques secondes).'
+    : st.status === 'install' ? 'Relecture de la version installée…' : ''
+  function startDrv(skipRestore) {
+    const L = pc?.gpus.find((g) => g.latest?.status === 'update')?.latest
+    const go = () => { drv = { status: 'download', version: L?.version, pct: 0, mb: 0 }; paintNav(); repaint(); API.pcDriverUpdate({ skipRestore: !!skipRestore }).then((st) => { drv = st; paintNav(); if (st.status === 'done') loadPc(true); else repaint() }, (e) => { drv = { status: 'idle' }; failed(e); repaint() }) }
+    if (skipRestore) return confirmDel({ title: 'Installer sans point de restauration ?', text: 'Sans lui, revenir en arrière demandera de réinstaller l’ancien pilote à la main depuis le site de NVIDIA.', verb: 'Installer quand même', onOk: go })
+    confirmDel({
+      title: `Installer le pilote NVIDIA ${esc(L?.version || '')} ?`,
+      text: 'Player X télécharge le pilote officiel chez NVIDIA (environ 900 Mo), vérifie qu’il est bien signé par NVIDIA, crée un point de restauration de Windows, puis l’installe. Windows te demandera l’autorisation une fois. Ferme tes jeux avant : l’écran peut s’éteindre quelques secondes.',
+      verb: 'Mettre à jour', onOk: go
+    })
+  }
+  function loadPc(refresh) {
+    pcLoad = API.pcState(refresh).then((x) => { pc = x; pcErr = '' }, (e) => { pcErr = errText(e) })
+      .then(() => { pcLoad = null; paintNav(); if (!el.hidden && sec === 'pc') repaint() })
+    return pcLoad
+  }
+  const frDate = (iso) => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
+  const BRAND = { nvidia: 'NVIDIA', amd: 'AMD', intel: 'Intel', other: '' }
+  function gpuRow(g, i) {
+    const ver = g.version ? `${g.vendor === 'amd' ? 'Adrenalin ' : ''}${esc(g.version)}` : g.windowsVersion ? `version Windows ${esc(g.windowsVersion)}` : 'version inconnue'
+    const lines = [`Pilote ${ver}${g.date ? `, du ${frDate(g.date)}` : ''}`]
+    const L = g.latest, serie = L?.bySeries ? ' (d’après une carte de la même série, qui a le même pilote)' : ''
+    let url = g.link?.url, label = g.link ? esc(g.link.label) : '', hot = false
+    if (L) {
+      const when = L.date ? `, sorti le ${frDate(L.date)}` : ''
+      if (L.status === 'update') { lines.push(`<em class="pc-up">Nouveau pilote : ${esc(L.version)}${when}${serie}.</em>${L.downloadUrl ? ` <button class="sr-lnk" data-pcurl="${esc(L.url)}">Voir chez NVIDIA</button>` : ''}`); url = L.url; label = 'Voir chez NVIDIA'; hot = true }
+      else if (L.status === 'up-to-date') lines.push(`<span class="pc-ok">${ic('check')}À jour : c’est la dernière version${serie}.</span>`)
+      else if (L.status === 'newer') lines.push(`Plus récent que le dernier pilote Game Ready (${esc(L.version)}${when}) : une bêta ou un pilote Studio.`)
+      else lines.push(`Dernière version chez NVIDIA : ${esc(L.version)}${when}${serie}.`)
+    } else if (g.lookupError) lines.push(esc(g.lookupError))
+    if (g.note) lines.push(esc(g.note))
+    // Mise à jour du pilote NVIDIA : en cours, finie, ou proposée
+    let ctrl = null
+    if (g.vendor === 'nvidia' && drv.status !== 'idle' && (drvRunning() || drv.version === L?.version || drv.status === 'done')) {
+      if (drvRunning()) { lines.push(`<span id="pcDrv" role="status">${esc(drvText(drv))}</span>`); ctrl = ['download', 'verify'].includes(drv.status) ? '<button class="btn sm" id="pcDrvStop">Annuler</button>' : '' }
+      else if (drv.message) lines.push(drv.status === 'done' ? `<span class="pc-ok">${ic('check')}${esc(drv.message)}</span>` : `<em class="pc-up">${esc(drv.message)}</em>`)
+      if (drv.canSkipRestore && !drvRunning()) ctrl = '<button class="btn sm" id="pcDrvSkip">Installer sans point de restauration</button>'
+    }
+    if (ctrl === null && L?.status === 'update' && L.downloadUrl) ctrl = `<button class="btn sm rose" id="pcDrvGo">Mettre à jour</button>`
+    if (ctrl !== null) url = ''
+    const brand = BRAND[g.vendor] && !g.name.toUpperCase().startsWith(BRAND[g.vendor].toUpperCase()) ? `${BRAND[g.vendor]} ` : ''
+    return row(i === 0 ? 'r-gpu' : '', esc(brand + g.name), lines.join('<br>'), ctrl !== null ? ctrl : url ? `<button class="btn sm ${hot ? 'rose' : ''}" data-pcurl="${esc(url)}">${label}</button>` : '')
+  }
+  function hzRow(x, i) {
+    const name = `${esc(x.name)}${x.primary ? ' <span class="pc-tag">principal</span>' : ''}`
+    const size = `${x.width} × ${x.height}`
+    const sub = !x.hz ? `${size}, fréquence inconnue`
+      : x.low ? `${size}. <em class="pc-up">Réglé à ${x.hz} Hz alors qu’il peut monter à ${x.maxHz} Hz.</em><br>Dans Windows : Affichage avancé, puis Fréquence d’actualisation.`
+      : x.maxHz ? `${size}, ${x.hz} Hz : <span class="pc-ok">${ic('check')}au maximum</span>`
+      : `${size}, ${x.hz} Hz`
+    return row(i === 0 ? 'r-hz' : '', name, sub, x.low ? '<button class="btn sm rose" data-pchz>Régler dans Windows</button>' : '')
+  }
+  const OUTCOME = { ok: 'installé', reboot: 'installé, redémarrage demandé', refused: 'demande de Windows refusée', signature: 'fichier refusé (signature)', 'restore-failed': 'pas de point de restauration, rien installé', failed: 'raté', stopped: 'annulé' }
+  function journalRow(e) {
+    const t = new Date(e.at), when = `${t.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}, ${String(t.getHours()).padStart(2, '0')} h ${String(t.getMinutes()).padStart(2, '0')}`
+    const rp = e.restore === 'ok' ? ', point de restauration créé' : e.restore === 'recent' ? ', point de restauration de moins de 24 h' : e.restore === 'skipped' ? ', sans point de restauration' : ''
+    const ok = e.outcome === 'ok' || e.outcome === 'reboot'
+    return row('', `${esc(e.from || '?')} → ${esc(e.to)}`, `${when} : <span class="${ok ? 'pc-ok' : ''}">${esc(OUTCOME[e.outcome] || e.outcome)}</span>${esc(rp)}${e.after && e.after !== e.to ? `. Windows lit ${esc(e.after)}` : ''}`, '')
+  }
+  function pPc(b, d) {
+    subDrv()
+    if (!pc) {
+      if (!pcLoad && !pcErr) loadPc(false)
+      b.innerHTML = pcErr
+        ? `${d}<div class="empty"><h2>Mon PC n’a pas répondu</h2><p>${esc(pcErr)}</p><button class="btn sm" id="pcRetry">${ic('refresh')}Réessayer</button></div>`
+        : `${d}${group('', row('r-gpu', 'Lecture de ta carte graphique et de tes écrans…', '<span role="status">Quelques secondes : Windows est interrogé, puis NVIDIA si c’est ta marque.</span>', ''))}`
+      const r = $('#pcRetry', b); if (r) r.onclick = () => { pcErr = ''; repaint() }
+      return
+    }
+    const at = new Date(pc.at), when = `${String(at.getHours()).padStart(2, '0')} h ${String(at.getMinutes()).padStart(2, '0')}`
+    const gpus = pc.unsupported ? row('r-gpu', 'Carte graphique', 'Lue seulement sous Windows.', '')
+      : pc.error ? row('r-gpu', 'Carte graphique', `<em class="rc-err">${esc(pc.error)}</em>`, '')
+      : pc.gpus.length ? pc.gpus.map(gpuRow).join('') : row('r-gpu', 'Carte graphique', 'Aucune carte graphique lue par Windows.', '')
+    const nv = pc.gpus.some((g) => g.vendor === 'nvidia')
+    const note = `Lu à ${when}. Player X ne change rien sans que tu cliques « Mettre à jour »${nv ? ' ; pour NVIDIA, seul le modèle de ta carte est envoyé, pour connaître la dernière version' : ''}.${pc.laptop ? ' PC portable : les pilotes de son fabricant passent parfois avant ceux de la marque.' : ''}`
+    const jr = pc.journal || []
+    const journal = jr.length ? group('Pilotes installés par Player X', jr.slice(0, 6).map(journalRow).join(''), `Pour revenir en arrière : la restauration du système de Windows, sur le point créé avant l’installation. <button class="sr-lnk" id="pcRstr">Ouvrir la restauration du système</button>`) : ''
+    b.innerHTML = `${d}${group('Carte graphique', gpus)}
+      ${journal}
+      ${group('Écrans', pc.displays.length ? pc.displays.map(hzRow).join('') : row('r-hz', 'Écrans', 'Aucun écran lu.', ''), `${note} <button class="sr-lnk" id="pcAgain"${pcLoad ? ' disabled' : ''}>${pcLoad ? 'Lecture…' : 'Relire'}</button>`)}`
+    $$('[data-pcurl]', b).forEach((x) => { x.onclick = () => Promise.resolve(API.openExternal(x.dataset.pcurl)).catch(failed) })
+    $$('[data-pchz]', b).forEach((x) => { x.onclick = () => Promise.resolve(API.pcOpenDisplaySettings()).catch(failed) })
+    $('#pcAgain', b).onclick = () => { if (!pcLoad && !drvRunning()) { loadPc(true); repaint() } }
+    const go = $('#pcDrvGo', b); if (go) go.onclick = () => startDrv(false)
+    const skip = $('#pcDrvSkip', b); if (skip) skip.onclick = () => startDrv(true)
+    const stop = $('#pcDrvStop', b); if (stop) stop.onclick = () => Promise.resolve(API.pcDriverStop()).catch(failed)
+    const rs = $('#pcRstr', b); if (rs) rs.onclick = () => Promise.resolve(API.pcSystemRestore()).catch(failed)
+  }
   function pAbout(b, d) {
-    b.innerHTML = `${d}${group('', `<div class="sr ab" id="r-ver"><div class="ab-l">${logo('ab-logo')}</div><div class="sr-t"><b>Player X V3 Test</b><span>Version ${esc(API.version)}. À part de ton Player X, sans mise à jour automatique.</span></div></div>
+    b.innerHTML = `${d}${group('', `<div class="sr ab" id="r-ver"><div class="ab-l">${logo('ab-logo')}</div><div class="sr-t"><b>Player X</b><span>Version ${esc(API.version)}</span></div></div>
       ${row('r-setup', 'Première ouverture', '', '<button class="btn sm" id="abSetup">Revoir l’accueil</button>')}
-      ${row('r-ffm', 'Moteur vidéo', `FFmpeg${eng ? ' ' + esc(eng.version) : ''}, un logiciel libre (licence LGPL).`, '<button class="btn sm" id="abFf">Ouvrir sa licence</button>')}`)}`
+      ${row('r-ffm', 'Moteur vidéo', `FFmpeg${eng ? ' ' + esc(eng.version) : ''}, un logiciel libre (licence LGPL).`, '<button class="btn sm" id="abFf">Ouvrir sa licence</button>')}`)}
+      ${Maj.block({ row, group, sw })}`
+    Maj.bind(b, { save })
     $('#abSetup', b).onclick = () => { close(true); go('play'); setTimeout(() => Setup.open(), 340) }
     $('#abFf', b).onclick = () => API.editEngineFolder().catch(failed)
   }
@@ -756,7 +1058,11 @@ const Settings = (() => {
     // Ctrl F de partout : les paramètres s'ouvrent sur leur recherche
     find() { if (el.hidden) open(); const i = $('#shQ', el); setTimeout(() => { i.focus({ preventScroll: true }); i.select() }, 0) },
     index: () => IDX, titleOf: (p) => META[p][0], go: (p, id) => { open(p); show(p, id) },
-    sync() { if (el && !el.hidden && sec === 'rec') repaint() }
+    sync() { if (!el || el.hidden) return; if (sec === 'rec') repaint(); else if (sec === 'home') homeSync() },
+    // Ce que la page Clips partage avec l'Enregistrement : les mêmes réglages, le même code
+    QUAL, QUAL_ENGINE, TRIG, kcap, bindKc, bindSeg, copyLog, clipMo,
+    // Un raccourci en attente d'une touche s'abandonne (la page change, le bouton est redessiné)
+    cancelKey
   }
 })()
 

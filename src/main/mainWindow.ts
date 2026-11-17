@@ -4,6 +4,7 @@ import { logError } from './crashLog'
 import * as db from './db'
 import { closeCs2Overlay } from './services/cs2Overlay'
 import { attachWindow, startHidden } from './services/tray'
+import { markSessionEnd } from './services/updater'
 
 // La fenêtre principale : sa taille, son échelle, sa barre de titre. Les autres fenêtres (overlay CS2, capture des clips,
 // pastille) sont créées par leur service ; windows.ts sait les distinguer.
@@ -71,7 +72,12 @@ export function createMainWindow(): void {
   // Fermée pour de bon (pas rangée près de l'horloge) : l'overlay CS2 se ferme aussi, sinon Player X ne quitterait pas.
   win.on('closed', closeCs2Overlay)
   // Windows se ferme (déconnexion, arrêt) : les dernières écritures de la base partent tout de suite.
-  win.on('session-end', () => db.flushDb())
+  win.on('session-end', () => {
+    markSessionEnd()
+    db.flushDb()
+  })
+  // Windows annonce la fin de session : plus d'installation de mise à jour à la fermeture.
+  win.on('query-session-end', markSessionEnd)
   // Les liens externes s'ouvrent dans le navigateur, pas dans l'appli.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) shell.openExternal(url)

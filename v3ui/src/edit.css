@@ -1,54 +1,156 @@
-/* L'éditeur de films (bêta 35) : en-tête, aperçu à gauche, réglages à droite, la bande des plans en bas. */
-.ed{position:absolute;inset:0;padding:64px clamp(24px,3cqw,48px) 104px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:20px}
-.ed-head{display:flex;align-items:center;gap:20px}
+/* L'éditeur de films (lot A) : en-tête, aperçu à gauche, réglages à droite, la bande du temps en bas.
+   Visuel de la maquette validée : pastille de verre plate, liens sans cadre, ronds plats pour les icônes. Aucun relief, aucun rose. */
+/* Le rouge des interrupteurs (sheet.css le lit dans --bz, défini seulement dans #sheet et .cx) */
+.ed{--bz-a:#ff3a5c;--bz-b:#c4123a;--bz:linear-gradient(180deg,var(--bz-a),var(--bz-b))}
+.ed{position:absolute;inset:0;padding:64px clamp(24px,3cqw,48px) 104px;display:flex;flex-direction:column;gap:16px}
+.ed-head{flex:none;display:flex;align-items:center;gap:20px}
+.ed-head>.ed-lnk{margin-left:-12px}
 .ed-ttl{flex:1;min-width:0}
-.ed-ttl h1{font-size:clamp(26px,2.4cqw,36px);line-height:1.1;font-weight:600;font-stretch:90%;letter-spacing:-.016em}
+.ed-ttl h1{font-size:30px;line-height:1.1;font-weight:600;font-stretch:90%;letter-spacing:-.016em}
 .ed-ttl p{margin-top:4px;font-size:14px;line-height:1.4;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ed-body{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(290px,24cqw,360px);gap:clamp(20px,2.4cqw,36px)}
+/* Le mot « gardé » : dit une fois, dans le résumé */
+.ed-ttl p .ok{color:var(--t2)}
+.ed-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(290px,24cqw,360px);gap:clamp(20px,2.4cqw,36px)}
 .ed-main{min-width:0;min-height:0;display:flex;flex-direction:column;gap:12px}
-.ed-frame{position:relative;flex:1;min-height:0;border-radius:clamp(14px,1.5cqw,22px);overflow:hidden;background:#000;box-shadow:0 30px 70px -24px #000,0 0 0 1px rgba(255,255,255,.09)}
-.ed-frame video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-.ed-tr{display:flex;align-items:center;gap:8px}
-.ed-hint{font-size:12px;line-height:1.4;color:var(--t3);margin-left:8px}
-.ed-ur{margin-left:auto;display:flex;gap:4px}
-.ed-redo .ic{scale:-1 1}
-.ed-side{min-width:0;overflow-y:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:16px;padding-right:4px}
+/* Boutons : une pastille de verre plate, des liens sans cadre, des ronds plats pour les icônes */
+.ed-pill{display:inline-flex;align-items:center;gap:10px;height:44px;padding:0 20px;border-radius:999px;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);font:500 15px/1 var(--f);color:var(--bone);white-space:nowrap;transition:background-color .15s,scale .15s ease-out}
+.ed-pill:active{scale:.97}
+.ed-pill .ic{width:16px;height:16px}
+.ed-pill[aria-disabled=true]{opacity:.45;cursor:not-allowed}
+.ed-lnk{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border-radius:10px;font-size:14px;font-weight:500;color:var(--t2);white-space:nowrap}
+.ed-lnk .ic{width:15px;height:15px}
+.ed-ib{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);font-size:17px;font-weight:500;color:var(--bone);transition:background-color .15s,scale .15s ease-out}
+.ed-ib:active{scale:.94}
+.ed-ib .ic{width:15px;height:15px}
+.ed-ib:disabled{opacity:.35;cursor:not-allowed}
+.ed-ib.txt{width:auto;min-width:44px;padding:0 10px;border-radius:999px;font-size:14px}
+.ed-ib.flip .ic{scale:-1 1}
+@media(hover:hover){.ed-pill:not([aria-disabled=true]):hover,.ed-ib:not(:disabled):hover{background:rgba(255,255,255,.14)}.ed-lnk:hover{color:var(--bone);background:rgba(255,255,255,.08)}}
+.ed button:focus-visible,.ed [tabindex]:focus-visible{outline:2px solid var(--rose-hi);outline-offset:2px}
+/* À la réouverture : ce qui a changé depuis la dernière fois */
+#edWarnBox:empty{display:none}
+.ed-warn{flex:none;display:flex;align-items:center;gap:12px;padding:12px 8px 12px 16px;border-radius:14px;background:rgba(245,180,74,.09);box-shadow:inset 0 0 0 1px rgba(245,180,74,.26);font-size:15px;line-height:1.4}
+.ed-warn>.ic{flex:none;width:18px;height:18px;color:var(--warn)}
+.ed-warn p{flex:1;min-width:0}
+.ed-warn p span{color:var(--t2)}
+/* L'aperçu et la commande de lecture : deux vidéos superposées, la suivante est préchargée et passe devant à la coupe */
+.ed-frame{position:relative;flex:1;min-height:0;display:grid;place-items:center;border-radius:clamp(14px,1.5cqw,22px);overflow:hidden;background:#000;box-shadow:0 30px 70px -24px #000,0 0 0 1px rgba(255,255,255,.09)}
+.ed-pic{position:relative;height:100%;max-width:100%;aspect-ratio:16/9;overflow:hidden}
+.ed-pic video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;opacity:0;pointer-events:none}
+.ed-pic video.is-front{opacity:1}
+.ed-goneT{display:none}
+.ed-pic.is-gone{background:repeating-linear-gradient(135deg,#1b151f 0 10px,#120e16 10px 20px)}
+.ed-pic.is-gone video{display:none}
+.ed-pic.is-gone .ed-goneT{position:absolute;inset:0;display:grid;place-items:center;color:var(--t3);font-size:15px}
+.ed-tag{position:absolute;left:14px;top:14px;padding:5px 10px;border-radius:8px;background:rgba(10,7,13,.66);font-size:13px;font-weight:500;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.ed-tr{display:flex;align-items:center;gap:14px;min-height:44px}
+.ed-play{flex:none;display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);color:var(--bone);transition:background-color .15s,scale .15s ease-out}
+.ed-play:active{scale:.94}
+.ed-play .ic{width:18px;height:18px}
+@media(hover:hover){.ed-play:hover{background:rgba(255,255,255,.14)}}
+.ed-time{font-size:16px;font-weight:500;color:var(--bone)}
+.ed-time span{color:var(--t3);font-weight:400}
+.ed-key{display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:8px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);font:500 12px/1 var(--f);color:var(--t3)}
+.ed-ur{margin-left:auto;display:flex;align-items:center;gap:6px}
+/* La colonne de droite */
+.ed-side{min-width:0;overflow-y:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:12px}
 .ed-side>*{flex:none}
-.ed-sec{display:flex;flex-direction:column;gap:4px;padding:16px;border-radius:18px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--hair)}
-.ed-sec h2{font-size:16px;line-height:1.4;font-weight:600;margin-bottom:6px}
+.ed-sec{display:flex;flex-direction:column;padding:12px 16px;border-radius:18px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--hair)}
+.ed-sec h2{display:flex;align-items:center;gap:4px;min-height:34px;margin-bottom:2px;font-size:16px;line-height:1.4;font-weight:600}
+.ed-sec h2 b{flex:1;font-weight:600}
 .ed-sec h2 span{font-weight:400;color:var(--t3)}
-.ed-music{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.07);text-align:left;font-size:14px;font-weight:500;color:var(--bone);transition:background-color .15s}
+.ed-sec h2 .ed-lnk{margin-right:-10px;font-weight:500}
+.ed-sec h2 .ed-ib{width:32px;height:32px}
+.ed-music{display:flex;align-items:center;gap:10px;min-height:44px;margin-bottom:2px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.07);text-align:left;font-size:14px;font-weight:500;color:var(--bone);transition:background-color .15s}
 .ed-music:hover{background:rgba(255,255,255,.11)}
 .ed-music>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ed-music em{font-style:normal;font-size:12px;color:var(--rose-t)}
+.ed-music em{font-style:normal;font-size:12px;color:var(--t3)}
 .ed-music .ic{width:17px;height:17px;flex:none;color:var(--t2)}
 .ed-music[aria-busy=true]{opacity:.75;pointer-events:none}
-.ed-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:14px;color:var(--t2)}
+.ed-music:disabled{cursor:default}
+.ed-music.is-lost{box-shadow:inset 0 0 0 1px rgba(245,180,74,.3)}
+.ed-music.is-lost .ic,.ed-music.is-lost em{color:var(--warn)}
+.ed-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:40px;font-size:14px;color:var(--t2)}
 .ed-row>span{white-space:nowrap}
 .ed-step{display:flex;align-items:center;gap:6px}
-.ed-step b{min-width:72px;text-align:center;font-weight:500;color:var(--bone)}
-.ed-step .btn{font-size:18px}
+.ed-step b{min-width:78px;text-align:center;font-weight:500;color:var(--bone)}
 .ed-vol{flex:1;min-width:0;max-width:170px;accent-color:var(--rose)}
-.ed-note{font-size:14px;line-height:1.5;color:var(--t3);margin-top:8px}
-.ed-clip{font-size:14px;line-height:1.4;color:var(--t3);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ed-acts{display:flex;gap:8px;margin-top:8px}
-.ed-acts .btn:last-child{flex:1}
-/* La bande des plans : largeur = durée dans le film, les temps de la musique en filigrane, le kill en rose */
-.ed-strip{display:flex;gap:4px;height:84px;padding:4px;overflow-x:auto;scrollbar-width:thin;border-radius:18px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--hair)}
-.ed-shot{position:relative;flex:1 1 0;min-width:56px;height:100%;border-radius:12px;overflow:hidden;background:#17121c;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);transition:box-shadow .15s,scale .15s ease-out}
-.ed-shot:active{scale:.98}
-.ed-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.62;transition:opacity .15s}
+.ed-tempo{display:flex;align-items:center;gap:2px}
+.ed-tempo b{font-weight:500;color:var(--bone)}
+.ed-note{font-size:13px;line-height:1.45;color:var(--t3);margin:2px 0 4px}
+.ed-note.ed-goneN{font-size:14px;color:var(--t2)}
+.ed-clip{font-size:14px;line-height:1.4;color:var(--t3);margin:-4px 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ed-foot{display:flex;flex-wrap:wrap;gap:0 4px;margin:2px 0 -6px -12px}
+.ed-dots{display:inline-flex;gap:5px;margin-right:12px}
+.ed-dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.2)}
+.ed-dots i.on{background:var(--rose-hi);box-shadow:0 0 8px rgba(232,38,79,.9)}
+.ed .ed-tabs{display:none;gap:6px;margin:0}
+.ed .ed-tabs .pill{height:32px;padding:0 14px}
+/* La bande : une règle (le temps du film), les plans posés au pixel près, la tête de lecture par-dessus */
+.ed-tl{flex:none;display:flex;align-items:flex-end;gap:6px;padding:6px 6px 6px 10px;border-radius:18px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--hair)}
+.ed-tb{position:relative;flex:1;min-width:0;height:108px;overflow-x:clip;touch-action:none;user-select:none;-webkit-user-select:none}
+.ed-rule{position:absolute;inset:0 0 auto;height:26px;cursor:pointer}
+.ed-rule span{position:absolute;top:4px;padding-left:6px;border-left:1px solid rgba(255,255,255,.22);font-size:12px;line-height:14px;color:var(--t4)}
+.ed-rule.is-beats i{position:absolute;bottom:3px;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:rgba(255,255,255,.3)}
+.ed-rule.is-beats i.b1{background:var(--rose-hi);height:7px;border-radius:2px}
+.ed-track{position:absolute;inset:26px 0 0;transition:translate .25s var(--e-out)}
+.ed-track.no-anim,.ed-track.no-anim .ed-shot{transition:none}
+.ed-shot{position:absolute;top:0;height:100%;min-width:0;border-radius:12px;overflow:hidden;background:#17121c;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);cursor:grab;transition:left .25s var(--e-out),width .25s var(--e-out),box-shadow .15s,opacity .15s}
+.ed-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.62;transition:opacity .15s;pointer-events:none}
 .ed-shot:hover img{opacity:.8}
-.ed-shot[aria-selected=true]{box-shadow:inset 0 0 0 2px var(--bone)}
-.ed-shot[aria-selected=true] img{opacity:.95}
-.ed-shot.is-gone{background:repeating-linear-gradient(135deg,#1b151f 0 8px,#120e16 8px 16px)}
-.ed-beats{position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(255,255,255,.28) 1px,transparent 1px);background-repeat:repeat-x;pointer-events:none}
-.ed-slow{position:absolute;top:0;bottom:0;background:rgba(255,92,134,.22);box-shadow:inset 0 2px 0 var(--rose);pointer-events:none}
-.ed-k{position:absolute;top:6px;bottom:6px;width:3px;margin-left:-1.5px;border-radius:3px;background:var(--rose);box-shadow:0 0 10px rgba(255,92,134,.8);pointer-events:none}
-.ed-sn{position:absolute;left:6px;bottom:4px;font-size:12px;font-weight:600;color:var(--bone);text-shadow:0 1px 3px #000}
-.ed-addb{flex:none;width:56px;height:100%;border-radius:12px;display:grid;place-items:center;color:var(--t2);background:rgba(255,255,255,.06);transition:background-color .15s}
+.ed-shot.is-sel{box-shadow:inset 0 0 0 2px var(--bone)}
+.ed-shot.is-sel img{opacity:.95}
+.ed-shot.is-gone{background:repeating-linear-gradient(135deg,#1b151f 0 8px,#120e16 8px 16px);box-shadow:inset 0 0 0 1px rgba(245,180,74,.45)}
+.ed-shot.is-gone.is-sel{box-shadow:inset 0 0 0 2px var(--warn)}
+.ed-gone{position:absolute;inset:0;display:grid;place-items:center;padding:0 8px;font-size:13px;line-height:1.25;font-weight:500;color:var(--warn);text-align:center}
+.ed-beats{position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(255,255,255,.28) 1px,transparent 1px);background-repeat:repeat-x;background-position:-1px 0;pointer-events:none}
+.ed-slow{position:absolute;top:0;bottom:0;background:rgba(232,38,79,.22);box-shadow:inset 0 2px 0 var(--rose);pointer-events:none}
+.ed-beats[hidden],.ed-slow[hidden]{display:none}
+/* Le repère du kill : se glisse. Le moment deviné (vieux clip) est en pointillé. */
+.ed-k{position:absolute;pointer-events:auto;top:0;bottom:0;width:18px;margin-left:-9px;cursor:ew-resize}
+.ed-k::before{content:"";position:absolute;left:7.5px;top:6px;bottom:6px;width:3px;border-radius:3px;background:var(--rose);box-shadow:0 0 10px rgba(232,38,79,.8)}
+.ed-k.is-guess::before{background:repeating-linear-gradient(180deg,var(--rose-hi) 0 5px,transparent 5px 9px);box-shadow:none}
+.ed-k::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:var(--rose);box-shadow:0 0 0 2px #fff,0 2px 6px rgba(0,0,0,.6);opacity:0;scale:.6;transition:opacity .15s,scale .15s var(--e-out)}
+.ed-shot.is-sel .ed-k::after,.ed-k.is-on::after{opacity:1;scale:1}
+/* Les poignées des bords */
+.ed-g{position:absolute;top:0;bottom:0;width:16px;cursor:ew-resize;z-index:2}
+.ed-g.l{left:0}.ed-g.r{right:0}
+.ed-g::before{content:"";position:absolute;top:50%;width:5px;height:30px;margin-top:-15px;border-radius:3px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.7);opacity:0;transition:opacity .15s}
+.ed-g.l::before{left:5px}.ed-g.r::before{right:5px}
+.ed-shot.is-sel .ed-g::before,.ed-g.is-on::before{opacity:1}
+@media(hover:hover){.ed-shot:hover .ed-g::before{opacity:.8}.ed-shot:hover .ed-k::after{opacity:1;scale:1}}
+.ed-sn{position:absolute;left:8px;bottom:4px;z-index:1;font-size:12px;font-weight:600;color:var(--bone);text-shadow:0 1px 3px #000;pointer-events:none}
+.ed-shot.is-sel .ed-sn{left:16px}
+/* Pendant un glisser : la valeur dans une bulle, l'ancienne place en fantôme */
+.ed-bub{position:absolute;top:-6px;z-index:6;translate:-50% 0;padding:6px 12px;border-radius:999px;background:var(--bone);color:#140d12;font-size:14px;line-height:1.3;font-weight:600;white-space:nowrap;box-shadow:0 8px 20px -6px #000;pointer-events:none}
+.ed-bub span{font-weight:400;opacity:.7}
+.ed-was{position:absolute;top:26px;bottom:0;width:0;border-left:2px dashed rgba(255,255,255,.9);z-index:4;pointer-events:none}
+.ed-shot.is-lift{opacity:.28;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.5)}
+.ed-fly{position:absolute;top:18px;height:82px;z-index:7;border-radius:12px;overflow:hidden;background:#17121c;box-shadow:0 0 0 2px var(--bone),0 18px 36px -8px #000;rotate:-1.5deg;pointer-events:none}
+.ed-fly img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ed-ins{position:absolute;top:22px;bottom:-4px;width:4px;margin-left:-3.5px;border-radius:4px;background:var(--bone);box-shadow:0 0 12px rgba(255,255,255,.7);z-index:5;pointer-events:none}
+/* La tête de lecture */
+.ed-ph{position:absolute;top:0;bottom:0;left:0;width:0;z-index:5;pointer-events:none;will-change:transform}
+.ed-ph[hidden]{display:none}
+.ed-ph::before{content:"";position:absolute;top:20px;bottom:0;left:-1px;width:2px;border-radius:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.ed-ph b{position:absolute;top:0;left:0;translate:-50% 0;padding:3px 8px;border-radius:999px;background:#fff;color:#140d12;font-size:12px;line-height:16px;font-weight:600}
+.ed-addb{flex:none;width:56px;height:82px;border-radius:12px;display:grid;place-items:center;color:var(--t2);background:rgba(255,255,255,.06);transition:background-color .15s}
 .ed-addb:hover{background:rgba(255,255,255,.12);color:var(--bone)}
 .ed-addb .ic{width:20px;height:20px}
+/* 1280 × 720 : tout tient, la colonne de droite passe en deux onglets (Plan, Musique), la bande est un peu moins haute */
+@container (max-width:1439px),(max-height:799px){
+  .ed{padding-top:56px;gap:14px}
+  .ed-ttl h1{font-size:24px}
+  .ed-side{gap:10px}
+  .ed .ed-tabs{display:flex}
+  .ed-side[data-show=plan] .ed-s-mus,.ed-side[data-show=mus] .ed-s-plan{display:none}
+  .ed-tb{height:92px}
+  .ed-fly{height:66px}
+  .ed-addb{height:66px}
+}
+/* La page Clips : « Reprendre le montage » sur le groupe du match */
+.cm-go em{font-style:normal;font-weight:400;color:var(--t3)}
+.cm-go.is-draft{color:var(--bone)}
 /* Ajouter des clips */
 .ed-add{width:min(880px,92vw)}
 .ed-addg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-height:56vh;overflow-y:auto;margin:12px 0 4px;padding:2px}

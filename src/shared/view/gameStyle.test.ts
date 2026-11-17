@@ -55,7 +55,7 @@ test('tags seuls, sans image lisible', () => {
 test('rien de lisible : neutre avec l’accent rose de l’appli', () => {
   const s = decideStyle(null, ['Indie', 'Casual Puzzle'])
   assert.equal(s.style, 'neutre')
-  assert.equal(s.accent, '#ff5c86')
+  assert.equal(s.accent, '#e8264f')
 })
 
 test('un accent tiré d’une jaquette sombre reste lisible (jamais trop sombre)', () => {

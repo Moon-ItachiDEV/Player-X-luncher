@@ -1,6 +1,6 @@
 // La première ouverture, dans une seule petite fenêtre : le vrai scan de tes jeux, tes clips, tes comptes. Puis la fenêtre s'ouvre sur l'accueil.
 // Un écran = un titre court, une phrase au plus, une action principale. Tout se change plus tard dans Paramètres.
-const ROSE_PAL = ['#1c0a14', '#8e1640', '#ff5c86', '#ff8a80']
+const ROSE_PAL = ['#1c0a14', '#8e1640', '#e8264f', '#ff8a80']
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 const SETUP_KEY = 'pxv3-setup'
 

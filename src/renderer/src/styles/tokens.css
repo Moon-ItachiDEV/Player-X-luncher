@@ -44,23 +44,23 @@
   --text-3: #a898a6;
   --text-4: #64566a; /* désactivé uniquement */
   /* Marque : dégradé de l'icône manette (icône, séquence de lancement, écran de mise à jour). Jamais en fond de carte. */
-  --brand-1: #ff8a80;
-  --brand-2: #fb4f7a;
-  --brand-3: #e0207e;
-  --brand-violet: #e0207e; /* ancien nom, garde la teinte foncée de la marque */
-  --brand-cyan: #ff8a80; /* ancien nom, garde la teinte claire de la marque */
+  --brand-1: #ff3a5c;
+  --brand-2: #e8264f;
+  --brand-3: #c4123a;
+  --brand-violet: #c4123a; /* ancien nom, garde la teinte foncée de la marque */
+  --brand-cyan: #ff3a5c; /* ancien nom, garde la teinte claire de la marque */
   --brand-gradient: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%); /* avatars, bannières */
-  /* Action : rose braise, texte sombre (jamais blanc : 2,9:1) */
-  --accent: #ff5c86; /* icônes actives, indicateurs, focus */
-  --accent-solid: #ff5c86; /* boutons pleins : texte --on-accent 6,3:1 */
-  --accent-solid-hover: #ff7598;
-  --on-accent: #2a0612;
-  --accent-soft: rgba(255, 92, 134, 0.14);
-  --accent-line: rgba(255, 92, 134, 0.45);
-  --accent-text: #ff9db5;
+  /* Action : rouge du blason (bêta 50), texte blanc */
+  --accent: #e8264f; /* icônes actives, indicateurs, focus */
+  --accent-solid: #dc2449; /* blanc dessus 4,8:1 */ /* boutons pleins : texte --on-accent 6,3:1 */
+  --accent-solid-hover: #c4123a;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(232, 38, 79, 0.14);
+  --accent-line: rgba(232, 38, 79, 0.45);
+  --accent-text: #ff7a8a;
   /* Sélection (menu, onglets) */
-  --nav-on-bg: rgba(255, 92, 134, 0.14);
-  --nav-on-line: rgba(255, 92, 134, 0.45);
+  --nav-on-bg: rgba(232, 38, 79, 0.14);
+  --nav-on-line: rgba(232, 38, 79, 0.45);
   /* « En direct » : partie en cours, jauges. Toujours avec l'icône Play. */
   --live: #4fd6e8;
   --live-soft: rgba(79, 214, 232, 0.14);
@@ -109,7 +109,7 @@
   /* Cartes : aspect du verre sans flou, reflet du bord haut compris */
   --sh-card: inset 0 1px 0 var(--glass-hi), 0 22px 40px -28px rgba(0, 0, 0, 0.9);
   --sh-card-hover: inset 0 1px 0 var(--glass-hi), 0 18px 36px -12px rgba(0, 0, 0, 0.75);
-  --glow-accent: 0 0 0 1px rgba(255, 92, 134, 0.5), 0 12px 30px -10px rgba(224, 32, 126, 0.55); /* bouton principal */
+  --glow-accent: 0 0 0 1px rgba(232, 38, 79, 0.5), 0 12px 30px -10px rgba(224, 32, 126, 0.55); /* bouton principal */
   --glow-live: 0 0 0 1px var(--live), 0 16px 36px -18px var(--live);
   --focus: 0 0 0 2px var(--bg-1), 0 0 0 4px var(--accent-text);
   /* Espacements */

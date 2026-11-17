@@ -250,3 +250,8 @@ export let recordersChanged = (): void => {}
 export function onRecordersChanged(fn: () => void): void {
   recordersChanged = fn
 }
+// Le rappel du raccourci (clips.ts) attend la première image : le moteur (clipsEngine.ts) le prévient quand l'en-tête vidéo arrive.
+export let videoHeaderSeen = (_rec: Recorder): void => {}
+export function onVideoHeader(fn: (rec: Recorder) => void): void {
+  videoHeaderSeen = fn
+}

@@ -1,21 +1,32 @@
 // Overlay CS2 (bêta) : la page de la fenêtre transparente posée par-dessus le jeu (main/services/cs2Overlay.ts).
-// Elle suit le match tout seul : temps d'achat, pastille pendant le round, mi-temps, fin du match. Trois styles à essayer
-// en jeu (Paramètres › Overlay) : A façon Apple, B verre, C finition du style Player X. Rien ne se clique : la souris
+// Elle suit le match tout seul : temps d'achat, pastille pendant le round, mi-temps, fin du match. 0.6.2 (test) : trois
+// styles au choix, Étendard, Viseur et Régie (trois.ts), plus l'actuel (le blason, classe .ov-c) pour comparer. Rien ne se clique : la souris
 // et le clavier restent au jeu ; son raccourci (Alt+X par défaut, réglable dans Paramètres › Overlay) le masque.
 // Pont : window.pxOverlay (preload/overlay.ts), les seuls envois cs2:* dont la page a besoin.
 import { formatKd, killDeath, mapLabel, modeLabel, RESULT_LABEL } from '@shared/cs2'
 import { DEFAULT_OVERLAY_HOTKEY, hotkeyText } from '@shared/hotkey'
-import type { Cs2Live, Cs2OverlayConfig, Cs2OverlayStyle, Cs2Recap, Cs2Round } from '@shared/types'
+import type { Cs2Live, Cs2OverlayConfig, Cs2OverlayMoment, Cs2OverlayPlace, Cs2OverlayStyle, Cs2OverlayThree, Cs2Recap, Cs2Round } from '@shared/types'
 import { h, patch, s } from './dom'
+import { startEditor } from './editeur'
+import { isThree, THREE, threeHtml, threeKey } from './trois'
 import { END_MS, endSecondsLeft, pickView } from './view'
 
 /** Les maquettes sont dessinées sur un écran de 1080 px de haut : l'overlay suit la hauteur de l'écran. */
 const DESIGN_H = 1080
+/**
+ * Trois styles de la 0.6.2 : l'overlay suit la hauteur de l'écran, mais moins vite que le HUD de CS2 (puissance 0,8) :
+ * en 4K il prend un peu moins de place qu'en 1080p. Normale = 84 % de la maquette d'origine, jugée trop grosse.
+ * Ses positions, elles, suivent le HUD (--p) : il reste collé au radar, au fil des élim. et aux munitions.
+ */
+const SIZE = { s: 0.72, n: 0.84, l: 1 } as const
+/** Un triplé (ou mieux) vient de tomber : le gros bandeau de la Régie reste 2,6 s. */
+const FRESH_MS = 2_600
 
 const int = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 })
 const other = (side: 'CT' | 'T'): 'CT' | 'T' => (side === 'CT' ? 'T' : 'CT')
 const kda = (l: Pick<Cs2Live, 'kills' | 'deaths' | 'assists'>): string => `${l.kills}/${l.deaths}/${l.assists}`
 const pctOf = (n?: number): string => (n === undefined ? '–' : `${n}\u00a0%`)
+const escHtml = (v: string): string => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
 export function startOverlay(host: HTMLElement): void {
   const api = window.pxOverlay
@@ -26,11 +37,91 @@ export function startOverlay(host: HTMLElement): void {
   let scale = window.innerHeight / DESIGN_H
   let endTimer: ReturnType<typeof setTimeout> | undefined
   let tick: ReturnType<typeof setInterval> | undefined
+  // Argent du début des achats (le conseil ne bouge pas pendant que tu achètes), et le dernier cran d'élim. du round.
+  let buyRound = -1
+  let buyMax: number | undefined
+  let killRound = -1
+  let killK = 0
+  let killAt = 0
+  let freshTimer: ReturnType<typeof setTimeout> | undefined
+  let key3 = ''
+  let html3 = ''
+  // Réglage en plein écran : style et moment montrés (on en change sans quitter), place provisoire pendant un geste.
+  let ed: { style: Cs2OverlayThree; moment: Cs2OverlayMoment } | null = null
+  let edShow: Cs2OverlayPlace | null = null
+  let stopEditor: (() => void) | null = null
+  const edKey = (): string => `${ed!.style}.${ed!.moment}`
 
   const render = (): void => {
-    const view = pickView(cfg, live, end, now)
+    // Pendant le réglage, le style et le moment sont ceux de la barre du haut.
+    const c: Cs2OverlayConfig = ed ? { ...cfg, style: ed.style, edit: { ...ed } } : cfg
+    const view = pickView(c, live, end, now)
+    const style = c.style
+    // Aperçu et réglage : l'overlay se montre sur Dust II en plein écran (overlay.css), pas sur le bureau.
+    document.documentElement.classList.toggle('ov-prev', (cfg.previewAt !== undefined || !!ed) && !!view)
+    document.documentElement.classList.toggle('ov-edit', !!ed)
+    if (!view || !isThree(style)) {
+      key3 = ''
+      if (host.firstElementChild?.classList.contains('ov3')) host.replaceChildren()
+    }
     if (!view) return patch(host, [])
-    const style = cfg.style
+    if (isThree(style)) {
+      const t = Date.now()
+      if (view.kind === 'buy') {
+        if (view.live.round !== buyRound) {
+          buyRound = view.live.round
+          buyMax = view.live.money
+        } else if (view.live.money !== undefined) buyMax = Math.max(buyMax ?? 0, view.live.money)
+      }
+      if (view.kind === 'pill') {
+        const k = view.live.roundKills
+        if (view.live.round !== killRound) {
+          killRound = view.live.round
+          killK = k
+          killAt = k >= 3 ? t : 0
+        } else if (k > killK) {
+          killK = k
+          killAt = t
+        } else killK = k
+      }
+      // Réglage : le gros bandeau d'un triplé reste affiché, c'est le plus grand bloc du moment « en round ».
+      const fresh = view.kind === 'pill' && view.live.roundKills >= 3 && (!!ed || t - killAt < FRESH_MS)
+      clearTimeout(freshTimer)
+      if (fresh && !ed) freshTimer = setTimeout(render, FRESH_MS - (t - killAt) + 20)
+      const html =
+        threeHtml(style, view, {
+          budget: view.kind === 'buy' && buyRound === view.live.round ? buyMax : undefined,
+          fresh,
+          endLeft: view.kind === 'end' ? endSecondsLeft(c, view.recap, now) : 0
+        }) +
+        (cfg.previewAt !== undefined && !ed ? `<span class="ov-sample">Aperçu · chiffres d’exemple · ${escHtml(hotkeyText(cfg.hotkey))} pour masquer</span>` : '')
+      const hk = window.innerHeight / DESIGN_H
+      // Place choisie (part de l'écran) : convertie en pixels de la page, qui est mise à l'échelle par zoom. L'échelle du
+      // bloc s'ajoute à la taille générale ; ses positions restent collées au HUD (--p compense le zoom).
+      const [px, py, pk = 1] = (ed && edShow) || cfg.pos?.[`${style}.${view.kind}`] || [0, 0]
+      const ok = Math.pow(hk, 0.8) * SIZE[cfg.size ?? 'n'] * pk
+      const cls = `ov-root ov3 ${THREE[style]}`
+      const css = `zoom: ${ok.toFixed(4)}; --p: ${(hk / ok).toFixed(4)}; --dx: ${((px * window.innerWidth) / ok).toFixed(1)}px; --dy: ${((py * window.innerHeight) / ok).toFixed(1)}px;`
+      const key = threeKey(style, view)
+      let root = host.firstElementChild as HTMLElement | null
+      if (!root || key !== key3 || !root.classList.contains('ov3')) {
+        root = document.createElement('div')
+        root.setAttribute('aria-hidden', 'true')
+        root.className = cls
+        root.setAttribute('style', css)
+        root.innerHTML = html
+        host.replaceChildren(root)
+      } else {
+        if (root.getAttribute('style') !== css) root.setAttribute('style', css)
+        if (html !== html3) {
+          root.className = `${cls} ov3-still`
+          root.innerHTML = html
+        }
+      }
+      key3 = key
+      html3 = html
+      return
+    }
     const card =
       view.kind === 'end'
         ? endCard(view.recap, style, endSecondsLeft(cfg, view.recap, now))
@@ -64,8 +155,54 @@ export function startOverlay(host: HTMLElement): void {
 
   const setCfg = (c: Cs2OverlayConfig): void => {
     cfg = c
+    syncEdit()
     syncTick()
     render()
+  }
+
+  // Réglage en plein écran : la barre et le cadre s'ouvrent avec lui, se ferment à sa fin (Terminé, Échap).
+  const syncEdit = (): void => {
+    if (cfg.edit && !stopEditor) {
+      ed = { ...cfg.edit }
+      edShow = null
+      stopEditor = startEditor(
+        {
+          now: () => ({ style: ed!.style, moment: ed!.moment, place: cfg.pos?.[edKey()] ?? [0, 0] }),
+          show: (p) => {
+            edShow = p
+            render()
+          },
+          keep: (p) => {
+            edShow = null
+            // Gardée tout de suite à l'écran ; le processus principal renvoie la place nettoyée (bornes, arrondis).
+            const pos = { ...(cfg.pos ?? {}) }
+            if (p) pos[edKey()] = p
+            else delete pos[edKey()]
+            cfg = { ...cfg, pos }
+            render()
+            void api.cs2OverlayPlace(edKey(), p).catch(() => {})
+          },
+          setStyle: (st) => {
+            ed!.style = st
+            edShow = null
+            render()
+            void api.cs2OverlayEditStyle(st).catch(() => {})
+          },
+          setMoment: (m) => {
+            ed!.moment = m
+            edShow = null
+            render()
+          },
+          end: () => void api.cs2OverlayEditEnd().catch(() => {})
+        },
+        () => host.firstElementChild
+      )
+    } else if (!cfg.edit && stopEditor) {
+      stopEditor()
+      stopEditor = null
+      ed = null
+      edShow = null
+    }
   }
   const setLive = (l: Cs2Live | null): void => {
     live = l
@@ -125,6 +262,24 @@ function strip(rounds: Cs2Round[], style: Cs2OverlayStyle, upcoming = 0): HTMLEl
   )
 }
 
+/** Le petit écu du logo (blason carmin), en tête des cartes du style Player X. Même dessin que LOGO_32 (v3ui/constants.js). */
+function mark(): SVGElement {
+  const bz = 'url(#ov-bz)'
+  return s(
+    'svg',
+    { class: 'ov-mark', viewBox: '10 1 100 118', 'aria-hidden': 'true' },
+    s(
+      'defs',
+      null,
+      s('linearGradient', { id: 'ov-bz', x1: 0, y1: 1, x2: 0, y2: 0 }, s('stop', { offset: 0, 'stop-color': '#e8264f' }), s('stop', { offset: 1, 'stop-color': '#c4123a' }))
+    ),
+    s('path', { d: 'M60 7 L104 22 V58 C104 84 86 101 60 113 C34 101 16 84 16 58 V22 Z', fill: '#140709', stroke: bz, 'stroke-width': 6, 'stroke-linejoin': 'round' }),
+    s('polyline', { points: '36,80 60,58 84,80', fill: 'none', stroke: bz, 'stroke-width': 11 }),
+    s('polyline', { points: '40,56 60,38 80,56', fill: 'none', stroke: bz, 'stroke-width': 9, 'stroke-opacity': 0.7 }),
+    s('polygon', { points: '60,22 64,30 60,34 56,30', fill: '#ffffff' })
+  )
+}
+
 function glyph(d: string): SVGElement {
   return s(
     'svg',
@@ -156,7 +311,7 @@ function buy(live: Cs2Live, style: Cs2OverlayStyle): HTMLElement {
   return h(
     'section',
     { key: `buy-${live.round}`, class: 'ov-card ov-buy ov-enter' },
-    h('div', { class: 'ov-head ov-s1' }, h('span', { class: 'ov-title' }, 'Round ', live.round, ' · temps d’achat'), h('span', { class: 'ov-sub' }, mapLabel(live.map))),
+    h('div', { class: 'ov-head ov-s1' }, style === 'c' && mark(), h('span', { class: 'ov-title' }, 'Round ', live.round, ' · temps d’achat'), h('span', { class: 'ov-sub' }, mapLabel(live.map))),
     h(
       'div',
       { class: 'ov-row ov-s2' },
@@ -179,7 +334,8 @@ function buy(live: Cs2Live, style: Cs2OverlayStyle): HTMLElement {
 function pill(live: Cs2Live, style: Cs2OverlayStyle): HTMLElement {
   return h(
     'div',
-    { key: 'pill', class: `ov-card ov-pill ov-enter${style === 'a' ? ' is-island' : ''}` },
+    { key: 'pill', class: 'ov-card ov-pill ov-enter' },
+    style === 'c' && mark(),
     h('b', { class: 'ov-pill-kda' }, kda(live)),
     h('span', { class: 'ov-pill-sep' }),
     h('span', null, 'ADR ', h('b', null, live.adr === undefined ? '–' : live.adr)),
@@ -197,7 +353,7 @@ function half(live: Cs2Live, style: Cs2OverlayStyle): HTMLElement {
   return h(
     'section',
     { key: 'half', class: 'ov-card ov-buy ov-enter' },
-    h('div', { class: 'ov-head ov-s1' }, h('span', { class: 'ov-title' }, 'Mi-temps · ', mapLabel(live.map))),
+    h('div', { class: 'ov-head ov-s1' }, style === 'c' && mark(), h('span', { class: 'ov-title' }, 'Mi-temps · ', mapLabel(live.map))),
     h('div', { class: 'ov-lead ov-s2' }, h('b', null, lead), sc && h('span', null, sc.us, '–', sc.them)),
     played && h('p', { class: 'ov-line ov-s2' }, 'Tu passes ', h('b', null, other(played)), ' après la mi-temps.'),
     live.rounds.length > 0 && h('div', { class: 'ov-s3' }, strip(live.rounds, style)),
@@ -220,11 +376,11 @@ function endCard(r: Cs2Recap, style: Cs2OverlayStyle, left: number): HTMLElement
   const multi = [r.multi.k3 && `${r.multi.k3}\u00a0×\u00a03K`, r.multi.k4 && `${r.multi.k4}\u00a0×\u00a04K`, r.multi.k5 && `${r.multi.k5}\u00a0ace`].filter(Boolean).join(' · ')
   return h(
     'section',
-    { key: `end-${r.id}`, class: `ov-card ov-end ov-enter${style === 'a' ? ' is-sheet' : ''}` },
-    style === 'a' && h('span', { class: 'ov-grabber' }),
+    { key: `end-${r.id}`, class: 'ov-card ov-end ov-enter' },
     h(
       'div',
       { class: 'ov-end-top ov-s1' },
+      style === 'c' && mark(),
       h('span', { class: 'ov-kicker' }, 'Bilan de match · ', modeLabel(r.mode), r.sample ? ' · exemple' : ''),
       h('span', { class: 'ov-sub' }, 'se replie dans ', left, '\u00a0s')
     ),

@@ -70,6 +70,8 @@ export interface Recorder {
 }
 
 export interface Capture {
+  /** Le rappel du raccourci est déjà passé pour cette partie (jeux sans clip automatique, BF6 par exemple). */
+  hinted?: boolean
   game: RunningGame
   sessionId: string
   win: BrowserWindow | null

@@ -1,10 +1,12 @@
 import { app, safeStorage } from 'electron'
 import { spawn } from 'node:child_process'
-import { copyFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, existsSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import initSqlJs, { type Database } from 'sql.js'
 import type { Game } from '@shared/types'
 import { logError } from './crashLog'
+import { asideName, readRetry, rescuePlan, salvageText, stuckLog, stuckText, toPrune, unreadText, withUnread, type FileState } from './dbRescue'
+import { ensureSchema, salvage } from './dbSalvage'
 import { decryptChromium } from './services/chromiumCrypt'
 
 // SQLite local via sql.js (WebAssembly) : aucun module natif à compiler sous Windows.
@@ -13,37 +15,170 @@ let db: Database
 let dbPath: string
 let SQLmod: Awaited<ReturnType<typeof initSqlJs>> | null = null
 
-export async function initDb(): Promise<void> {
-  const SQL = await initSqlJs({ locateFile: () => require.resolve('sql.js/dist/sql-wasm.wasm') })
-  SQLmod = SQL
-  dbPath = join(app.getPath('userData'), 'launcher.db')
-  // Base illisible (coupure pendant une écriture d'une ancienne version) : on repart de la copie de secours.
-  const open = (file: string): Database | null => {
-    if (!existsSync(file)) return null
+/** Le fichier principal sur le disque est une base saine (vérifiée au démarrage, ou écrite par cette session) : seul lui est copié en .bak. */
+let mainTrusted = false
+let report: { notice: 'secours' | 'zero' | 'partiel'; kept: number } | null = null
+
+/** Ce qu'il faut dire à la personne après le démarrage (copie de secours reprise, base reprise en partie, ou repartie de zéro) ; null sinon. */
+export function rescueReport(): { notice: 'secours' | 'zero' | 'partiel'; kept: number } | null {
+  return report
+}
+
+type SqlJs = Awaited<ReturnType<typeof initSqlJs>>
+const loadSql = (): Promise<SqlJs> => initSqlJs({ locateFile: () => require.resolve('sql.js/dist/sql-wasm.wasm') })
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * État d'un fichier de base : ouvert, `PRAGMA quick_check` doit répondre « ok », et la table kv doit exister. Ne lève jamais.
+ * Un fichier tenu par un autre programme (antivirus) est relu quelques fois avant d'être jugé illisible. Pour un fichier
+ * illisible, les octets lus sont rendus (pour en reprendre ce qui se lit encore).
+ */
+async function probe(SQL: SqlJs, file: string): Promise<{ state: FileState; db: Database | null; bytes: Uint8Array | null; readError: string | null }> {
+  if (!existsSync(file)) return { state: 'absent', db: null, bytes: null, readError: null }
+  let bytes: Buffer
+  try {
+    bytes = await readRetry(() => readFileSync(file), sleep)
+  } catch (e) {
+    const code = (e as { code?: unknown } | null)?.code
+    return { state: 'illisible', db: null, bytes: null, readError: typeof code === 'string' ? code : 'erreur' }
+  }
+  let d: Database | null = null
+  try {
+    d = new SQL.Database(bytes)
+    const rows = d.exec('PRAGMA quick_check')
+    const lines = rows.flatMap((r) => r.values)
+    if (lines.length !== 1 || lines[0][0] !== 'ok') throw new Error('quick_check')
+    if (d.exec('SELECT count(*) FROM sqlite_master')[0].values[0][0] === 0) {
+      d.close()
+      return { state: 'vide', db: null, bytes: null, readError: null }
+    }
+    // Des tables mais pas kv (elle existe depuis la première version) : ce n'est pas une base de Player X, on la met de côté.
+    if (d.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'kv'").length === 0) throw new Error('pas de table kv')
+    return { state: 'ok', db: d, bytes: null, readError: null }
+  } catch {
     try {
-      const d = new SQL.Database(readFileSync(file))
-      d.exec('SELECT count(*) FROM sqlite_master')
-      return d
+      d?.close()
     } catch {
-      return null
+      /* déjà fermée */
+    }
+    return { state: 'illisible', db: null, bytes, readError: null }
+  }
+}
+
+export async function initDb(): Promise<void> {
+  let SQL = await loadSql()
+  const dir = app.getPath('userData')
+  dbPath = join(dir, 'launcher.db')
+  // Sonde : principal, puis dernier fichier provisoire, puis copie de secours. On s'arrête au premier fichier sain.
+  const facts: { main: FileState; tmp: FileState; bak: FileState } = { main: 'absent', tmp: 'absent', bak: 'absent' }
+  const unread: { main?: Uint8Array; tmp?: Uint8Array; bak?: Uint8Array } = {}
+  const unreadable: string[] = []
+  let opened: Database | null = null
+  const files = { main: dbPath, tmp: `${dbPath}.tmp`, bak: `${dbPath}.bak` }
+  for (const k of ['main', 'tmp', 'bak'] as const) {
+    const r = await probe(SQL, files[k])
+    facts[k] = r.state
+    if (r.bytes) unread[k] = r.bytes
+    if (r.readError) unreadable.push(unreadText(basename(files[k]), r.readError))
+    if (r.db) {
+      opened = r.db
+      break
+    }
+    // Une instance de sql.js qui a lu un fichier abîmé n'est jamais gardée : celle de la base ne lit que du sain.
+    if (r.state === 'illisible') SQL = await loadSql()
+  }
+  const plan = rescuePlan(facts)
+  // Aucun fichier sain : on reprend ce qui se lit encore du principal, sinon de la copie de secours, avant de repartir de zéro.
+  let notice: 'secours' | 'zero' | 'partiel' | null = plan.notice
+  let logLine = plan.log
+  let rebuilt: Database | null = null
+  for (const which of plan.salvage) {
+    const bytes = unread[which]
+    if (!bytes) continue
+    const got = salvage(await loadSql(), SQL, bytes)
+    if (!got) continue
+    rebuilt = got.db
+    notice = 'partiel'
+    logLine = salvageText(basename(files[which]), got.counts)
+    break
+  }
+  // La suite s'applique avant la première écriture ; une opération de fichier qui rate ne doit pas faire rater le démarrage...
+  const keptNames: string[] = []
+  const lostNames: string[] = []
+  const moved: { from: string; to: string }[] = []
+  const at = new Date()
+  for (const which of plan.aside) {
+    const from = files[which]
+    const to = asideName(from, at)
+    try {
+      renameSync(from, to)
+      keptNames.push(basename(to))
+      moved.push({ from, to })
+    } catch {
+      try {
+        // Le principal reste en place (jamais supprimé) : le premier persist() le remplace, mainTrusted l'empêche d'écraser .bak.
+        copyFileSync(from, to)
+        keptNames.push(basename(to))
+      } catch {
+        lostNames.push(basename(from))
+      }
     }
   }
-  db = open(dbPath) ?? open(`${dbPath}.bak`) ?? new SQL.Database()
-  db.run(`
-    CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS games (
-      id TEXT PRIMARY KEY, store TEXT NOT NULL, store_id TEXT NOT NULL, name TEXT NOT NULL,
-      install_dir TEXT, cover_url TEXT, hero_url TEXT, last_played INTEGER, favorite INTEGER DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS launches (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL, at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL, started INTEGER NOT NULL, ended INTEGER NOT NULL);
-  `)
-  // Migration : colonne ajoutée après la première version.
-  try {
-    db.run('ALTER TABLE games ADD COLUMN exe_path TEXT')
-  } catch {
-    /* déjà présente */
+  // ... sauf si un fichier qui contient quelque chose n'a pu être gardé : on ne l'écrase jamais, rien n'est écrit, et la base
+  // retrouve l'état d'avant ce démarrage (les fichiers renommés reprennent leur nom, dans l'ordre inverse).
+  if (lostNames.length) {
+    for (const m of moved.reverse()) {
+      try {
+        renameSync(m.to, m.from)
+        keptNames.splice(keptNames.indexOf(basename(m.to)), 1)
+      } catch {
+        /* il reste de côté : il n'est pas perdu */
+      }
+    }
+    logError('base', withUnread(stuckLog(lostNames, keptNames), unreadable))
+    for (const d of [opened, rebuilt]) {
+      try {
+        d?.close()
+      } catch {
+        /* rien à fermer */
+      }
+    }
+    throw new Error(stuckText(lostNames))
   }
+  for (const which of plan.drop) {
+    try {
+      unlinkSync(files[which])
+    } catch {
+      /* verrouillée : mainTrusted empêche déjà de la remplacer par une copie douteuse */
+    }
+  }
+  // Une seule ligne [base] : ce qui a été trouvé, puis ce qui s'est vraiment passé.
+  if (logLine) {
+    const more = keptNames.length ? `Gardé de côté : ${keptNames.join(', ')}.` : ''
+    logError('base', [withUnread(logLine, unreadable), more].filter(Boolean).join(' '))
+  } else if (unreadable.length) {
+    // Aucune ligne due, mais un fichier n'a pas pu être lu (premier démarrage où seul le provisoire existe) : on le dit quand même.
+    logError('base', unreadable.join(' '))
+  }
+  try {
+    // Jamais un fichier mis de côté pendant ce démarrage, même si l'horloge du PC a reculé.
+    const names = readdirSync(dir).filter((n) => n.startsWith('launcher.db') && !keptNames.includes(n))
+    for (const n of toPrune(names)) {
+      try {
+        unlinkSync(join(dir, n))
+      } catch {
+        /* un vieux fichier de plus */
+      }
+    }
+  } catch {
+    /* dossier illisible : rien à élaguer */
+  }
+  // Un démarrage arrêté ne laisse aucune base que quelqu'un pourrait écrire : tout ça n'est affecté qu'ici.
+  db = opened ?? rebuilt ?? new SQL.Database()
+  SQLmod = SQL
+  mainTrusted = plan.source === 'main'
+  report = notice ? { notice, kept: keptNames.length } : null
+  ensureSchema(db)
   persist()
 }
 
@@ -85,15 +220,19 @@ function persist(): void {
   writeFileSync(tmp, Buffer.from(db.export()))
   try {
     const bak = `${dbPath}.bak`
-    if (existsSync(dbPath) && (!existsSync(bak) || Date.now() - statSync(bak).mtimeMs > BACKUP_EVERY_MS)) copyFileSync(dbPath, bak)
+    if (mainTrusted && existsSync(dbPath) && (!existsSync(bak) || Date.now() - statSync(bak).mtimeMs > BACKUP_EVERY_MS)) copyFileSync(dbPath, bak)
   } catch {
     /* la copie de secours est un plus, pas une condition */
   }
   try {
     renameSync(tmp, dbPath)
+    mainTrusted = true
   } catch {
     // Fichier verrouillé un instant (antivirus, indexation) : écriture directe, comme avant.
+    // Une écriture directe coupée laisse un principal incomplet : il ne doit pas être copié en .bak.
+    mainTrusted = false
     writeFileSync(dbPath, readFileSync(tmp))
+    mainTrusted = true
   }
 }
 

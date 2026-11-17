@@ -45,11 +45,10 @@ const Bar = (() => {
       const on = !Real.clipsOn()
       try { await Real.saveClips({ enabled: on }); toast(on ? 'Enregistrement activé' : 'Enregistrement coupé', { ms: 1600 }); Settings.syncBar(); Settings.sync() } catch (e) { toast(esc(errText(e)), { tone: 'warn', ms: 4000 }) }
     }
-    let lastOv = 'b'
     $('#bOv', el).onclick = async () => {
       const cur = Real.st.settings.cs2Overlay, on = cur === 'off'
-      if (!on) lastOv = cur
-      try { await Real.saveSettings({ cs2Overlay: on ? lastOv : 'off' }); toast(on ? 'Overlay activé' : 'Overlay coupé', { ms: 1600 }); Settings.syncBar() } catch (e) { toast(esc(errText(e)), { tone: 'warn', ms: 4000 }) }
+      let last = 'etendard'; try { const v = localStorage.getItem('pxv3-ovstyle'); if (['etendard', 'viseur', 'regie', 'c'].includes(v)) last = v } catch {}
+      try { await Real.saveSettings({ cs2Overlay: on ? last : 'off' }); toast(on ? 'Overlay activé' : 'Overlay coupé', { ms: 1600 }); Settings.syncBar() } catch (e) { toast(esc(errText(e)), { tone: 'warn', ms: 4000 }) }
     }
     // Au repos, chaque étape de la routine est un bouton (souris et clavier) qui ouvre la routine
     $('#bMarks', el).addEventListener('click', (e) => { if (mode === 'idle' && e.target.closest('.ln-node')) Settings.open('routine') })
@@ -94,7 +93,7 @@ const Bar = (() => {
     const fi = $('#lgI'); fi.setAttribute('width', W); fi.setAttribute('height', H); fi.setAttribute('href', c.toDataURL())
     el.style.backdropFilter = 'url(#lgF)'; el.style.webkitBackdropFilter = 'url(#lgF)'
   }
-  const avatarMe = () => { const m = Real.me(); return m.avatar ? `<span class="av me" style="--h:338"><img src="${esc(m.avatar)}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block"></span>` : `<span class="av me" style="--h:338">${esc(m.name[0].toUpperCase())}</span>` }
+  const avatarMe = () => { const m = Real.me(); return m.avatar ? `<span class="av me" style="--h:350"><img src="${esc(m.avatar)}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block"></span>` : `<span class="av me" style="--h:350">${esc(m.name[0].toUpperCase())}</span>` }
   function pill() {
     const cur = $('.b-tab[aria-current=page]', el); const p = $('#bPill', el); if (!cur) { p.style.opacity = 0; return }
     p.style.opacity = 1

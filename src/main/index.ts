@@ -1,7 +1,8 @@
 import { join } from 'node:path'
-import { app, dialog, powerMonitor } from 'electron'
+import { app, powerMonitor } from 'electron'
 import { cleanName } from '@shared/text'
 import { logError } from './crashLog'
+import { installGuards, startupFailed } from './guard'
 import * as db from './db'
 import { launchFromShortcut, startLaunches } from './launchHost'
 import { createMainWindow } from './mainWindow'
@@ -46,6 +47,9 @@ import { registerEditChannels } from './channels/edit'
 import { registerFriendChannels } from './channels/friends'
 import { registerLibraryChannels } from './channels/library'
 import { registerPlayChannels } from './channels/play'
+import { registerPcChannels } from './channels/pc'
+import { registerMajChannels } from './channels/maj'
+import { installInProgress, majInstalling, markSessionEnd, prepareUpdater, startUpdater } from './services/updater'
 
 // Le démarrage de Player X, et rien d'autre : ce fichier dit dans quel ordre les services partent et comment l'appli se
 // ferme. Le reste a son fichier : la fenêtre (mainWindow.ts), ce que les pages n'ont pas le droit de faire (security.ts), la
@@ -92,6 +96,8 @@ function registerIpc(): void {
   registerAccountChannels(d)
   registerPlayChannels(d)
   registerEditChannels()
+  registerPcChannels()
+  registerMajChannels()
 }
 
 lockNavigation()
@@ -100,11 +106,16 @@ lockNavigation()
 if (process.platform === 'win32') app.setAppUserModelId('dev.breezy.playerx.v3test')
 
 // Une seule instance : deux Player X ouverts écraseraient chacun la base de l'autre (temps de jeu relevé chaque minute).
-const firstInstance = app.requestSingleInstanceLock()
+// Une mise à jour est en train de s'installer (marqueur frais) : cette ouverture de l'ancienne version se tait, sans fenêtre.
+const quietExit = installInProgress()
+if (quietExit) app.exit(0)
+const firstInstance = !quietExit && app.requestSingleInstanceLock()
 if (!firstInstance) app.quit()
 // Une deuxième ouverture montre la fenêtre déjà là ; avec `--launch=<id>` (liste de raccourcis de Windows), elle lance
 // seulement le jeu.
 app.on('second-instance', (_e, argv) => {
+  // Le Setup est lancé et Player X se ferme : pas de fenêtre à montrer.
+  if (majInstalling()) return
   const id = launchArgOf(argv)
   if (id && launches) return launchFromShortcut(id)
   const win = mainWindow()
@@ -117,6 +128,8 @@ app.on('second-instance', (_e, argv) => {
 app.whenReady().then(async () => {
   if (!firstInstance) return
   await db.initDb()
+  // Avant tout enregistrement des réglages : une première installation n'a encore aucun réglage (notes de version).
+  prepareUpdater()
   lockDown()
   launches = await startLaunches()
   // Avant le relevé du temps de jeu : à la mise en veille, les lancements s'arrêtent sans bruit avant qu'il ne coupe les sessions.
@@ -129,7 +142,10 @@ app.whenReady().then(async () => {
     db.flushDb()
   })
   // Arrêt de la machine (Linux, macOS) ; sous Windows, la fenêtre reçoit « session-end » (voir mainWindow.ts).
-  powerMonitor.on('shutdown', () => db.flushDb())
+  powerMonitor.on('shutdown', () => {
+    markSessionEnd()
+    db.flushDb()
+  })
   process.on('exit', () => db.flushDb())
   // Le moteur vidéo ne connaît pas la capture des clips : elle lui est présentée ici (un jeu tourne-t-il ? quel est le dernier clip ?).
   setEngineHost({ gameRunning, newestClipSource })
@@ -186,6 +202,12 @@ app.whenReady().then(async () => {
   // Premier lancement après l'installeur sur mesure : ses choix (Démarrer avec Windows), avant l'inscription au démarrage.
   applyInstallOptions()
   startTray()
+  startUpdater()
+  // Développement seulement : PX_MAJ_SIM imite la mise à jour (majSim.ts, jamais dans l'installeur).
+  if (!app.isPackaged && process.env.PX_MAJ_SIM) {
+    const mode = process.env.PX_MAJ_SIM
+    import('./services/majSim').then(({ startMajSim }) => startMajSim(mode)).catch((e) => console.warn('[maj-sim]', e))
+  }
   updateRunning()
   // Développement seulement : PX_BF6_SIM simule une partie de Battlefield 6 (bf6Sim.ts, jamais dans l'installeur).
   if (!app.isPackaged && process.env.PX_BF6_SIM) {
@@ -207,13 +229,13 @@ app.whenReady().then(async () => {
 }).catch((e) => {
   // Démarrage raté (base illisible, disque plein…) : un message clair et l'appli se ferme. Sans ça, elle restait cachée,
   // gardait le verrou d'instance unique, et la relancer ne faisait plus rien.
-  logError('démarrage', e)
-  dialog.showErrorBox('Player X V3 Test n’a pas pu démarrer', `${e instanceof Error ? e.message : String(e)}\n\nLe détail est dans erreurs.log, dans ${app.getPath('userData')}.`)
-  app.exit(1)
+  startupFailed(e)
 })
 
 // Une promesse rejetée que personne n'attend : notée dans le journal au lieu de disparaître sans trace.
 process.on('unhandledRejection', (e) => logError('promesse non gérée', e))
+// Erreur imprévue, page qui plante, base reprise de la copie de secours : voir guard.ts.
+installGuards()
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

@@ -11,7 +11,7 @@ import { emitChanged, thumbPath } from './clipsIndex'
 import { errText, log } from './clipsLog'
 import { clipSettings } from './clipsSettings'
 import { bufferRoot, capture, emitState, recorders, type Capture, type Recorder } from './clipsState'
-import { launchRecorder, recordersChanged, send, targetDisplayId, testSource } from './clipsWindow'
+import { launchRecorder, recordersChanged, send, targetDisplayId, testSource, videoHeaderSeen } from './clipsWindow'
 import { storeFragment } from './clipsBuffer'
 import { Fmp4Splitter, parseFragment, parseInit } from './fmp4'
 import { gameExeRegex } from './captureTestArgs'
@@ -284,6 +284,7 @@ export function onChunk(rec: Recorder, chunk: Uint8Array): void {
       rec.init = parseInit(item.data)
       log(`En-tête MP4 de ${rec.id} : ${rec.init.tracks.map((t) => (t.kind === 'video' ? `${t.codec} ${t.width}×${t.height}` : t.codec)).join(', ')}.`)
       if (rec.engine) engineReady(rec)
+      if (rec.init.tracks.some((t) => t.kind === 'video')) videoHeaderSeen(rec)
       continue
     }
     if (!rec.init) continue

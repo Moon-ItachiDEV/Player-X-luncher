@@ -32,7 +32,7 @@ th.on .rk-s{color:var(--bone)}th.on .rk-s b{font-weight:600}th.on .rk-s span{col
 /* Les lignes */
 .rk-t tbody tr{height:56px;position:relative}
 .rk-t tbody td,.rk-t tbody th{border-top:1px solid var(--hair)}
-.rk-t tbody tr.me>*{background:rgba(255,92,134,.12);border-top-color:transparent}
+.rk-t tbody tr.me>*{background:rgba(232,38,79,.12);border-top-color:transparent}
 .rk-t tbody tr.me+tr>*{border-top-color:transparent}
 .rk-t tbody tr.me>:first-child{border-radius:12px 0 0 12px}.rk-t tbody tr.me>:last-child{border-radius:0 12px 12px 0}
 .rk-r{text-align:center;font-size:24px;line-height:1.17;font-weight:600;font-stretch:94%;color:var(--t3)}
@@ -49,7 +49,7 @@ tbody tr:first-child .rk-r,tr.me .rk-r{color:var(--bone)}
 th.on,.rk-v.on{background:rgba(255,255,255,.05)}
 th.on{border-radius:12px 12px 0 0}
 tbody tr:last-child .rk-v.on{border-radius:0 0 12px 12px}
-.rk-t tbody tr.me .rk-v.on{background:rgba(255,92,134,.2)}
+.rk-t tbody tr.me .rk-v.on{background:rgba(232,38,79,.2)}
 .rk-g{text-align:right;padding-right:8px!important;font-size:14px;line-height:1.5;color:var(--t3);white-space:nowrap}
 .rk-g.up{color:var(--bone)}
 .rk-x{text-align:center}

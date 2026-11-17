@@ -40,6 +40,10 @@ const Real = (() => {
   }, true)
 
   /* ---------- Jeux ---------- */
+  // Jaquettes fournies avec l'appli (v3ui/assets) : elles passent avant celle de Steam.
+  // The Witcher 3 (0.6.2) : l'image envoyée par Breezydev, toutes éditions et tous magasins.
+  const OWN_COVERS = [[/^the\s*witcher\W*3\b/i, 'cover_witcher3']]
+  const ownCover = (name) => OWN_COVERS.find(([re]) => re.test(name))?.[1] || null
   const shortOf = (name) => { if (name.length <= 14) return name; const head = name.split(/\s*:\s*/)[0], w = head.split(/\s+/); if (head.length <= 14) return head; for (let i = w.length - 1; i > 0; i--) { const x = w.slice(0, i).join(' '); if (x.length <= 14) return x } return w[0] }
   const updateOf = (r) => (r.store === 'steam' ? st.updates[r.storeId] : undefined)
   // Le bouton principal quand Steam a quelque chose à faire : il ouvre ses téléchargements, le jeu ne démarre pas
@@ -56,11 +60,11 @@ const Real = (() => {
     return r.id.replace(/[^a-zA-Z0-9]/g, '_')
   }
   function toUi(r, used, into) {
-    const name = T.cleanName(r.name), u = updateOf(r)
+    const name = T.cleanName(r.name), u = updateOf(r), own = ownCover(name)
     const g = into || {}
     Object.assign(g, {
       id: into?.id || uiIdFor(r, used), rid: r.id, raw: r, name, short: shortOf(name),
-      cover: r.coverUrl || coverPh(name), hero: r.heroUrl || null, heroWide: r.heroUrl || null, logo: r.logoUrl || null,
+      cover: own || r.coverUrl || coverPh(name), ownCover: !!own, hero: r.heroUrl || null, heroWide: r.heroUrl || null, logo: r.logoUrl || null,
       store: STORE[r.store] || r.store,
       time: r.playtime ? T.formatPlaytime(r.playtime) : '',
       last: r.running ? 'en cours' : r.lastPlayed ? T.timeAgo(r.lastPlayed) : '',
@@ -86,7 +90,7 @@ const Real = (() => {
   }
   // Une jaquette arrivée après coup (EA, Epic) remplace son repli partout où il est déjà affiché
   function swapPlaceholders() {
-    const real = new Map(GAMES.filter((g) => g.raw?.coverUrl).map((g) => [coverPh(g.name), g.raw.coverUrl]))
+    const real = new Map(GAMES.filter((g) => g.raw?.coverUrl || g.ownCover).map((g) => [coverPh(g.name), A(g.cover)]))
     if (!real.size) return
     document.querySelectorAll('img[src^="data:image/svg+xml"]').forEach((im) => { const url = im.dataset.fb === 'done' ? null : real.get(im.getAttribute('src')); if (url) im.src = url })
   }

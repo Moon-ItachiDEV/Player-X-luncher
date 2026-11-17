@@ -2,10 +2,12 @@
 import type { LaunchOpts, LaunchStatus } from '../launch'
 import type { Bf6Account, Bf6Art, Bf6Match, Bf6Point, Bf6RecapEvent, Bf6RecapState, Bf6Snapshot, Bf6Tracked } from './bf6'
 import type { Clip, ClipDisplay, ClipSettings, ClipShareResult, ClipShareStep, ClipsState } from './clips'
-import type { Account, Cs2OverlayConfig, FriendAlert, FriendPlatform, FriendsResult, Game, RareUnlock, ScanReport, Settings, StartupState, SteamFriendProfile } from './core'
+import type { Account, Cs2OverlayConfig, Cs2OverlayMoment, Cs2OverlayPlace, Cs2OverlayThree, FriendAlert, FriendPlatform, FriendsResult, Game, RareUnlock, ScanReport, Settings, StartupState, SteamFriendProfile } from './core'
 import type { Cs2LifetimeResult, Cs2Live, Cs2RecapEvent, Cs2State } from './cs2'
-import type { CaptureTestResult, CaptureTestStep, EditEngine, EditEngineStep, EditMusic, EditProject, FilmState } from './edit'
+import type { CaptureTestResult, CaptureTestStep, EditEngine, EditEngineStep, EditMusic, EditMusicTempo, EditProject, FilmState } from './edit'
 import type { GameNews } from './news'
+import type { MajNotes, MajState } from './maj'
+import type { DriverUpdateState, PcState } from './pc'
 import type { Cs2ServersResult, SteamPlayers } from './servers'
 import type { Shelves } from './shelves'
 import type { GameAchievements, GameEventStarted, GameEvents, GameReady, SteamLibrary, SteamUpdates } from './steam'
@@ -19,7 +21,53 @@ export interface V3RoutineApi {
   onRoutineStatus(cb: (s: import('../routines').RoutineStatus) => void): () => void
 }
 
-export interface LauncherApi extends V3RoutineApi {
+/** Mon PC (lecture seule) : la carte graphique, son pilote, les écrans. */
+export interface V3PcApi {
+  /** Lu une fois, puis gardé 6 h. `refresh` relit tout (Windows et NVIDIA). */
+  pcState(refresh?: boolean): Promise<PcState>
+  /** Ouvre Paramètres Windows › Affichage › Affichage avancé (là où se règle la fréquence). */
+  pcOpenDisplaySettings(): Promise<void>
+  /**
+   * Met à jour le pilote NVIDIA : téléchargement officiel, signature vérifiée, point de restauration, installation (une demande
+   * de Windows). Répond à la fin ; l'avancement arrive par onPcDriver. `skipRestore` : après un point de restauration raté.
+   */
+  pcDriverUpdate(opts?: { skipRestore?: boolean }): Promise<DriverUpdateState>
+  pcDriverState(): Promise<DriverUpdateState>
+  /** Annule le téléchargement (rien n'est installé). Sans effet une fois la demande de Windows affichée. */
+  pcDriverStop(): Promise<void>
+  /** Ouvre la restauration du système de Windows (Windows demande l'autorisation). */
+  pcSystemRestore(): Promise<void>
+  onPcDriver(cb: (s: DriverUpdateState) => void): () => void
+}
+
+/** Mises à jour de Player X (services/updater.ts) : l'état arrive par onMajState, les actions répondent avec l'état à jour. */
+export interface V3MajApi {
+  majState(): Promise<MajState>
+  /** « Vérifier maintenant ». */
+  majCheck(): Promise<MajState>
+  /** « Mettre à jour » : télécharge et vérifie. */
+  majDownload(): Promise<MajState>
+  /** « Plus tard » : téléchargement en silence, installation à la fermeture de Player X. */
+  majLater(): Promise<MajState>
+  /** Annule le téléchargement (la croix de la capsule). */
+  majCancel(): Promise<MajState>
+  /** « Redémarrer » : compte à rebours de 3 s, puis installation. Refusé pendant une partie ou un enregistrement. */
+  majInstall(): Promise<MajState>
+  majInstallCancel(): Promise<MajState>
+  /** « Réessayer » après une erreur. */
+  majRetry(): Promise<MajState>
+  /** « Ignorer cette version » : elle n'est plus proposée. */
+  majSkip(): Promise<MajState>
+  /** Ouvre la page des versions (adresse fixe). */
+  majOpenRelease(): Promise<void>
+  /** Les nouveautés pas encore vues (`fresh`), ou, avec `review`, celles de la version installée et des deux d'avant. */
+  majNotes(review?: boolean): Promise<MajNotes>
+  /** Les nouveautés ont été vues : elles ne reviennent plus. */
+  majNotesSeen(): Promise<void>
+  onMajState(cb: (s: MajState) => void): () => void
+}
+
+export interface LauncherApi extends V3RoutineApi, V3PcApi, V3MajApi {
   getGames(refresh?: boolean): Promise<Game[]>
   /**
    * Lance un jeu. Ne rejette jamais pour un échec de lancement : la phase le dit (`failed`, `already`…).
@@ -95,6 +143,8 @@ export interface LauncherApi extends V3RoutineApi {
   cs2OverlayConfig(): Promise<Cs2OverlayConfig>
   /** Paramètres : montre l'overlay quelques secondes avec des chiffres d'exemple, même sans CS2. */
   cs2OverlayPreview(): Promise<void>
+  /** Paramètres : règle la place et l'échelle des blocs en plein écran, sur Dust II, avec le vrai overlay. */
+  cs2OverlayEdit(style: Cs2OverlayThree, moment: Cs2OverlayMoment): Promise<void>
   /** Le raccourci est-il libre ? null si oui, sinon pourquoi (déjà pris par Windows ou une autre appli, refusé). */
   cs2OverlayHotkeyCheck(accel: string): Promise<string | null>
   /** Page de l'overlay peinte : la fenêtre peut s'afficher. */
@@ -217,6 +267,8 @@ export interface LauncherApi extends V3RoutineApi {
   editMusicPick(): Promise<EditMusic | null>
   /** Oublie une musique (le fichier n'est pas touché). */
   editMusicForget(id: string): Promise<EditMusic[]>
+  /** Corrige le tempo d'une musique (÷2, ×2, décalage d'un demi-temps), gardé avec elle. Toujours absolu : calculé depuis les temps d'origine. */
+  editMusicTempo(id: string, opts: EditMusicTempo): Promise<EditMusic>
   /** Le premier montage de ces clips, calé sur cette musique (ou sans). */
   editPlan(clipIds: string[], musicId: string | null): Promise<{ project: EditProject; skipped: number }>
   /** Essai « capture comme OBS » : 10 s pour revenir en jeu, puis 10 s par méthode, avec le moteur vidéo. */
@@ -235,4 +287,11 @@ export interface LauncherApi extends V3RoutineApi {
  * Pont de la fenêtre de l'overlay CS2 (preload/overlay.ts, `window.pxOverlay`) : les seuls envois cs2:* dont sa page a
  * besoin (src/main/ipc.ts refuse de toute façon tout autre canal depuis cette fenêtre).
  */
-export type OverlayApi = Pick<LauncherApi, 'cs2OverlayConfig' | 'cs2OverlayReady' | 'cs2State' | 'onCs2Live' | 'onCs2OverlayConfig' | 'onCs2Recap'>
+export type OverlayApi = Pick<LauncherApi, 'cs2OverlayConfig' | 'cs2OverlayReady' | 'cs2State' | 'onCs2Live' | 'onCs2OverlayConfig' | 'onCs2Recap'> & {
+  /** Réglage en plein écran : enregistre la place d'un bloc (« regie.buy »), null pour la place d'origine. */
+  cs2OverlayPlace(key: string, place: Cs2OverlayPlace | null): Promise<void>
+  /** Réglage en plein écran : un autre style essayé (il devient le style de l'overlay s'il est allumé). */
+  cs2OverlayEditStyle(style: Cs2OverlayThree): Promise<void>
+  /** Fin du réglage en plein écran (Terminé ou Échap). */
+  cs2OverlayEditEnd(): Promise<void>
+}
