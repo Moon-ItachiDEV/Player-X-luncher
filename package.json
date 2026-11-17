@@ -1,6 +1,6 @@
 {
   "name": "test-v3-player-x",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Player X V3 Test : la V3 de Player X, sur le vrai moteur de Player X, installée à part.",
   "main": "out/main/index.js",
   "private": true,

@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.7.6",
+    "date": "2026-11-17",
+    "items": [
+      {
+        "kind": "ameliore",
+        "title": "Clips plus fluides sur les écrans rapides",
+        "text": "Le clip suit ton écran (72 images/s sur un écran à 144 Hz), et le chiffre d’images/s d’un clip montre sa vraie cadence."
+      }
+    ]
+  },
+  {
     "version": "0.7.5",
     "date": "2026-11-17",
     "items": [
