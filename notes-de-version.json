@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.7.5",
+    "date": "2026-11-17",
+    "items": [
+      {
+        "kind": "ameliore",
+        "title": "Tes données mieux protégées",
+        "text": "Si la base de Player X est abîmée, il reprend la copie de secours ou ce qui se lit encore, et te le dit."
+      },
+      {
+        "kind": "ameliore",
+        "title": "Player X se relève tout seul",
+        "text": "Si la fenêtre plante, elle se recharge sans couper ton enregistrement."
+      }
+    ]
+  },
+  {
     "version": "0.7.4",
     "date": "2026-11-16",
     "items": [
