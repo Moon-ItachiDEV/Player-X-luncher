@@ -55,6 +55,12 @@ export const thumbPath = (id: string): string => userData('clips-thumbs', `${id}
 /** Dit aux pages que la liste des clips a changé. */
 export const emitChanged = (): void => broadcast('clips:changed')
 
+/** 0.7.4 : vrai si toutes les images de la piste vidéo ont la même durée (clip du moteur, à cadence fixe). */
+export function constantRate(tracks: ClipTrack[]): boolean {
+  const v = tracks.find((t) => t.kind === 'video' && t.samples.length > 1)
+  return !!v && v.samples.slice(0, -1).every((s) => s.dur === v.samples[0].dur)
+}
+
 /** Bêta 46 : le rythme réel d'un clip (clipPace.ts), d'après les images de sa piste vidéo. undefined : pas assez d'images pour le dire. */
 export function paceOfTracks(tracks: ClipTrack[], durationS: number, wantedFps: number): ClipPace | undefined {
   const video = tracks.find((t) => t.kind === 'video' && t.samples.length)
@@ -164,7 +170,9 @@ export function trimClip(id: unknown, startS: unknown, endS: unknown): Promise<C
     // Bêta 46 : la coupe a son propre rythme (celui de la partie gardée), jamais celui du clip entier.
     const { pace: wholePace, ...rest } = c
     const wantedFps = cleanPace(wholePace)?.wanted
-    const pace = wantedFps ? paceOfTracks(cut, plan.durationS, wantedFps) : undefined
+    // 0.7.4 : un clip du moteur est à cadence fixe (images répétées comprises) : ses images ne disent plus le rythme, la coupe
+    // garde celui du clip entier.
+    const pace = wantedFps ? (constantRate(cut) ? cleanPace(wholePace) : paceOfTracks(cut, plan.durationS, wantedFps)) : undefined
     const made: ClipMeta = { ...rest, id: newId, title, at: c.at + 1, durationS: plan.durationS, sizeBytes: plan.size, pinned: false, file, ...(events ? { events } : {}), ...(pace ? { pace } : {}) }
     await copyOnDisk(thumbPath(c.id), thumbPath(newId)).catch(() => {})
     index = [made, ...index]
