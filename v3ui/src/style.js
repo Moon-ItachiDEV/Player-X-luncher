@@ -1,4 +1,4 @@
-// Boutons caméléon : l'accueil prend le style et la couleur du jeu affiché.
+// Boutons caméléon : l'accueil et la fiche du jeu prennent le style et la couleur du jeu affiché.
 // La jaquette est lue une fois (60 × 90 pixels), le résultat est gardé ; les tags Steam viennent du processus principal.
 // La règle (Shared.gameStyle) ne connaît aucun jeu : elle marche pour n'importe quelle bibliothèque.
 const GameStyle = (() => {
@@ -59,7 +59,7 @@ const GameStyle = (() => {
     if (st === 'neutre') { delete host.dataset.gs; host.style.removeProperty('--gs-acc'); host.style.removeProperty('--gs-on') }
     else { host.dataset.gs = st; host.style.setProperty('--gs-acc', s.accent); host.style.setProperty('--gs-on', s.onAccent) }
     // Changement de style : les boutons se redessinent dans un court fondu (la couleur, elle, glisse toute seule)
-    if (st !== prev && !reduced()) { const a = $('.ht-acts', host); if (a) { a.classList.remove('gs-in'); void a.offsetWidth; a.classList.add('gs-in') } }
+    if (st !== prev && !reduced()) { const a = $('.ht-acts, .dock', host); if (a) { a.classList.remove('gs-in'); void a.offsetWidth; a.classList.add('gs-in') } }
     return st !== prev
   }
   const restyleFns = []

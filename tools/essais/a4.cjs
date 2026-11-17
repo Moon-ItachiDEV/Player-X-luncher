@@ -14,7 +14,7 @@ const { start, shot, settle, go, check, done, failed } = require('./h.cjs')
     console.log(lo)
     check('le carnet a des builds, une arme à ouvrir', lo.builds > 0 && !!(await p.$('.lw')), lo.builds)
     await p.click('.lw'); await settle(p, 800); await shot(p, 'a4-lo3')
-    await p.click('#bGear'); await p.waitForTimeout(800); await shot(p, 'a4-set-rec')
+    await p.click('#bGear'); await p.waitForTimeout(800); await p.click('.sh-t[data-s=rec]'); await p.waitForTimeout(700); await shot(p, 'a4-set-rec')
     for (const s of ['overlay', 'routine', 'library', 'general', 'keys', 'accounts', 'about']) { await p.click(`.sh-t[data-s=${s}]`); await p.waitForTimeout(700); await shot(p, 'a4-set-' + s) }
     done(errs)
   } catch (e) { failed(e, errs) }

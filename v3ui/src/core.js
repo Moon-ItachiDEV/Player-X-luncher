@@ -55,6 +55,7 @@ const PATHS = {
   trophy: '<path d="M7.5 4.500h9V10a4.5 4.5 0 0 1-9 0ZM7.5 6.500H4.500c0 3 1 4.5 3.3 5M16.5 6.500h3c0 3-1 4.5-3.3 5M12 14.500V18M8.5 20h7"/>',
   eye: '<path d="M2.5 12S6 5.500 12 5.500 21.500 12 21.500 12 18 18.500 12 18.500 2.500 12 2.500 12Z"/><circle cx="12" cy="12" r="2.800"/>',
   edit: '<path d="M4.500 19.500h3.800L19 8.800a2.200 2.200 0 0 0-3.100-3.100L5.200 16.400Z"/><path d="m14.500 7 3 3"/>',
+  pc: '<rect x="3" y="4.5" width="18" height="12" rx="2.5"/><path d="M9 20h6M12 16.5V20"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.500M12 7.700v.1"/>'
 }
 const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${PATHS[n] || ''}</svg>`

@@ -128,6 +128,7 @@ function run(args: string[], cwd: string, timeoutMs: number, onOut?: (chunk: str
     let p: ChildProcess
     try {
       p = spawn(file, args, { cwd, env, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      track(p)
     } catch (e) {
       resolve({ code: null, seconds: 0, out: '', err: e instanceof Error ? e.message : String(e), timedOut: false })
       return
@@ -376,6 +377,7 @@ export function spawnCaptureEngine(args: string[], cwd: string): ChildProcess | 
   for (const k of Object.keys(env)) if (/^(FFREPORT|FFMPEG_DATADIR)$/i.test(k)) delete env[k]
   try {
     const p = spawn(file, args, { cwd, env, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    track(p)
     // Player X se ferme : le moteur s'arrête avec lui. L'écoute reste tant que le processus peut encore tourner, et part
     // quand il est fini (« close »). Avant, il en restait une par lancement (chaque tentative de capture, chaque clip écrit,
     // chaque vignette), jamais retirée de toute la session.
@@ -394,4 +396,20 @@ export function spawnCaptureEngine(args: string[], cwd: string): ChildProcess | 
 }
 
 /** Le moteur est-il prêt (installé, intact) ? */
+/** Nombre de moteurs lancés et pas encore sortis (film, copie, musique, vignette, essai, capture). */
+let liveEngines = 0
+function track(p: ChildProcess): void {
+  liveEngines++
+  let gone = false
+  const done = (): void => {
+    if (gone) return
+    gone = true
+    liveEngines--
+  }
+  p.once('exit', done)
+  p.once('error', done)
+}
+/** Un moteur tourne : l'installation d'une mise à jour l'arrêterait net (le Setup ferme tout ce qui vient du dossier de Player X). */
+export const engineBusy = (): boolean => liveEngines > 0
+
 export const captureEngineReady = async (): Promise<boolean> => (await fileStatus()) === 'ready'

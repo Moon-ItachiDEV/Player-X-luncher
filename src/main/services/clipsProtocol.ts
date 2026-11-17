@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { protocol } from 'electron'
 import { parseRange } from './clipsPlan'
+import { MUSIC_ID } from './editMusicRules'
 
 // Protocole pxclip:// : la balise video et les vignettes de la page Clips lisent les fichiers par lui.
 
@@ -36,14 +37,27 @@ async function serveFile(file: string, type: string, request: Request): Promise<
   return new Response(body, { status, headers })
 }
 
-/** Sert les vidéos et vignettes des clips connus, par leur identifiant seulement (jamais un chemin). */
-export function registerClipProtocol(scheme: string, lookup: (id: string) => { video: string; thumb: string } | undefined, onError: (e: unknown) => void): void {
+/** Un morceau gardé pour l'aperçu de l'éditeur : son fichier et le type à servir. */
+export type MusicLookup = (id: string) => Promise<{ file: string; type: string } | null>
+
+/**
+ * Sert les vidéos et vignettes des clips connus, par leur identifiant seulement (jamais un chemin). Lot A : pxclip://music/<id>
+ * sert le fichier d'une musique choisie dans l'éditeur (identifiant de 12 caractères, type et taille revus par `music`).
+ */
+export function registerClipProtocol(scheme: string, lookup: (id: string) => { video: string; thumb: string } | undefined, onError: (e: unknown) => void, music?: MusicLookup): void {
   protocol.handle(scheme, async (request) => {
     try {
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...corsHeaders(request), 'Access-Control-Allow-Headers': 'Range', 'Access-Control-Allow-Methods': 'GET, HEAD' } })
       if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 })
       const url = new URL(request.url)
-      const c = lookup(url.pathname.replace(/^\//, ''))
+      const id = url.pathname.replace(/^\//, '')
+      // La musique d'abord : son identifiant n'est jamais cherché parmi les clips, ni l'inverse
+      if (url.hostname === 'music') {
+        if (!music || !MUSIC_ID.test(id)) return notFound()
+        const m = await music(id)
+        return m ? await serveFile(m.file, m.type, request) : notFound()
+      }
+      const c = lookup(id)
       if (!c) return notFound()
       if (url.hostname === 'video') return await serveFile(c.video, 'video/mp4', request)
       if (url.hostname === 'thumb') return await serveFile(c.thumb, 'image/jpeg', request)

@@ -19,7 +19,7 @@
   --ink: #08060b;
   --bone: #f7f1f4; --t2: rgba(247, 241, 244, .78); --t3: rgba(247, 241, 244, .62); --t4: rgba(247, 241, 244, .42);
   --hair: rgba(255, 236, 243, .1); --hair2: rgba(255, 236, 243, .2);
-  --rose: #ff5c86; --rose-hi: #ff7d9f; --on-rose: #2a0612; --rose-t: #ff9db5;
+  --rose: #e8264f; --rose-hi: #ff4566; --on-rose: #ffffff; --rose-t: #ff7a8a;
   --danger: #ff7a5c; --danger-t: #ffa58f;
   --glass: rgba(16, 11, 18, .55); --glass-2: rgba(20, 14, 23, .78);
   --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, .11), inset 0 1px 0 rgba(255, 255, 255, .07);
@@ -66,14 +66,14 @@ h1:focus { outline: none; }
 /* Le halo rose sous la console et le reflet du sol, comme un produit posé sur scène. */
 .halo, .floor, .bloom { position: absolute; left: 50%; pointer-events: none; }
 .halo { top: 50%; width: 760px; height: 520px; translate: -50% -50%; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(227, 23, 63, .26), rgba(255, 63, 134, .11) 46%, rgba(163, 16, 47, .04) 72%, transparent);
+  background: radial-gradient(closest-side, rgba(227, 23, 63, .26), rgba(232,38,79, .11) 46%, rgba(163, 16, 47, .04) 72%, transparent);
   transition: opacity 1.4s var(--e-soft), scale 1.8s var(--e-soft), filter 1.4s var(--e-soft); }
 .floor { top: calc(100% - 6px); width: 520px; height: 90px; translate: -50% 0; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255, 157, 181, .14), rgba(255, 92, 134, .05) 60%, transparent);
+  background: radial-gradient(closest-side, rgba(255, 157, 181, .14), rgba(232, 38, 79, .05) 60%, transparent);
   transition: opacity 1.4s var(--e-soft); }
 /* L'allumage (fin) : une lumière qui monte derrière la console, puis reste. */
 .bloom { top: 46%; width: 560px; height: 380px; translate: -50% -50%; border-radius: 50%; opacity: 0;
-  background: radial-gradient(closest-side, rgba(255, 196, 212, .34), rgba(255, 92, 134, .16) 50%, transparent); }
+  background: radial-gradient(closest-side, rgba(255, 196, 212, .34), rgba(232, 38, 79, .16) 50%, transparent); }
 
 .console { position: absolute; inset: 0; animation: pxLogo 1.1s .05s var(--e-soft) both; transition: filter 1.2s var(--e-soft), translate 1.6s var(--e-soft); }
 .console .logo, .console > img { position: absolute; display: block; width: var(--s); height: var(--s); left: calc(var(--s) * -112 / 1024); top: calc(var(--s) * -290 / 1024); }
@@ -98,7 +98,7 @@ h1:focus { outline: none; }
 
 /* Chargement façon Blazon : un anneau néon tourne autour du blason et les chevrons montent l'un après l'autre. */
 .ring { position: absolute; left: 50%; top: 50%; width: calc(var(--s) * 500 / 1024); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; pointer-events: none;
-  background: conic-gradient(from 0deg, transparent 0 60%, #a3102f 75%, #ff3f86 92%, transparent);
+  background: conic-gradient(from 0deg, transparent 0 60%, #a3102f 75%, #e8264f 92%, transparent);
   -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
   mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
   filter: drop-shadow(0 0 6px #e3173f); opacity: 0; scale: .96; transition: opacity .8s var(--e-soft), scale .8s var(--e-soft);
@@ -115,7 +115,7 @@ h1:focus { outline: none; }
 /* État de la scène : fin (allumée), erreur (éteinte). */
 .scene.is-done .halo { scale: 1.12; }
 .scene.is-done .bloom { opacity: .9; animation: pxBloom 2.2s .1s var(--e-out) both; }
-.scene.is-done .console { filter: drop-shadow(0 0 36px rgba(255, 92, 134, .35)); translate: 0 -4px; }
+.scene.is-done .console { filter: drop-shadow(0 0 36px rgba(232, 38, 79, .35)); translate: 0 -4px; }
 @keyframes pxBloom { 0% { opacity: 0; scale: .7; } 30% { opacity: 1; } 100% { opacity: .9; scale: 1; } }
 .scene.is-err .halo { opacity: .35; filter: saturate(.4); }
 .scene.is-err .floor { opacity: .4; }
@@ -144,14 +144,14 @@ h1:focus { outline: none; }
   box-shadow: var(--glass-edge), 0 24px 48px -24px rgba(0, 0, 0, .8); }
 .go { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 196px; height: 54px; padding: 0 30px; border-radius: 18px;
   /* Style du blason : le même dégradé (rose en bas, rouge carmin en haut), un liseré clair et une lueur néon. */
-  background: linear-gradient(0deg, #ff3f86, #c4123a); color: #fff; font: 600 17px/1 var(--f); letter-spacing: .005em;
+  background: linear-gradient(0deg, #e8264f, #c4123a); color: #fff; font: 600 17px/1 var(--f); letter-spacing: .005em;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 0 0 1px rgba(255, 211, 222, .22), inset 0 -2px 0 rgba(90, 4, 24, .3),
-    0 0 20px -4px rgba(227, 23, 63, .65), 0 14px 30px -14px rgba(255, 63, 134, .75);
+    0 0 20px -4px rgba(227, 23, 63, .65), 0 14px 30px -14px rgba(232,38,79, .75);
   transition: background-color .2s, box-shadow .25s var(--e-md), scale .15s var(--e-out); }
 .go svg { width: 18px; height: 18px; flex: none; }
-.go:hover { background: linear-gradient(0deg, #ff5a98, #d8204a);
+.go:hover { background: linear-gradient(0deg, #ff4566, #d8204a);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .36), inset 0 0 0 1px rgba(255, 211, 222, .32), inset 0 -2px 0 rgba(90, 4, 24, .3),
-    0 0 28px -2px rgba(227, 23, 63, .8), 0 14px 30px -14px rgba(255, 63, 134, .85); }
+    0 0 28px -2px rgba(227, 23, 63, .8), 0 14px 30px -14px rgba(232,38,79, .85); }
 .go:active { scale: .98; }
 .go.is-quiet, .go.is-quiet:hover { background: rgba(255, 255, 255, .1); color: var(--bone); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
 .go.is-quiet:hover { background: rgba(255, 255, 255, .15); }
@@ -200,10 +200,10 @@ h1:focus { outline: none; }
 .meter i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .35), transparent); translate: -100% 0; animation: pxSweep 1.6s ease-in-out infinite; }
 @keyframes pxSweep { to { translate: 100% 0; } }
 @media (prefers-reduced-motion: reduce) { .meter i::after { animation: none; opacity: 0; } }
-.meter i { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; background: linear-gradient(90deg, #c4123a, #ff3f86); transform-origin: left; transform: scaleX(var(--p, 0)); transition: transform .6s var(--e-md); }
+.meter i { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; background: linear-gradient(90deg, #c4123a, #e8264f); transform-origin: left; transform: scaleX(var(--p, 0)); transition: transform .6s var(--e-md); }
 /* La gemme du blason en tête de barre */
 .meter b { position: absolute; top: 50%; left: calc(var(--p, 0) * 100%); width: 10px; height: 10px; translate: -50% -50%; rotate: 45deg; border-radius: 1px;
-  background: #ffd3de; box-shadow: 0 0 8px 1px rgba(255, 63, 134, .9); transition: left .6s var(--e-md); }
+  background: #ffffff; box-shadow: 0 0 8px 1px rgba(232,38,79, .9); transition: left .6s var(--e-md); }
 .meta { display: flex; justify-content: space-between; margin-top: 10px; font: 500 14px/20px var(--f); color: var(--t2); }
 
 /* Fin et erreur. */

@@ -123,6 +123,18 @@ export interface EditMusic {
   grid: number[]
   /** Le fichier n'est plus là (déplacé, effacé). */
   missing?: boolean
+  /** Lot A : le tempo trouvé par le détecteur, avant la correction du joueur (`bpm` et `grid` sont corrigés). */
+  bpm0?: number | null
+  /** La correction du tempo : 0,5 (÷2), 1 (aucune) ou 2 (×2). */
+  factor?: 0.5 | 1 | 2
+  /** Les temps décalés d'un demi-temps. */
+  half?: boolean
+}
+
+/** La correction du tempo qu'on demande : toujours absolue (calculée depuis les temps d'origine). */
+export interface EditMusicTempo {
+  factor: 0.5 | 1 | 2
+  half: boolean
 }
 
 /** Un plan du projet : un instant d'un clip (le kill), `lead` pas avant, `tail` pas après, ralenti ou non. */

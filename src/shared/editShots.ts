@@ -33,9 +33,16 @@ export interface ShotPart {
   speed: number
 }
 
+/** Les tempos que le montage accepte (en temps par minute) : hors de ces bornes, le pas retombe sur 0,5 s. */
+export const BPM_MIN = 40
+export const BPM_MAX = 250
+
+/** Un tempo que unitOf prend au sérieux. */
+export const bpmUsable = (bpm: number | null | undefined): bpm is number => typeof bpm === 'number' && Number.isFinite(bpm) && bpm >= BPM_MIN && bpm <= BPM_MAX
+
 /** Le pas du film : un temps de la musique (bpm), sinon 0,5 s. */
 export function unitOf(bpm: number | null | undefined): number {
-  return typeof bpm === 'number' && Number.isFinite(bpm) && bpm >= 40 && bpm <= 250 ? 60 / bpm : PLAIN_UNIT
+  return bpmUsable(bpm) ? 60 / bpm : PLAIN_UNIT
 }
 
 /** Demi-longueur, dans le clip, du morceau ralenti : il dure alors 2 pas dans le film. */
@@ -120,4 +127,95 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   const [x] = out.splice(from, 1)
   out.splice(Math.min(Math.max(0, to), out.length), 0, x)
   return out
+}
+
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a)
+
+/**
+ * Le pas des durées, en images : un plan compte un multiple de ce pas, pour que sa durée tombe juste à la fois en images, en
+ * échantillons de son et en microsecondes (3 images à 60 images/s : 50 ms). Les morceaux se suivent alors sans aucun arrondi.
+ */
+export function frameStep(fps: number): number {
+  return fps / gcd(fps, 20)
+}
+
+/** Un morceau à fabriquer, avec son nombre d'images pris sur la ligne de temps du film. */
+export interface FilmPiece {
+  clipId: string
+  inS: number
+  outS: number
+  speed: number
+  frames: number
+}
+
+/**
+ * Les morceaux d'un projet, avec leurs images : chaque fin de morceau est arrondie au pas des images sur la ligne de temps du
+ * film entier (pas morceau par morceau). L'écart avec les temps de la musique reste sous un demi-pas (25 ms à 60 images/s)
+ * et ne s'additionne jamais. Un morceau qui ne garderait aucun pas est laissé de côté.
+ * L'aperçu de l'éditeur utilise la même liste que la fabrication : les coupes tombent aux mêmes endroits.
+ */
+export function filmPieces(shots: readonly ShotSpec[], unit: number, fps: number): FilmPiece[] {
+  const step = frameStep(fps)
+  const out: FilmPiece[] = []
+  let t = 0
+  let doneFrames = 0
+  for (const s of shots) {
+    for (const p of shotParts(s, unit)) {
+      t += (p.toS - p.fromS) / p.speed
+      const end = Math.round((t * fps) / step) * step
+      const frames = end - doneFrames
+      if (frames < step) continue
+      doneFrames = end
+      out.push({ clipId: s.clipId, inS: p.fromS, outS: p.toS, speed: p.speed, frames })
+    }
+  }
+  return out
+}
+
+// ---------- corriger le tempo d'une musique ----------
+// Le détecteur de temps trouve parfois le double ou la moitié du vrai tempo, ou tombe entre deux temps. Trois corrections, sur la
+// grille (les temps, en secondes depuis le début du morceau). La correction se garde avec la grille d'origine : on ne recalcule
+// jamais « à l'aveugle » depuis la grille déjà corrigée (tempoApply part toujours de la grille d'origine).
+
+/** Tempo de la musique : ÷2, tel quel, ×2. */
+export type TempoFactor = 0.5 | 1 | 2
+
+/** Ajoute le milieu entre deux temps (le dernier temps reçoit un demi-temps après lui). */
+export function tempoDouble(grid: readonly number[]): number[] {
+  const out: number[] = []
+  for (let i = 0; i < grid.length; i++) {
+    out.push(grid[i])
+    const gap = i + 1 < grid.length ? grid[i + 1] - grid[i] : i > 0 ? grid[i] - grid[i - 1] : 0
+    if (gap > 0) out.push(r4(grid[i] + gap / 2))
+  }
+  return out
+}
+
+/** Garde un temps sur deux (le premier, le troisième, etc.). */
+export function tempoHalf(grid: readonly number[]): number[] {
+  return grid.filter((_, i) => i % 2 === 0)
+}
+
+/** Avance chaque temps d'un demi-intervalle local (jusqu'au milieu de l'intervalle qui le suit). */
+export function tempoShiftHalf(grid: readonly number[]): number[] {
+  return grid.map((t, i) => {
+    const gap = i + 1 < grid.length ? grid[i + 1] - t : i > 0 ? t - grid[i - 1] : 0
+    return r4(t + gap / 2)
+  })
+}
+
+/** Le tempo que donne ce facteur : null s'il sort des bornes du montage (alors on ne le propose pas). */
+export function tempoBpm(bpm0: number | null | undefined, factor: TempoFactor): number | null {
+  if (!bpmUsable(bpm0)) return null
+  const bpm = Math.round(bpm0 * factor * 100) / 100
+  return bpmUsable(bpm) ? bpm : null
+}
+
+/** La grille et le tempo d'une correction, calculés depuis la grille et le tempo d'origine. null : tempo hors bornes. */
+export function tempoApply(grid0: readonly number[], bpm0: number | null, factor: TempoFactor, half: boolean): { grid: number[]; bpm: number } | null {
+  const bpm = tempoBpm(bpm0, factor)
+  if (bpm === null) return null
+  let grid = factor === 2 ? tempoDouble(grid0) : factor === 0.5 ? tempoHalf(grid0) : [...grid0]
+  if (half) grid = tempoShiftHalf(grid)
+  return { grid, bpm }
 }

@@ -196,7 +196,13 @@ const Pages = (() => {
     items.push(['info', 'Voir la fiche', () => openGame(g.id, fr)])
     items.push([g.fav ? 'starf' : 'star', g.fav ? 'Retirer des favoris' : 'Ajouter aux favoris', async () => { await Real.favorite(g); toast(`${ic(g.fav ? 'starf' : 'star')} ${esc(g.name)} ${g.fav ? 'ajouté aux favoris' : 'retiré des favoris'}`, { ms: 1800 }) }])
     if (g.installed) items.push(['folder', 'Ouvrir le dossier', () => API.openGameFolder(g.rid).catch(() => toast('Le dossier du jeu n’a pas pu s’ouvrir. Réessaie depuis la fiche.', { tone: 'warn', ms: 3000 }))])
-    menuAt(t, items, { at, main: true, head: `<div class="mn-h"><img src="${esc(A(g.cover))}" alt=""><span><b>${esc(g.name)}</b>${g.time ? `<small>${esc(g.time)} de jeu</small>` : ''}</span></div>` })
+    menuAt(t, items, { at, main: true, head: `<i class="mn-art" aria-hidden="true" style="background-image:url('${esc(String(A(g.cover)).replace(/['\\\n\r\f]/g, (c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`))}')"></i><div class="mn-h"><img src="${esc(A(g.cover))}" alt=""><span><b>${esc(g.name)}</b>${g.time ? `<small>${esc(g.time)} de jeu</small>` : ''}</span></div>` })
+    // Le menu du jeu : sa jaquette floutée en fond, et le style caméléon sur « Lancer » (style.js)
+    const m = $('#pxMenu'); if (!m) return
+    m.classList.add('mn-game')
+    const st = GameStyle.now(g)
+    if (st) GameStyle.paint(m, st)
+    else GameStyle.of(g).then((r) => { if (m.isConnected) GameStyle.paint(m, r) })
   }
   const updOf = (g) => { if (!g.update) return ''; const pct = SU.updatePercent(g.update); return `<span class="lb-upd"><b>${esc(g.updateText)}</b>${pct != null ? `<i><i style="width:${pct}%"></i></i>` : ''}</span>` }
   // upd : la bande de mise à jour, ou la marque où renderLib la place
@@ -261,7 +267,7 @@ const Pages = (() => {
           <button class="gp-back btn sm" id="gpBack">${ic('back')}Revenir</button>
           <div class="gp-cover" id="gpCover" data-name="${esc(g.name)}" style="view-transition-name:game-cover"><img src="${esc(A(g.cover))}" alt="" draggable="false"></div>
           <div class="dock">
-          <button class="play-btn gp-play" id="gpPlay" ${g.update ? `title="${esc(g.updateAction.title)}"` : ''}><span class="pb-ring"></span><span class="pb-in">${ic(g.installed && !g.update ? 'play' : 'down')}<span>${esc(playLabel(g))}</span></span></button>
+          <button class="play-btn gp-play" id="gpPlay" ${g.update ? `title="${esc(g.updateAction.title)}"` : ''}><span class="pb-ring"></span><span class="pb-in">${ic(g.installed && !g.update ? 'play' : 'down')}<span>${esc(playLabel(g))}</span><span class="pb-chev" aria-hidden="true"><b>›</b><b>›</b><b>›</b></span></span></button>
           <div class="gp-mini">
             <button class="dk-b" id="gpFav" aria-pressed="${!!g.fav}" data-tip="${g.fav ? 'Retirer des favoris' : 'Ajouter aux favoris'}" data-tip-l><span class="ic-swap"><span class="a">${ic('star')}</span><span class="b">${ic('starf')}</span></span><span>Favori</span></button>
             <button class="dk-b" id="gpShelf" aria-haspopup="menu" aria-expanded="false" data-tip="Ranger dans une étagère">${ic('lib')}<span>Ranger</span></button>
@@ -277,6 +283,10 @@ const Pages = (() => {
         </div>
       </div>`
     $('#gpBack', sc).onclick = closeGame
+    // Boutons caméléon : le grand bouton et le titre prennent le style du jeu, comme sur l'accueil (style.js)
+    const gp = $('.gp', sc), st = GameStyle.now(g)
+    if (st) GameStyle.paint(gp, st)
+    else GameStyle.of(g).then((r) => { if (S.gameId === g.id && gp.isConnected) GameStyle.paint(gp, r) })
     $('#gpPlay', sc).onclick = (e) => {
       if (!g.installed) return install(g, e.currentTarget)
       if (g.update) { Real.openSteamDownloads(); return toast(`${ic('down')} ${esc(g.updateAction.title)}`, { ms: 3000 }) }
@@ -370,48 +380,273 @@ const Pages = (() => {
     } else if (t === 'ach') achBody(g, b)
   }
 
-  /* ---------- Amis, et membres du serveur Discord ---------- */
-  let offOpen = null, frQ = ''
+  /* ---------- Amis, et membres du serveur Discord : une rangée par jeu (Escouades), la fiche de l'ami à droite ---------- */
+  let capOpen = { on: false, mb: false, off: false }, frQ = '', comAll = false, comFor = null, dsY = new Map()
+  const amN = (n, one, many) => `${n} ${n > 1 ? many : one}`
+  const CAP = 8
+  const amWatchText = () => {
+    const w = FRIENDS.filter((f) => !f.member && Real.watched(f.id)).map((f) => f.n)
+    return w.length ? `Tu seras prévenu dès que ${w.length > 1 ? `${w.slice(0, -1).join(', ')} ou ${w[w.length - 1]}` : w[0]} lance un jeu.` : 'Choisis un ami et demande à être prévenu quand il lance un jeu.'
+  }
+  // Le défilement de la fiche est gardé par ami, hors du DOM : la fiche est redessinée à chaque relecture des amis
+  // Le défilement du dossier / du panneau est gardé par disposition ET par ami
+  const amKey = (lay, id) => `${lay}:${id}`
+  function amSaveDs() { const box = $('#frCard'), el = box && $('.am-ds-sc, .am-c-duo', box); if (el && box.dataset.f) dsY.set(amKey(el.classList.contains('am-c-duo') ? 'c' : 'a', box.dataset.f), el.scrollTop) }
+  // Réglage « style du jeu » changé : rangées et fiche se repeignent si la page est celle qu'on voit
+  const amRestyle = () => {
+    if (S.view !== 'friends' || S.gameId) return
+    $$('#sc-friends [data-lane]').forEach((el) => amStyle(el, G(el.dataset.lane)))
+    const d = $('#sc-friends .am-ds, #sc-friends .am-c'); if (d?.dataset.gid) amStyle(d, G(d.dataset.gid))
+  }
+  GameStyle.onChange(amRestyle)
+  const amUrl = (u) => String(u).replace(/'/g, '%27')
+  // Le style du jeu (boutons caméléon) : tout de suite s'il est connu, sinon quand la jaquette est lue ; jamais bloquant, un rendu plus récent l'emporte
+  function amStyle(el, g) {
+    if (!el || !g) return
+    const s = GameStyle.now(g)
+    if (s) { GameStyle.paint(el, s); return }
+    GameStyle.of(g).then((r) => { if (el.isConnected) GameStyle.paint(el, r) }).catch(() => {})
+  }
+  const amGo = (icon, html, attrs = '', cls = '') => `<button class="gs-btn ${cls}" ${attrs}><span class="gs-in">${ic(icon)}<span class="am-gt">${html}</span></span></button>`
+  const amLk = (icon, label, attrs = '', cls = '') => `<button class="am-lk ${cls}" ${attrs}>${icon ? ic(icon) : ''}${label}</button>`
+  const amDot = (f) => f.st === 'game' ? 'var(--a)' : f.st === 'online' ? 'var(--ok)' : f.st === 'away' ? 'var(--warn)' : 'rgba(247,241,244,.36)'
+  // La petite ligne d'un joueur : plateforme, puis ce qu'on peut faire avec lui
+  const amLine = (f) => [f.on, f.join ? 'rejoignable' : f.raw?.voice?.deafened ? 'casque coupé' : f.raw?.voice?.muted ? 'micro coupé' : f.voice ? 'en vocal' : f.device || ''].filter(Boolean).join(' · ')
+  // Sous le nom, dans les colonnes du bas : le vocal, « Absent », la dernière fois vu, sinon la plateforme
+  const amSub = (f) => f.member
+    ? f.activity || (f.voice ? (f.raw?.voice?.deafened ? `${f.voice} · casque coupé` : f.raw?.voice?.muted ? `${f.voice} · micro coupé` : `En vocal, ${f.voice}`) : f.st === 'away' ? 'Absent' : f.on)
+    : f.st === 'away' ? 'Absent' : f.st === 'offline' ? (f.seen ? f.seen.replace('Vu pour la dernière fois', 'Vu') : f.on) : f.on
+  // Deux dispositions au choix : « Escouades » (a) et « Portraits » (c). Le choix est gardé dans localStorage, tout autre contenu retombe sur « a »
+  const AM_KEY = 'pxv3-amis'
+  let amLay = 'a', cFil = '', cX = 0, cSel = null, cTimer = 0
+  const amInflight = new Map()
+  try { amLay = localStorage.getItem(AM_KEY) === 'c' ? 'c' : 'a' } catch { amLay = 'a' }
+  const amSetLay = (v) => { amLay = v === 'c' ? 'c' : 'a'; try { localStorage.setItem(AM_KEY, amLay) } catch { /* stockage indisponible : gardé pour cette session */ } }
+  // L'ami affiché : celui qu'on a choisi, sinon le premier en jeu, sinon le premier en ligne, sinon le premier de la liste
+  const amPick = () => FRIENDS.find((x) => x.id === S.friend) || FRIENDS.find((f) => f.st === 'game') || FRIENDS.find((f) => !f.member && (f.st === 'online' || f.st === 'away')) || FRIENDS[0]
+  const amSwitch = () => !FRIENDS.length ? '' : `<div class="am-sw" role="group" aria-label="Disposition de la page">${[['a', 'Escouades'], ['c', 'Portraits']].map(([k, l]) => `<button data-lay="${k}" aria-pressed="${amLay === k}">${l}</button>`).join('')}</div>`
+  // Portraits : jamais de rose. La teinte d’une personne est ramenée dans 20..250 (orange, vert, bleu, violet) ; pour les avatars (.av : bas du dégradé à +34) dans 20..216, pour que le bas reste sous 250
+  const amHue = (h, span = 230) => Math.round(20 + ((Number(h) || 0) % 360) * span / 360)
+  const amCav = (html) => html.replace(/--h:(\d+)/, (_, h) => `--h:${amHue(h, 196)}`)
+  const amAv = (n, size) => amCav(avatar(n, size))
+  // Une seule demande de profil à la fois par ami
+  const amProfile = (id) => { if (!amInflight.has(id)) amInflight.set(id, Promise.resolve(Real.friendProfile(id)).finally(() => amInflight.delete(id))); return amInflight.get(id) }
+  // Un profil privé ne donne ni heures, ni nombre de jeux, ni jeux en commun (le niveau peut rester)
+  const amPub = (p) => p?.gamesHidden ? { ...p, gameCount: 0, totalMinutes: 0, games: [], recent: [], badgeCount: 0 } : p
+  // Où est le focus ? Une clé de sélecteur pour le retrouver après un nouveau dessin
+  function amFocusKey(el, root) {
+    if (!el || el === document.body || (root && !root.contains(el))) return null
+    const q = (v) => CSS.escape(v)
+    if (el.dataset?.lay) return `[data-lay="${el.dataset.lay}"]`
+    if (el.dataset?.fil != null && el.closest('.am-c-fil')) return `[data-fil="${el.dataset.fil}"]`
+    if (el.classList.contains('am-c-card')) return `.am-c-card[data-id="${CSS.escape(el.dataset.id)}"]`
+    if (el.closest('#frCard')) return el.id ? `#frCard #${q(el.id)}` : el.dataset?.id ? `#frCard [data-id="${CSS.escape(el.dataset.id)}"]` : null
+    return el.id === 'frRef' ? '#frRef' : null
+  }
+  // Une personne en petite ligne (colonnes de la disposition a, liste du salon de la disposition c)
+  const amMini = (f, sel, o = {}) => `<button class="am-mini ${f.id === sel ? 'on' : ''} ${f.st === 'offline' ? 'off' : ''}" aria-pressed="${f.id === sel}" data-id="${esc(f.id)}" ${o.tag === false ? '' : `data-n="${esc(f.n.toLowerCase())}"`} ${o.more ? `data-x="1" data-g="${o.grp}"` : ''}><span class="am-avw">${amAv(f.n, 32)}<i style="background:${amDot(f)}"></i></span><span class="am-mt"><b title="${esc(f.n)}">${esc(f.n)}</b><small>${esc(o.sub ?? amSub(f))}</small></span></button>`
+  const amLvColor = (l) => l >= 100 ? '#c9a14a' : ['#9b9b9b', '#c02942', '#d95b43', '#fecc23', '#467a3c', '#4e8ddb', '#7652c9', '#c252c9', '#8a5a6e', '#997c52'][Math.floor(l / 10)]
+  const amRegion = (c) => { try { return new Intl.DisplayNames(['fr'], { type: 'region' }).of(c) } catch { return c } }
+  // Tout ce que les deux dispositions tirent d'un ami et de son profil Steam (mêmes données, mêmes règles)
+  function amFacts(f, p0) {
+    const p = amPub(p0)
+    const g = f.game ? G(f.game) : null, steam = f.raw?.platform === 'steam'
+    const line = f.st === 'game' ? `Joue à <b>${esc(f.gameName)}</b>` : f.member ? (f.activity ? esc(f.activity) : f.voice ? 'En vocal' : 'Membre du serveur Discord') : f.st === 'online' ? 'En ligne' : f.st === 'away' ? 'Absent' : esc(f.seen || 'Hors ligne')
+    const kpi = [
+      p?.gameCount && ['Jeux', p.gameCount.toLocaleString('fr-FR')],
+      p?.totalMinutes && ['Heures de jeu', bigHours(p.totalMinutes)],
+      p?.badgeCount && ['Badges', p.badgeCount.toLocaleString('fr-FR')],
+      p?.friendCount && ['Amis', p.friendCount.toLocaleString('fr-FR')],
+      f.since && ['Ami depuis', f.since.replace('Ami depuis ', '')],
+      !steam && ['Sur', f.on], f.device && ['Appareil', f.device], f.voice && ['En vocal', f.voice]
+    ].filter(Boolean)
+    // Jeux en commun : ceux de ta bibliothèque Steam qu'il a aussi, les plus joués à vous deux d'abord
+    const common = (p?.games || []).map((x) => ({ x, g: Real.byRid(`steam:${x.appId}`) })).filter((o) => o.g).map((o) => ({ ...o, me: o.g.raw?.playtime || 0 })).sort((a, b) => (b.x.minutes + b.me) - (a.x.minutes + a.me))
+    return {
+      g, steam, line, kpi, common, url: Shared.friendView.steamProfileUrl(f.raw),
+      bg: p?.background || (g ? A(g.hero || g.cover) : ''),
+      recent: (p?.recent || []).map((x) => ({ x, g: Real.byRid(`steam:${x.appId}`) })),
+      watch: Real.watched(f.id), canWatch: !f.member && (steam || f.raw?.platform === 'psn'),
+      meta: [p?.country && amRegion(p.country), p?.memberSince && `Membre depuis ${new Date(p.memberSince).getFullYear()}`].filter(Boolean),
+      ava: p?.avatarAnimated || p?.avatarFull || f.avatar
+    }
+  }
+  // Les actions secondaires, en liens sans cadre (skip : celle qui est déjà le bouton principal)
+  const amLinks = (f, fa, skip = '') => [fa.steam && skip !== 'fcMsg' && amLk('chat', 'Écrire', 'id="fcMsg"'), fa.canWatch && amLk(fa.watch ? 'check' : 'bell', fa.watch ? 'Tu seras prévenu' : 'Préviens-moi quand il joue', `id="fcWatch" aria-pressed="${fa.watch}"`, fa.watch ? 'is-on' : ''), fa.url && amLk('link', 'Profil Steam', 'id="fcProfile"'), f.voiceId && skip !== 'fcVoice' && amLk('mic', 'Ouvrir le salon', 'id="fcVoice"'), f.member && amLk('close', 'Masquer ce membre', 'id="fcHide"')].filter(Boolean)
+  const amDuel = (fa) => {
+    if (!fa.common.length) return ''
+    const shown = comAll ? fa.common.slice(0, 8) : fa.common.slice(0, 3), mx = Math.max(1, ...fa.common.flatMap(({ x, me }) => [x.minutes, me]))
+    return `<section><h3 class="am-ds-h"><span>Jeux en commun</span><span class="num">${fa.common.length}</span></h3><ul class="am-duel">${shown.map(({ x, g: mg, me }) => `<li><button class="am-du" data-g="${esc(mg.id)}" aria-label="${esc(mg.name)} : lui ${esc(hoursOf(x.minutes) || '0 h')}, toi ${esc(hoursOf(me) || '0 h')}"><img src="${esc(A(mg.cover))}" alt="" loading="lazy" decoding="async"><span class="am-du-m"><b>${esc(mg.name)}</b><span class="am-bar"><i style="width:${x.minutes / mx * 100}%"></i></span><span class="am-bar b2"><i style="width:${me / mx * 100}%"></i></span></span><span class="am-du-n num"><span>Lui <b>${esc(hoursOf(x.minutes) || '0 h')}</b></span><span>Toi <b>${esc(hoursOf(me) || '0 h')}</b></span></span></button></li>`).join('')}</ul>${fa.common.length > 3 ? `<button class="am-more" id="fcCom" aria-expanded="${comAll}">${comAll ? 'Réduire' : `Voir les ${fa.common.length} jeux en commun`}</button>` : ''}</section>`
+  }
+  const amRecent = (fa) => fa.recent.length ? `<section><h3 class="am-ds-h"><span>Ces 2 dernières semaines</span></h3><ul class="am-rec">${fa.recent.map(({ x, g: mg }) => `<li><img src="${esc(mg ? A(mg.hero || mg.cover) : steamArt(x.appId))}" alt="" loading="lazy" decoding="async"><b>${esc(mg?.name || x.name || 'Jeu Steam')}</b><span class="num">${esc(hoursOf(x.recentMinutes))}</span></li>`).join('')}</ul></section>` : ''
+  const amNotes = (f, p) => (p?.gamesHidden ? '<p class="am-note">Son profil Steam est privé : ses jeux et ses heures ne sont pas visibles.</p>' : '') + (f.raw?.platform === 'psn' ? '<p class="am-note">PlayStation ne donne que sa présence et son jeu.</p>' : f.member ? `<p class="am-note">Membre du serveur ${esc(Real.st.friendsRes?.discordServer || 'Discord')}, pas un ami : Discord ne donne que son statut, son activité et son salon vocal.</p>` : '')
+  const amAva = (f, p, fa, c) => `<div class="am-ds-av">${fa.ava ? `<span class="am-ds-img"><img src="${esc(fa.ava)}" alt=""></span>` : amAv(f.n, 84)}${p?.avatarFrame ? `<img class="am-ds-fr" src="${esc(p.avatarFrame)}" alt="">` : ''}</div>`
+  // Avatar ou cadre illisible : les initiales, ou rien du tout
+  function amAvaFix(box, f, c) {
+    const im = $('.am-ds-img img', box), fr = $('.am-ds-fr', box)
+    const noAva = () => { const w = $('.am-ds-img', box); if (w) w.outerHTML = `<span class="av" style="--h:${amHue(f.hue, 196)}" aria-hidden="true">${esc(String(f.n)[0] || '?')}</span>` }
+    if (im) { im.addEventListener('error', noAva, { once: true }); if (im.complete && !im.naturalWidth) noAva() }
+    if (fr) { fr.addEventListener('error', () => { fr.hidden = true }, { once: true }); if (fr.complete && !fr.naturalWidth) fr.hidden = true }
+  }
+  // Les gestes de la fiche (dossier ou portrait) : mêmes appels dans les deux dispositions
+  function amWire(box, f, p, fa, repaint) {
+    const g = fa.g
+    $('#fcPlay', box)?.addEventListener('click', () => launchFromSheet(g))
+    $('#fcJoin', box)?.addEventListener('click', () => API.friendSteam('join', f.id).catch((e) => toast(esc(errText(e)), { tone: 'warn', ms: 4000 })))
+    $('#fcMsg', box)?.addEventListener('click', () => API.friendSteam('message', f.id).catch(() => toast('Steam n’a pas pu s’ouvrir.', { tone: 'warn', ms: 3000 })))
+    $('#fcWatch', box)?.addEventListener('click', async () => {
+      const on = !Real.watched(f.id)
+      try { await Real.setWatch(f.id, on); toast(on ? `${ic('bell')} Tu seras prévenu quand ${esc(f.n)} lance un jeu` : `Plus d’alerte pour ${esc(f.n)}`, { ms: 2400 }) } catch (e) { toast(esc(errText(e)), { tone: 'warn', ms: 4000 }) }
+      const cp = $('.am-calm-p'); if (cp) cp.textContent = amWatchText()
+      if (amPick()?.id === f.id) repaint()
+    })
+    $('#fcCom', box)?.addEventListener('click', () => { comAll = !comAll; repaint(); $('#fcCom', box)?.focus() })
+    $$('.am-du', box).forEach((b) => b.onclick = () => openGame(b.dataset.g, $('img', b)))
+    $('#fcProfile', box)?.addEventListener('click', () => API.openExternal(fa.url))
+    $('#fcVoice', box)?.addEventListener('click', () => API.openDiscordChannel(f.voiceId).catch(() => {}))
+    $('#fcHide', box)?.addEventListener('click', async () => {
+      Real.applyFriends(await API.setMemberHidden(f.n, true))
+      toast(`${esc(f.n)} masqué de la liste`, { ms: 5000, action: { label: 'Annuler', fn: async () => Real.applyFriends(await API.setMemberHidden(f.n, false)) } })
+    })
+  }
+  // La carte d'une personne sur l'étagère de la disposition c : son vrai avatar, sinon son initiale sur sa teinte
+  function amCard(f, sel) {
+    const p = f.raw?.platform === 'steam' ? Real.cachedProfile(f.id) : null, img = p?.avatarAnimated || p?.avatarFull || f.avatar
+    const small = f.st === 'game' ? (f.join ? 'Rejoignable' : f.voice ? `Vocal ${f.voice}` : f.device || f.on) : f.member && !f.activity && f.voice ? `Vocal ${f.voice}` : amSub(f) || f.on
+    const h = amHue(f.hue), on = f.id === sel
+    return `<button class="am-c-card ${f.st === 'offline' ? 'x' : ''} ${on ? 'on' : ''}" aria-pressed="${on}" aria-label="${esc(`${f.n}, ${small}`)}" tabindex="${on ? 0 : -1}" data-id="${esc(f.id)}" data-n="${esc(f.n.toLowerCase())}" title="${esc(f.n)}" style="--h:${h};--h2:${Math.min(250, h + 30)}"><span class="am-c-ini" aria-hidden="true">${esc(String(f.n)[0]?.toUpperCase() || '?')}</span>${img ? `<img class="am-c-img" src="${esc(img)}" alt="" loading="lazy" decoding="async">` : ''}<i class="am-c-s" style="background:${amDot(f)}"></i>${f.voice ? `<span class="am-c-m">${ic('mic')}</span>` : ''}<span class="am-c-t" aria-hidden="true"><b>${esc(f.n)}</b><small>${esc(small)}</small></span></button>`
+  }
+  // La disposition « Portraits » : colonne (comptes en erreur, scène avec héros + salons vocaux + panneau, étagère « Ton cercle »)
+  function amPortraits(c) {
+    const { sel, lanes, online, members, off, res, tools } = c
+    const nIn = lanes.reduce((n, l) => n + l.list.length, 0)
+    let gi = 0
+    const grp = (key, title, list, img) => { if (!list.length) return ''; const id = `cg${gi++}`; return `<div class="am-c-g" data-grp="${key}" role="group" aria-labelledby="${id}"><div class="am-c-gh">${img ? `<img src="${esc(img)}" alt="">` : ''}<span id="${id}">${esc(title)} · ${list.length}</span></div><div class="am-c-gc">${list.map((f) => amCard(f, sel)).join('')}</div></div>` }
+    const k = cFil
+    const row = lanes.map((l) => grp('game', l.g?.short || l.name, l.list, l.g ? A(l.g.cover) : '')).join('') + grp('on', 'En ligne', online) + grp('mem', res.discordServer ? `Serveur ${res.discordServer}` : 'Serveur Discord', members) + grp('off', 'Hors ligne', off)
+    const fil = [['', 'Tous'], ['game', `En jeu ${nIn}`], ['on', `En ligne ${online.length}`], ['mem', `Serveur ${members.length}`], ['off', `Hors ligne ${off.length}`]]
+    const chips = VOICE.slice(0, 2).map((r) => `<button class="am-c-chip" data-voice="${esc(r.id)}" title="Ouvrir le salon dans Discord">${ic('mic')}<span class="am-c-cn"><b>${esc(r.name)}</b> · ${amN(r.people.length, 'membre', 'membres')}</span><span class="am-stk">${r.people.slice(0, 4).map((p) => amAv(p.n, 26)).join('')}</span></button>`).join('') + (VOICE.length > 2 ? `<span class="am-c-more" aria-label="${VOICE.length - 2} autres salons">+${VOICE.length - 2}</span>` : '')
+    // Les comptes en erreur : une ligne chacun, deux au plus puis « +N », dans le flux de la page
+    const ents = Object.entries(res.errors || {})
+    const notes = ents.length ? `<div class="am-c-notes">${ents.slice(0, 2).map(([pf, m]) => `<div class="am-c-note">${ic('warn')}<p title="${esc(m)}"><b>${esc({ steam: 'Steam', discord: 'Discord', psn: 'PlayStation' }[pf] || pf)}</b> : ${esc(m)}</p><button class="am-lk" data-fix>Voir mes comptes</button></div>`).join('')}${ents.length > 2 ? `<p class="am-c-nm">+${ents.length - 2} autre${ents.length > 3 ? 's' : ''} compte${ents.length > 3 ? 's' : ''} en erreur</p>` : ''}</div>` : ''
+    return `<div class="am-c"><div class="am-c-bg" id="cBg"></div><h1 class="am-c-h1">Amis</h1>
+      ${notes}
+      <div class="am-c-stage"><div id="frCard" class="am-c-fr"></div>${chips ? `<div class="am-c-voice" role="group" aria-label="Salons vocaux">${chips}</div>` : ''}</div>
+      <div class="am-c-shelf"><div class="am-c-sh"><p class="am-eye"><i></i>Ton cercle<span>${amN(FRIENDS.length, 'personne', 'personnes')}, ceux qui jouent d’abord</span></p>
+        <div class="am-c-fil" role="group" aria-label="Filtrer l’étagère">${fil.map(([key, l]) => `<button data-fil="${key}" aria-pressed="${k === key}">${l}</button>`).join('')}</div><div class="am-tools">${tools}</div></div>
+        <div class="am-c-row" id="cRow">${row}<p class="am-c-0" hidden>Personne ici pour l’instant.</p><div class="am-none" id="frNone" hidden><p>Aucun ami ne s’appelle comme ça.</p>${amLk('', 'Effacer la recherche', 'id="frClr"')}</div></div></div></div>`
+  }
+  const amCards = (row) => $$('.am-c-card', row).filter((c) => !c.hidden && !c.closest('.am-c-g[hidden]'))
+  // L'étagère est un seul arrêt de tabulation : la carte choisie (sinon la première visible)
+  function amRove(row) {
+    const cards = amCards(row), t = cards.find((c) => c.classList.contains('on')) || cards[0]
+    $$('.am-c-card', row).forEach((c) => c.setAttribute('tabindex', c === t ? '0' : '-1'))
+  }
+  // Choisir quelqu'un sans refaire la page : seuls l'état des cartes, le héros, le fond et le panneau changent
+  function amChoose(id, o = {}) {
+    S.friend = id
+    const row = $('#cRow')
+    if (row) {
+      $$('.am-c-card', row).forEach((x) => { const on = x.dataset.id === id; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on) })
+      amRove(row)
+      const c = $(`.am-c-card[data-id="${CSS.escape(id)}"]`, row)
+      if (c && !c.hidden) { const r = row.getBoundingClientRect(), cr = c.getBoundingClientRect(); if (cr.left < r.left + 72) row.scrollLeft -= r.left + 72 - cr.left; else if (cr.right + 16 > r.right - 110) row.scrollLeft += cr.right + 16 - (r.right - 110) }
+      cX = row.scrollLeft
+    }
+    cSel = id
+    friendCard(o.delay || 0)
+    if (o.focus) o.focus.focus({ preventScroll: true })
+  }
   function renderFriends() {
+    if (Real.st.friendsRes) amSaveDs()
     Fluid.set(['#071a24', '#0e3a4a', '#1f8a9c', '#4b2a72'])
     const sc = $('#sc-friends'), res = Real.st.friendsRes
     if (!res) {
-      sc.innerHTML = `<header class="pg-head"><div><h1 class="pg-title">Amis</h1><p class="pg-sub" role="status">Lecture de tes comptes…</p></div></header><div class="fr-grid" aria-hidden="true"><div class="fr-list">${[0, 1, 2, 3].map(() => '<div class="fr fr-sk"><i></i><span><i></i><i></i></span></div>').join('')}</div></div>`
+      sc.classList.remove('am-on', 'am-c-on')
+      sc.innerHTML = `<header class="am-hd"><div><p class="am-eye"><i></i>Amis</p><div class="am-ttl"><h1 class="am-title">Amis</h1><span class="am-sub" role="status">Lecture de tes comptes…</span></div></div></header><div class="am-sk" aria-hidden="true">${[0, 1, 2].map(() => '<div class="am-sq am-sk-r"><i></i><i></i></div>').join('')}</div>`
       return
     }
-    const typing = document.activeElement?.id === 'frQ'
+    const lay = FRIENDS.length ? amLay : 'a'
+    sc.classList.add('am-on'); sc.classList.toggle('am-c-on', lay === 'c')
+    const act = document.activeElement, typing = act?.id === 'frQ'
+    const fkey = amFocusKey(act, sc)
+    const oldRow = $('#cRow', sc); if (oldRow) cX = oldRow.scrollLeft
+    const keepY = $('.am-main', sc)?.scrollTop || 0
+    const sel = amPick()?.id
     const inGame = FRIENDS.filter((f) => f.st === 'game')
     const byGame = new Map()
     inGame.forEach((f) => { const k = f.gameName || '?'; if (!byGame.has(k)) byGame.set(k, []); byGame.get(k).push(f) })
+    const lanes = [...byGame.entries()].map(([name, list]) => { const gid = list.find((f) => f.game)?.game; return { name, list, g: gid ? G(gid) : null } }).sort((a, b) => b.list.length - a.list.length)
     const online = FRIENDS.filter((f) => !f.member && (f.st === 'online' || f.st === 'away'))
     const members = FRIENDS.filter((f) => f.member && f.st !== 'game')
-    const off = FRIENDS.filter((f) => !f.member && f.st === 'offline')
-    // Sous le nom, seulement ce que la ligne ne dit pas déjà : le vocal, « Absent », la dernière fois vu. La plateforme est à droite, le statut dans le titre du groupe.
-    const subOf = (f) => (f.member ? f.activity || (f.voice ? `En vocal, ${f.voice}` : '') : f.st === 'away' ? 'Absent' : f.st === 'online' ? '' : f.seen ? f.seen.replace('Vu pour la dernière fois', 'Vu') : '')
-    const row = (f) => `<button class="fr ${S.friend === f.id ? 'on' : ''}" data-id="${esc(f.id)}" data-n="${esc(f.n.toLowerCase())}">${avatar(f.n, 36)}<i class="fr-s st-${f.st === 'away' ? 'online' : f.st}"></i><span class="fr-t"><b>${esc(f.n)}</b>${subOf(f) ? `<span>${esc(subOf(f))}</span>` : ''}</span><span class="fr-on">${esc(f.on)}</span></button>`
-    // Les amis en jeu d'abord, en grandes cartes : la jaquette du jeu, et qui y joue
-    const card = ([name, list]) => { const g = list[0].game ? G(list[0].game) : null; return `<article class="fn ${g ? 'has-art' : ''}">${g ? `<img class="fn-art" src="${esc(A(g.hero || g.cover))}" alt="">` : ''}<div class="fn-in"><h3>${esc(name)}</h3><div class="fn-p">${list.map((f) => `<button class="fn-f ${S.friend === f.id ? 'on' : ''}" data-id="${esc(f.id)}" data-n="${esc(f.n.toLowerCase())}">${avatar(f.n, 28)}<span>${esc(f.n)}</span><em>${esc(f.on)}</em></button>`).join('')}</div></div></article>` }
-    const errs = Object.entries(res.errors || {}).map(([p, m]) => `<div class="lb-note">${ic('warn')}<p><b>${esc({ steam: 'Steam', discord: 'Discord', psn: 'PlayStation' }[p])}</b> : ${esc(m)}</p><button class="btn sm" data-fix>Voir mes comptes</button></div>`).join('')
-    sc.innerHTML = `<header class="pg-head"><div><h1 class="pg-title">Amis</h1></div><div class="fr-tools">${FRIENDS.length > 6 ? `<label class="fr-q">${ic('search')}<span class="vh">Chercher dans tes amis</span><input id="frQ" type="search" placeholder="Chercher un ami" autocomplete="off" spellcheck="false" value="${esc(frQ)}"></label>` : ''}<button class="btn sm" id="frRef" data-tip="Relire tes comptes" data-tip-b data-tip-r>${ic('refresh')}Actualiser les amis</button></div></header>
-      ${errs}
-      ${byGame.size ? `<section class="fr-now" aria-label="En jeu maintenant"><h2>En jeu maintenant <span class="fr-c">${inGame.length}</span></h2><div class="fn-row">${[...byGame.entries()].map(card).join('')}</div></section>` : ''}
-      ${FRIENDS.length ? `<div class="fr-grid">
-        <div class="fr-list">
-          ${online.length ? `<section class="fr-g"><header><h2>En ligne</h2><span class="fr-c">${online.length}</span></header>${online.map(row).join('')}</section>` : ''}
-          ${members.length ? `<section class="fr-g"><header><h2>Membres du serveur${res.discordServer ? ` ${esc(res.discordServer)}` : ''}</h2><span class="fr-c">${members.length}</span></header>${members.map(row).join('')}</section>` : ''}
-          ${off.length ? `<details class="fr-g fr-off" ${offOpen ?? !(online.length + inGame.length) ? 'open' : ''}><summary><h2>Hors ligne</h2><span class="fr-c">${off.length}</span>${ic('chevd')}</summary>${off.map(row).join('')}</details>` : ''}
-          ${!online.length && !members.length && !off.length ? '<p class="fr-none">Tous tes amis connectés sont en jeu.</p>' : ''}
-          <div class="fr-none" id="frNone" hidden><p>Aucun ami ne s’appelle comme ça.</p><button class="btn sm" id="frClr">Effacer la recherche</button></div>
-        </div>
-        <div class="fr-side">
-          <div id="frCard"></div>
-          ${VOICE.length ? `<section class="vc"><h2>Vocal sur ton serveur Discord</h2>${VOICE.map((v) => `<div class="vc-r"><span class="vc-i">${ic('mic')}</span><div class="vc-t"><b>${esc(v.name)}</b><span>${v.people.length} membre${v.people.length > 1 ? 's' : ''}</span></div><span class="vc-av">${v.people.slice(0, 5).map((p) => avatar(p.n, 26)).join('')}</span><button class="btn sm" data-voice="${esc(v.id)}">Ouvrir dans Discord</button></div>`).join('')}</section>` : ''}
-        </div>
-      </div>` : !errs ? `<div class="empty"><span class="empty-x">${ic('users')}</span><h2>Vois qui joue, et à quoi</h2><p>Relie Steam, PlayStation ou un serveur Discord : tes amis et les membres du serveur s’affichent ici.</p><button class="btn sm rose" id="frAcc">Connecter un compte</button></div>` : ''}`
-    $('.fr-off', sc)?.addEventListener('toggle', (e) => { if (!frQ) offOpen = e.currentTarget.open })
-    $$('.fr, .fn-f', sc).forEach((b) => b.onclick = () => { S.friend = b.dataset.id; $$('.fr, .fn-f', sc).forEach((x) => x.classList.toggle('on', x.dataset.id === S.friend)); friendCard() })
+    const off = FRIENDS.filter((f) => !f.member && f.st === 'offline').sort((a, b) => (b.raw?.lastSeen || 0) - (a.raw?.lastSeen || 0))
+    const nOff = lanes.length ? 3 : 6
+    const nAm = inGame.filter((f) => !f.member).length, nMb = inGame.length - nAm
+    const who = [nAm ? amN(nAm, 'ami', 'amis') : '', nMb ? amN(nMb, 'membre', 'membres') : ''].filter(Boolean).join(' et ')
+    const sub = [online.length ? `${online.length} en ligne` : '', VOICE.length ? amN(VOICE.length, 'salon vocal', 'salons vocaux') : ''].filter(Boolean).join(' · ')
+    const plaque = (f, big, line) => `<button class="am-pl ${f.id === sel ? 'on' : ''}" aria-pressed="${f.id === sel}" data-id="${esc(f.id)}" data-n="${esc(f.n.toLowerCase())}" ${big ? 'data-big' : ''}>${amAv(f.n, big ? 52 : 40)}<span class="am-pt"><b title="${esc(f.n)}">${esc(f.n)}</b><small>${f.voice && !line ? ic('mic') : ''}<span>${esc(line || amLine(f))}</span></small></span></button>`
+    const lane = ({ name, list, g }, big) => {
+      const j = list.find((f) => f.join), dev = list.find((f) => f.device)
+      const rooms = VOICE.filter((r) => r.people.some((p) => list.some((f) => f.id === p.id)))
+      const act = j ? amGo('play', `Rejoindre <b class="am-nm">${esc(j.n)}</b>`, `data-join="${esc(j.id)}" title="Rejoindre ${esc(j.n)}"`) : g && g.installed ? amGo('play', `Lancer <b class="am-nm">${esc(g.short)}</b>`, `data-play="${esc(g.id)}"`) : dev ? `<span class="am-dev">Il joue sur ${esc(dev.device)}</span>` : ''
+      return `<section class="am-sq ${big ? 'big' : ''} ${g ? 'has-art' : ''}" aria-label="${esc(name)}" ${g ? `data-lane="${esc(g.id)}" style="--img:url('${amUrl(esc(A(g.hero || g.cover)))}')"` : ''}>${g ? '<div class="am-sq-art"></div>' : ''}
+        <div class="am-sq-t"><h2 title="${esc(name)}">${esc(name)}</h2><p class="am-sq-n"><i></i>${amN(list.length, 'joueur', 'joueurs')}</p>${rooms.map((r) => `<button class="am-sq-v" data-voice="${esc(r.id)}" title="Ouvrir le salon dans Discord">${ic('mic')}<span>Salon ${esc(r.name)} · ${r.people.length} en vocal</span></button>`).join('')}</div>
+        <div class="am-sq-p">${list.map((f) => plaque(f, big)).join('')}</div>
+        <div class="am-sq-a">${act}</div></section>`
+    }
+    const mini = (f, grp, more) => amMini(f, sel, { grp, more })
+    const room = (r) => `<div class="am-room" data-n="${esc(r.people.map((p) => p.n.toLowerCase()).join(' '))}">${ic('mic')}<span class="am-rt"><b title="${esc(r.name)}">${esc(r.name)}</b><small>${amN(r.people.length, 'membre', 'membres')}</small></span><span class="am-stk">${r.people.slice(0, 4).map((p) => amAv(p.n, 24)).join('')}</span>${r.people.length > 4 ? `<small>+${r.people.length - 4}</small>` : ''}${amLk('', 'Ouvrir', `data-voice="${esc(r.id)}" aria-label="Ouvrir le salon ${esc(r.name)} dans Discord"`, 'sm')}</div>`
+    // Au-delà de n lignes, un lien « Voir les N … » ouvre le reste ; la recherche l'ouvre aussi
+    const capList = (list, grp, n, what) => list.map((f, i) => mini(f, grp, i >= n)).join('') + (list.length > n ? amLk('', '', `data-act="cap" data-g="${grp}" data-total="${list.length}" data-what="${what}" aria-expanded="false"`, 'sm') : '')
+    const col = (t, n, body) => `<section class="am-bc"><h2 class="am-bh"><span>${t}</span><b class="num">${n}</b></h2>${body}</section>`
+    const calm = `<section class="am-sq am-calm" aria-label="Personne ne joue">${`<svg class="am-shield" viewBox="10 1 100 118" aria-hidden="true"><path d="${HX_SHIELD}"/></svg>`}
+      <div class="am-sq-t"><h2>Personne ne joue pour l’instant</h2><p class="am-sq-n"><i></i>${online.length ? amN(online.length, 'ami connecté', 'amis connectés') : 'Aucun ami connecté'}</p></div>
+      <p class="am-calm-p">${esc(amWatchText())}</p>
+      ${online.length ? `<div class="am-sq-p">${online.map((f) => plaque(f, true, [f.on, f.st === 'away' ? 'absent' : 'en ligne'].join(' · '))).join('')}</div>` : ''}</section>`
+    const errs = Object.entries(res.errors || {}).map(([p, m]) => `<div class="lb-note">${ic('warn')}<p><b>${esc({ steam: 'Steam', discord: 'Discord', psn: 'PlayStation' }[p])}</b> : ${esc(m)}</p><button class="am-lk" data-fix>Voir mes comptes</button></div>`).join('')
+    const bench = [
+      !lanes.length || !online.length ? '' : col('En ligne', online.length, capList(online, 'on', CAP, 'en ligne')),
+      members.length ? col(res.discordServer ? `Serveur ${esc(res.discordServer)}` : 'Serveur Discord', members.length, capList(members, 'mb', CAP, members.length > 1 ? 'membres' : 'membre')) : '',
+      VOICE.length ? col('Vocal', VOICE.reduce((n, r) => n + r.people.length, 0), VOICE.map(room).join('')) : '',
+      off.length ? col('Hors ligne', off.length, capList(off, 'off', nOff, 'hors ligne')) : ''
+    ].join('')
+    const tools = `${amSwitch()}${FRIENDS.length > 6 ? `<label class="am-q">${ic('search')}<span class="vh">Chercher dans tes amis</span><input id="frQ" type="search" placeholder="Chercher un ami" autocomplete="off" spellcheck="false" value="${esc(frQ)}"></label>` : ''}<button class="am-ic" id="frRef" aria-label="Actualiser les amis" data-tip="Relire tes comptes" data-tip-b data-tip-r>${ic('refresh')}</button>`
+    const head = `<header class="am-hd"><div><p class="am-eye"><i></i>Amis · ce soir</p><div class="am-ttl"><h1 class="am-title">${FRIENDS.length ? (who ? `${who} en jeu` : 'Soirée calme') : 'Amis'}</h1>${sub ? `<span class="am-sub">${sub}</span>` : ''}</div></div><div class="am-tools">${tools}</div></header>`
+    sc.innerHTML = lay === 'c' ? amPortraits({ sel, lanes, online, members, off, res, tools }) : FRIENDS.length
+      ? `<div class="am-page"><div class="am-main">${head}${errs}${lanes.length ? lanes.map((l, i) => lane(l, i === 0)).join('') : calm}
+        ${bench ? `<div class="am-bn">${bench}</div>` : ''}
+        <div class="am-none" id="frNone" hidden><p>Aucun ami ne s’appelle comme ça.</p>${amLk('', 'Effacer la recherche', 'id="frClr"')}</div></div>
+        <aside class="am-side" aria-label="Fiche de l’ami"><div id="frCard"></div></aside></div>`
+      : `<div class="am-page am-solo"><div class="am-main">${head}${errs}${!errs ? `<div class="empty"><span class="empty-x">${ic('users')}</span><h2>Vois qui joue, et à quoi</h2><p>Relie Steam, PlayStation ou un serveur Discord : tes amis et les membres du serveur s’affichent ici.</p><button class="gs-btn" id="frAcc"><span class="gs-in">Connecter un compte</span></button></div>` : ''}</div></div>`
+    const main = $('.am-main', sc); if (main) main.scrollTop = keepY
+    $$('[data-lane]', sc).forEach((el) => amStyle(el, G(el.dataset.lane)))
+    $$('[data-lay]', sc).forEach((b) => b.onclick = () => { if (amLay === b.dataset.lay) return; amSetLay(b.dataset.lay); renderFriends() })
+    $$('[data-id]', sc).forEach((b) => b.onclick = () => {
+      // Portraits : le héros, le fond, le panneau et l'état des cartes changent, pas la page ; Escouades : seule la fiche
+      if (lay === 'c') { amChoose(b.dataset.id); return }
+      S.friend = b.dataset.id
+      $$('[data-id]', sc).forEach((x) => { const on = x.dataset.id === S.friend; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on) }); friendCard()
+    })
+    const row = $('#cRow', sc)
+    $$('[data-fil]', sc).forEach((b) => b.onclick = () => { cFil = b.dataset.fil; cX = 0; $$('[data-fil]', sc).forEach((x) => x.setAttribute('aria-pressed', x === b)); filterFriends(sc); if (row) row.scrollLeft = 0 })
+    if (row) {
+      row.scrollLeft = Math.min(cX, Math.max(0, row.scrollWidth - row.clientWidth))
+      // La molette verticale fait défiler l'étagère de côté (écouteur non passif : on annule le défilement vertical)
+      row.addEventListener('wheel', (e) => { if (row.scrollWidth > row.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); row.scrollLeft += e.deltaY } }, { passive: false })
+      row.addEventListener('scroll', () => { cX = row.scrollLeft }, { passive: true })
+      row.addEventListener('keydown', (e) => {
+        if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key) || !e.target.classList?.contains('am-c-card')) return
+        const cards = amCards(row), i = cards.indexOf(e.target)
+        const j = e.key === 'Home' ? 0 : e.key === 'End' ? cards.length - 1 : Math.max(0, Math.min(cards.length - 1, i + (e.key === 'ArrowRight' ? 1 : -1)))
+        e.preventDefault()
+        if (j !== i && cards[j]) amChoose(cards[j].dataset.id, { focus: cards[j], delay: 150 })
+      })
+    }
     $$('[data-voice]', sc).forEach((b) => b.onclick = () => API.openDiscordChannel(b.dataset.voice).catch(() => toast('Discord n’a pas pu s’ouvrir sur ce salon.', { tone: 'warn', ms: 3000 })))
+    $$('[data-join]', sc).forEach((b) => b.onclick = () => API.friendSteam('join', b.dataset.join).catch((e) => toast(esc(errText(e)), { tone: 'warn', ms: 4000 })))
+    $$('[data-play]', sc).forEach((b) => b.onclick = () => { const g = G(b.dataset.play); if (g) launchFromSheet(g) })
     $$('[data-fix]', sc).forEach((b) => b.onclick = () => Settings.open('accounts'))
+    $$('[data-act=cap]', sc).forEach((b) => b.addEventListener('click', () => { capOpen[b.dataset.g] = !capOpen[b.dataset.g]; filterFriends(sc) }))
     $('#frAcc', sc)?.addEventListener('click', () => Settings.open('accounts'))
     $('#frRef', sc).onclick = async (e) => { const b = e.currentTarget; b.setAttribute('aria-busy', 'true'); await Real.loadFriends(); b.removeAttribute('aria-busy') }
     const q = $('#frQ', sc)
@@ -423,78 +658,118 @@ const Pages = (() => {
     $('#frClr', sc)?.addEventListener('click', () => { frQ = ''; if (q) { q.value = ''; q.focus() } filterFriends(sc) })
     filterFriends(sc)
     friendCard()
+    if (row) {
+      const c = $('.am-c-card.on', row)
+      if (c && !c.hidden && cSel !== sel) { const r = row.getBoundingClientRect(), cr = c.getBoundingClientRect(); if (cr.left < r.left + 72) row.scrollLeft -= r.left + 72 - cr.left; else if (cr.right > r.right - 110) row.scrollLeft += cr.right - (r.right - 110) }
+      cSel = sel; cX = row.scrollLeft
+    }
+    if (fkey) $(fkey, sc)?.focus({ preventScroll: true })
   }
-  // La recherche filtre les cartes « en jeu » et la liste ; les hors ligne s'ouvrent pendant qu'on cherche
+  // La recherche filtre les joueurs, les colonnes et les rangées (une rangée ou une colonne sans personne visible disparaît) ; les hors ligne s'ouvrent pendant qu'on cherche
   function filterFriends(sc) {
     const q = frQ.trim().toLowerCase()
-    $$('.fr, .fn-f', sc).forEach((b) => { b.hidden = !!q && !(b.dataset.n || '').includes(q) })
-    $$('.fr-g', sc).forEach((g) => { g.hidden = !!q && !$$('.fr', g).some((b) => !b.hidden) })
-    $$('.fn', sc).forEach((c) => { c.hidden = !!q && !$$('.fn-f', c).some((b) => !b.hidden) })
-    const off = $('.fr-off', sc); if (off && q) off.open = true; else if (off && offOpen !== null) off.open = offOpen
-    const none = $('#frNone', sc); if (none) none.hidden = !q || $$('.fr, .fn-f', sc).some((b) => !b.hidden)
-    const list = $('.fr-list', sc); if (list) list.classList.toggle('is-empty', !!q && !$$('.fr', list).some((b) => !b.hidden) && $$('.fn-f', sc).some((b) => !b.hidden))
+    $$('[data-n]', sc).forEach((b) => { b.hidden = !!q ? !b.dataset.n.includes(q) : !!b.dataset.x && !capOpen[b.dataset.g] })
+    $$('.am-sq, .am-bc', sc).forEach((g) => { g.hidden = !!q && !$$('[data-n]', g).some((b) => !b.hidden) })
+    // Portraits : le filtre cache des groupes entiers, la recherche des cartes puis les groupes vides
+    $$('.am-c-g', sc).forEach((g) => { g.hidden = (!!cFil && g.dataset.grp !== cFil) || (!!q && !$$('[data-n]', g).some((b) => !b.hidden)) })
+    const row = $('#cRow', sc)
+    if (row) {
+      const z = $('.am-c-0', row); if (z) z.hidden = !(cFil && !$(`.am-c-g[data-grp="${cFil}"]`, row))
+      amRove(row); row.scrollLeft = Math.min(row.scrollLeft, Math.max(0, row.scrollWidth - row.clientWidth))
+    }
+    const bn = $('.am-bn', sc); if (bn) bn.hidden = !$$('.am-bc', bn).some((c) => !c.hidden)
+    $$('[data-act=cap]', sc).forEach((lk) => { const o = !!capOpen[lk.dataset.g]; lk.hidden = !!q; lk.textContent = o ? 'Réduire' : `Voir les ${lk.dataset.total} ${lk.dataset.what}`; lk.setAttribute('aria-expanded', o) })
+    const none = $('#frNone', sc); if (none) none.hidden = !q || $$('[data-n]', sc).some((b) => !b.hidden && !b.closest('.am-c-g[hidden]'))
   }
   const hoursOf = (m) => Shared.text.formatPlaytime(m)
   const bigHours = (m) => `${Math.round(m / 60).toLocaleString('fr-FR')} h`
   const steamArt = (appId) => `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`
-  async function friendCard() {
-    const f = FRIENDS.find((x) => x.id === S.friend) || FRIENDS[0]
+  // Le dessin de la fiche garde le focus là où il était (bouton, lien, personne du salon)
+  function amPaint(f, p, loading) {
+    const fk = amFocusKey(document.activeElement, $('#frCard'))
+    amLay === 'c' ? paintHero(f, p, loading) : paintCard(f, p, loading)
+    if (fk) $(fk)?.focus({ preventScroll: true })
+  }
+  // delay : après des flèches rapprochées, le profil n'est demandé qu'une fois la dernière posée
+  function friendCard(delay = 0) {
+    const f = amPick()
+    clearTimeout(cTimer)
     if (!f) return
-    const steam = f.raw?.platform === 'steam'
-    paintCard(f, steam ? Real.cachedProfile(f.id) : null, steam && Real.cachedProfile(f.id) === undefined)
+    if (comFor !== f.id) { comFor = f.id; comAll = false }
+    const steam = f.raw?.platform === 'steam', lay = amLay, cached = steam ? Real.cachedProfile(f.id) : null
+    amPaint(f, cached, steam && cached === undefined)
     if (!steam) return
-    const p = await Real.friendProfile(f.id)
-    if ((FRIENDS.find((x) => x.id === S.friend) || FRIENDS[0]) === f) paintCard(f, p, false)
+    const load = async () => { const p = await amProfile(f.id); if (amPick() === f && amLay === lay) amPaint(f, p, false) }
+    if (delay) cTimer = setTimeout(load, delay); else load()
   }
   function paintCard(f, p, loading) {
     const box = $('#frCard'); if (!box) return
-    const g = f.game ? G(f.game) : null, url = Shared.friendView.steamProfileUrl(f.raw), steam = f.raw?.platform === 'steam'
-    const line = f.st === 'game' ? `Joue à <b>${esc(f.gameName)}</b>` : f.member ? (f.activity ? esc(f.activity) : f.voice ? 'En vocal' : 'Membre du serveur Discord') : f.st === 'online' ? 'En ligne' : f.st === 'away' ? 'Absent' : esc(f.seen || 'Hors ligne')
-    const bg = p?.background || (g ? A(g.hero || g.cover) : '')
-    const kpi = [
-      p?.gameCount && ['Jeux', p.gameCount.toLocaleString('fr-FR')],
-      p?.totalMinutes && ['Heures de jeu', bigHours(p.totalMinutes)],
-      p?.badgeCount && ['Badges', p.badgeCount.toLocaleString('fr-FR')],
-      p?.friendCount && ['Amis', p.friendCount.toLocaleString('fr-FR')],
-      f.since && ['Ami', f.since.replace('Ami depuis ', 'Depuis ')],
-      !steam && ['Sur', f.on], f.device && ['Appareil', f.device], f.voice && ['En vocal', f.voice]
-    ].filter(Boolean)
-    // Jeux en commun : ceux de ta bibliothèque Steam qu'il a aussi, les plus joués à vous deux d'abord
-    const common = (p?.games || []).map((x) => ({ x, g: Real.byRid(`steam:${x.appId}`) })).filter((o) => o.g).map((o) => ({ ...o, me: o.g.raw?.playtime || 0 })).sort((a, b) => (b.x.minutes + b.me) - (a.x.minutes + a.me))
-    const recent = (p?.recent || []).map((x) => ({ x, g: Real.byRid(`steam:${x.appId}`) }))
-    const watch = Real.watched(f.id), canWatch = !f.member && (steam || f.raw?.platform === 'psn')
-    const main = f.join ? `<button class="btn rose sm" id="fcJoin">${ic('play')}Rejoindre sa partie</button>` : g && g.installed ? `<button class="btn rose sm" id="fcPlay">${ic('play')}Lancer ${esc(g.short)}</button>` : ''
+    const fa = amFacts(f, p), { g, kpi } = fa
+    const main = f.join ? amGo('play', 'Rejoindre sa partie', 'id="fcJoin"', 'wide') : g && g.installed ? amGo('play', `Lancer <b>${esc(g.short)}</b>`, 'id="fcPlay"', 'wide') : ''
     // Comme un profil Steam : son fond sur toute la fiche, son avatar (animé s'il en a un) dans son cadre, son pays, son ancienneté, son niveau avec le badge aux couleurs de Steam
-    const region = (c) => { try { return new Intl.DisplayNames(['fr'], { type: 'region' }).of(c) } catch { return c } }
-    const meta = [p?.country && region(p.country), p?.memberSince && `Membre depuis ${new Date(p.memberSince).getFullYear()}`].filter(Boolean)
-    const ava = p?.avatarAnimated || p?.avatarFull || f.avatar
-    const lvColor = (l) => l >= 100 ? '#c9a14a' : ['#9b9b9b', '#c02942', '#d95b43', '#fecc23', '#467a3c', '#4e8ddb', '#7652c9', '#c252c9', '#8a5a6e', '#997c52'][Math.floor(l / 10)]
-    const lv = p?.level != null ? `<div class="sp-lv" aria-label="Niveau Steam ${p.level}"><span class="sp-badge num" style="--lv:${lvColor(p.level)}">${p.level}</span><div><b>Niveau ${p.level}</b>${p.levelProgress != null ? `<span class="sp-xp" title="${Math.round(p.levelProgress * 100)} % vers le niveau ${p.level + 1}"><i style="width:${Math.round(p.levelProgress * 100)}%"></i></span>` : ''}</div></div>` : ''
-    box.innerHTML = `<article class="fc fc2 ${bg ? 'has-art' : ''} ${p?.background ? 'sp-bg' : ''}">${bg ? `<img class="fc-art" src="${esc(bg)}" alt="">` : ''}<div class="fc-in">
-      <div class="sp-top"><div class="fc-av sp-av">${ava ? `<span class="sp-img"><img src="${esc(ava)}" alt=""></span>` : avatar(f.n, 96)}${p?.avatarFrame ? `<img class="fc-fr" src="${esc(p.avatarFrame)}" alt="">` : ''}</div>
-      <div class="sp-id"><h2>${esc(f.n)}</h2>${meta.length ? `<p class="sp-meta">${esc(meta.join(' · '))}</p>` : ''}<p class="sp-st is-${f.st}">${line}</p></div>${lv}</div>
-      ${kpi.length ? `<dl class="fc-d">${kpi.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="num">${esc(String(v))}</dd></div>`).join('')}</dl>` : ''}
-      <div class="fc-a">${main}${steam ? `<button class="btn sm" id="fcMsg">${ic('chat')}Écrire</button>` : ''}${canWatch ? `<button class="btn sm fc-w" id="fcWatch" aria-pressed="${watch}">${ic(watch ? 'check' : 'bell')}${watch ? 'Tu seras prévenu' : 'Préviens-moi quand il joue'}</button>` : ''}${url ? '<button class="btn sm" id="fcProfile">Profil Steam</button>' : ''}${f.voiceId ? '<button class="btn sm" id="fcVoice">Ouvrir le salon</button>' : ''}${f.member ? '<button class="btn sm" id="fcHide">Masquer ce membre</button>' : ''}</div></div>
-      ${loading ? '<div class="fc-sec fc-load" aria-hidden="true"><i></i><i></i><i></i></div>' : ''}
-      ${recent.length ? `<section class="fc-sec"><h3>Ces 2 dernières semaines</h3><ul class="fc-rec">${recent.map(({ x, g: mg }) => `<li><img src="${esc(mg ? A(mg.hero || mg.cover) : steamArt(x.appId))}" alt="" loading="lazy" decoding="async"><b>${esc(mg?.name || x.name || 'Jeu Steam')}</b><span class="num">${esc(hoursOf(x.recentMinutes))}</span></li>`).join('')}</ul></section>` : ''}
-      ${common.length ? `<section class="fc-sec"><h3>Jeux en commun <span class="fr-c">${common.length}</span></h3><div class="fc-com">${common.slice(0, 8).map(({ x, g: mg, me }) => `<button class="fc-cg" data-g="${esc(mg.id)}" aria-label="${esc(mg.name)} : lui ${esc(hoursOf(x.minutes) || '0 h')}, toi ${esc(hoursOf(me) || '0 h')}"><img src="${esc(A(mg.cover))}" alt="" loading="lazy" decoding="async"><span><em>Lui</em> ${esc(hoursOf(x.minutes) || '0 h')}</span><span><em>Toi</em> ${esc(hoursOf(me) || '0 h')}</span></button>`).join('')}</div></section>` : ''}
-      ${p?.gamesHidden ? '<p class="fc-priv">Son profil Steam est privé : ses jeux et ses heures ne sont pas visibles.</p>' : ''}
-    </article>`
-    $('#fcPlay', box)?.addEventListener('click', () => launchFromSheet(g))
-    $('#fcJoin', box)?.addEventListener('click', () => API.friendSteam('join', f.id).catch((e) => toast(esc(errText(e)), { tone: 'warn', ms: 4000 })))
-    $('#fcMsg', box)?.addEventListener('click', () => API.friendSteam('message', f.id).catch(() => toast('Steam n’a pas pu s’ouvrir.', { tone: 'warn', ms: 3000 })))
-    $('#fcWatch', box)?.addEventListener('click', async () => {
-      const on = !Real.watched(f.id)
-      try { await Real.setWatch(f.id, on); toast(on ? `${ic('bell')} Tu seras prévenu quand ${esc(f.n)} lance un jeu` : `Plus d’alerte pour ${esc(f.n)}`, { ms: 2400 }) } catch (e) { toast(esc(errText(e)), { tone: 'warn', ms: 4000 }) }
-      paintCard(f, p, false)
-    })
-    $$('.fc-cg', box).forEach((b) => b.onclick = () => openGame(b.dataset.g, $('img', b)))
-    $('#fcProfile', box)?.addEventListener('click', () => API.openExternal(url))
-    $('#fcVoice', box)?.addEventListener('click', () => API.openDiscordChannel(f.voiceId).catch(() => {}))
-    $('#fcHide', box)?.addEventListener('click', async () => {
-      Real.applyFriends(await API.setMemberHidden(f.n, true))
-      toast(`${esc(f.n)} masqué de la liste`, { ms: 5000, action: { label: 'Annuler', fn: async () => Real.applyFriends(await API.setMemberHidden(f.n, false)) } })
-    })
+    const lv = p?.level != null ? `<div class="am-ds-lv" aria-label="Niveau Steam ${p.level}"><span class="am-ds-b num" style="--lv:${amLvColor(p.level)}">${p.level}</span><div><b>Niveau Steam ${p.level}</b>${p.levelProgress != null ? `<span class="am-xp" title="${Math.round(p.levelProgress * 100)} % vers le niveau ${p.level + 1}"><i style="width:${Math.round(p.levelProgress * 100)}%"></i></span>` : ''}</div></div>` : ''
+    const links = amLinks(f, fa)
+    amSaveDs()
+    const keepY = dsY.get(amKey('a', f.id)) || 0
+    box.dataset.f = f.id
+    box.innerHTML = `<article class="am-ds" ${g ? `data-gid="${esc(g.id)}"` : ''}>
+      <div class="am-ds-sc">
+        <div class="am-ds-art" ${fa.bg ? `style="background-image:url('${amUrl(esc(fa.bg))}')"` : ''}>${fa.bg ? '' : `<svg viewBox="10 1 100 118" aria-hidden="true"><path d="${HX_SHIELD}"/></svg>`}</div>
+        <div class="am-ds-id">${amAva(f, p, fa)}
+          <div class="am-ds-nm"><h2 title="${esc(f.n)}">${esc(f.n)}</h2>${fa.meta.length ? `<p class="am-ds-meta">${esc(fa.meta.join(' · '))}</p>` : ''}<p class="am-ds-st"><i style="background:${amDot(f)}"></i><span>${fa.line}</span></p></div></div>
+        ${lv}
+        ${kpi.length ? `<dl class="am-ds-k">${kpi.map(([k, v]) => `<div${k === 'Ami depuis' ? ' class="w2"' : ''}><dt>${esc(k)}</dt><dd class="num" title="${esc(String(v))}">${esc(String(v))}</dd></div>`).join('')}</dl>` : ''}
+        ${main || links.length ? `<div class="am-ds-a">${main}${links.length ? `<div class="am-links">${links.join('')}</div>` : ''}</div>` : ''}
+        ${loading ? '<div class="am-ds-load" aria-hidden="true"><i></i><i></i><i></i></div>' : ''}
+        ${amDuel(fa)}${amRecent(fa)}${amNotes(f, p)}
+      </div></article>`
+    const sc2 = $('.am-ds-sc', box); if (sc2 && keepY) sc2.scrollTop = keepY
+    amStyle($('.am-ds', box), g)
+    amAvaFix(box, f)
+    amWire(box, f, p, fa, () => amPaint(f, p, false))
+  }
+  // Disposition « Portraits » : fond, héros et panneau « Vous deux » de l'ami choisi
+  function paintHero(f, p, loading) {
+    const box = $('#frCard'); if (!box) return
+    const fa = amFacts(f, p), { g } = fa, root = $('.am-c'), pp = amPub(p)
+    const eye = f.st === 'game' ? `En jeu · ${f.gameName}` : f.member ? `Serveur ${Real.st.friendsRes?.discordServer || 'Discord'}` : f.st === 'online' ? 'En ligne' : f.st === 'away' ? 'Absent' : 'Hors ligne'
+    const eyeSub = f.st === 'game' ? amLine(f) : f.member ? (f.activity || (f.voice ? `en vocal, ${f.voice}` : '')) : f.st === 'offline' ? (f.seen ? f.seen.replace('Vu pour la dernière fois', 'vu') : f.on) : f.on
+    const meta = [...fa.meta, f.since && `Ami depuis ${f.since.replace('Ami depuis ', '')}`].filter(Boolean).join(' · ')
+    const pills = [
+      p?.level != null && `<span class="am-c-pill" aria-label="Niveau Steam ${p.level}"><span class="am-ds-b num" style="--lv:${amLvColor(p.level)}">${p.level}</span><b>Niveau ${p.level}</b>${p.levelProgress != null ? `<span class="am-xp" title="${Math.round(p.levelProgress * 100)} % vers le niveau ${p.level + 1}"><i style="width:${Math.round(p.levelProgress * 100)}%"></i></span>` : ''}</span>`,
+      pp?.gameCount && `<span class="am-c-pill"><b class="num">${pp.gameCount.toLocaleString('fr-FR')}</b> jeux</span>`,
+      pp?.totalMinutes && `<span class="am-c-pill"><b class="num">${bigHours(pp.totalMinutes)}</b> de jeu</span>`,
+      pp?.badgeCount && `<span class="am-c-pill"><b class="num">${pp.badgeCount.toLocaleString('fr-FR')}</b> badges</span>`,
+      f.voice && `<span class="am-c-pill">${ic('mic')}En vocal · <b>${esc(f.voice)}</b></span>`
+    ].filter(Boolean).join('')
+    // Un seul bouton plein : rejoindre, sinon lancer, sinon le salon, sinon écrire
+    const mainK = f.join ? 'join' : g && g.installed ? 'play' : f.voiceId ? 'voice' : fa.steam ? 'msg' : ''
+    const main = { join: () => amGo('play', 'Rejoindre sa partie', 'id="fcJoin"'), play: () => amGo('play', `Lancer <b>${esc(g.short)}</b>`, 'id="fcPlay"'), voice: () => amGo('mic', 'Ouvrir le salon', 'id="fcVoice"'), msg: () => amGo('chat', 'Écrire', 'id="fcMsg"') }[mainK]?.() || ''
+    const links = amLinks(f, fa, mainK === 'voice' ? 'fcVoice' : mainK === 'msg' ? 'fcMsg' : '')
+    const room = f.voiceId ? VOICE.find((r) => r.id === f.voiceId) : null
+    const sel = f.id
+    const roomHtml = room ? `<section><h3 class="am-ds-h"><span>Dans le salon ${esc(room.name)}</span><span class="num">${room.people.length}</span></h3>${room.people.map((x) => amMini(x, sel, { c: true, tag: false, sub: x.st === 'game' ? x.gameName : x.raw?.voice?.deafened ? 'Casque coupé' : x.raw?.voice?.muted ? 'Micro coupé' : 'En vocal' })).join('')}</section>` : ''
+    const duo = amDuel(fa) + amRecent(fa) + roomHtml + amNotes(f, p) + (loading ? '<div class="am-ds-load" aria-hidden="true"><i></i><i></i><i></i></div>' : '')
+    const px = PxType.ok(f.n) && f.n.length <= 16
+    amSaveDs()
+    const keepY = dsY.get(amKey('c', f.id)) || 0
+    box.dataset.f = f.id
+    box.innerHTML = `<div class="am-c-hero ${f.st === 'offline' ? 'off' : ''}">
+        <p class="am-c-eye"><i></i>${esc(eye)}${eyeSub ? `<span>${esc(eyeSub)}</span>` : ''}</p>
+        <div class="am-c-id">${amAva(f, p, fa, true)}<h2 class="am-c-name ${px ? '' : 'plain'}" title="${esc(f.n)}">${px ? `${PxType.html(f.n)}` : esc(f.n)}</h2></div>
+        ${meta ? `<p class="am-c-meta">${esc(meta)}</p>` : ''}
+        ${pills ? `<div class="am-c-pills">${pills}</div>` : ''}
+        ${main || links.length ? `<div class="am-c-cta">${main}${links.join('')}</div>` : ''}
+      </div>
+      ${duo ? `<aside class="am-c-duo" aria-label="${p && !p.gamesHidden ? 'Vous deux' : 'Ce qu’on sait'}"><p class="am-c-eye"><i></i>${p && !p.gamesHidden ? 'Vous deux' : 'Ce qu’on sait'}</p>${duo}</aside>` : ''}`
+    const d = $('.am-c-duo', box); if (d && keepY) d.scrollTop = keepY
+    if (root) { root.dataset.gid = g ? g.id : ''; if (g) amStyle(root, g); else GameStyle.paint(root, { style: 'neutre' }) }
+    const bg = $('#cBg')
+    if (bg) { bg.className = fa.bg ? 'am-c-bg' : 'am-c-bg no'; bg.style.backgroundImage = fa.bg ? `url('${amUrl(fa.bg)}')` : ''; bg.innerHTML = fa.bg ? '' : `<svg viewBox="10 1 100 118" aria-hidden="true"><path d="${HX_SHIELD}"/></svg>` }
+    amAvaFix(box, f, true)
+    amWire(box, f, p, fa, () => amPaint(f, p, false))
+    // Les gens du salon, dans le panneau : un clic les met à la une, sans refaire la page
+    $$('[data-id]', box).forEach((b) => b.onclick = () => amChoose(b.dataset.id))
   }
   // La fiche ouverte suit l'état du jeu : mise à jour finie, jeu lancé ou fermé
   function syncSheet() {

@@ -130,7 +130,7 @@ export function coverFeatures(data: ArrayLike<number>, w: number, h: number): Co
   const topL = has ? binL[top] / bins[top] : 0.55
   return {
     // Saturé, jamais trop sombre ni délavé : l'accent reste lisible sur le fond de l'accueil
-    accent: has ? hslToHex(hue, Math.max(0.55, Math.min(0.95, hueSat + 0.1)), Math.max(0.52, Math.min(0.66, topL + 0.06))) : '#ff5c86',
+    accent: has ? hslToHex(hue, Math.max(0.55, Math.min(0.95, hueSat + 0.1)), Math.max(0.52, Math.min(0.66, topL + 0.06))) : '#e8264f',
     hue,
     hueSat,
     light: L,
@@ -189,6 +189,6 @@ export function decideStyle(f: CoverFeatures | null, tags: readonly string[] = [
     style = k
     best = scores[k]
   }
-  const accent = f?.accent ?? '#ff5c86'
+  const accent = f?.accent ?? '#e8264f'
   return { style, accent, onAccent: luminance(accent) > 0.36 ? '#120d10' : '#ffffff', scores }
 }

@@ -5,10 +5,10 @@
   --ink:#08060b;--ink2:#120e16;--ink3:#1c1721;
   --bone:#f7f1f4;--t2:rgba(247,241,244,.78);--t3:rgba(247,241,244,.66);--t4:rgba(247,241,244,.52);
   --hair:rgba(255,236,243,.11);--hair2:rgba(255,236,243,.2);
-  --rose:#ff5c86;--rose-hi:#ff7d9f;--on-rose:#2a0612;--rose-soft:rgba(255,92,134,.16);--rose-t:#ff9db5;
-  /* La touche rose (bêta 31) : le dégradé et le relief du « Jouer » du dock, pour tous les boutons roses */
-  --key:linear-gradient(180deg,#F47995,#DF4468);--key-hi:linear-gradient(180deg,#FF8AA5,#E8507A);
-  --key-edge:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -2px 0 rgba(110,8,38,.28);
+  --rose:#e8264f;--rose-hi:#ff4566;--on-rose:#ffffff;--rose-soft:rgba(232,38,79,.16);--rose-t:#ff7a8a;
+  /* La touche (bêta 31, rouge du blason depuis la bêta 50) : le dégradé et le relief du « Jouer » du dock, pour tous les boutons principaux */
+  --key:linear-gradient(180deg,#ec3058,#b3112f);--key-hi:linear-gradient(180deg,#f6416a,#c4163c);
+  --key-edge:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -2px 0 rgba(70,0,16,.28);
   --live:#4fd6e8;--live-soft:rgba(79,214,232,.14);--gold:#f2c66d;--lav:var(--rose);--ok:#5be49b;--warn:#f5b44a;--danger:#ff7a5c;
   --ct:#7fb2ff;--te:#f0b54a;
   --f:'Archivo',ui-sans-serif,'Segoe UI',system-ui,sans-serif;--brand:'Sora','Archivo',ui-sans-serif,sans-serif;
@@ -17,7 +17,7 @@
   --glass:rgba(22,17,27,.5);--glass-2:rgba(30,24,36,.62);
   --glass-edge:inset 0 0 0 1px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.1);
   --glass-blur:blur(28px) saturate(170%);
-  --game-a:#a3123f;--game-b:#ff5c86;
+  --game-a:#a3123f;--game-b:#e8264f;
   /* Échelles partagées : texte 12 (méta), 14 (secondaire), 16 (corps), 18, 24 (titre de section) ; rayons 8, 12, 16, 20 (surfaces et feuilles) */
   --fs-meta:12px;--fs-sm:14px;--fs-md:16px;--fs-lg:18px;--fs-h2:24px;
   --r-sm:8px;--r-md:12px;--r-lg:16px;--r-panel:20px;
@@ -76,7 +76,7 @@ svg{display:block}
 .btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border-radius:14px;font-weight:500;font-size:14px;white-space:nowrap;transition:scale .15s ease-out,background-color .15s,color .15s,box-shadow .2s;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.1);color:var(--bone)}
 .btn:not(:disabled):active{scale:.96}
 .btn:disabled{opacity:.45;cursor:not-allowed}
-.btn.rose{font-weight:600;font-size:15px;letter-spacing:.005em;background:var(--key);color:var(--on-rose);box-shadow:var(--key-edge),0 10px 24px -12px rgba(223,68,104,.7)}
+.btn.rose{font-weight:600;font-size:15px;letter-spacing:.005em;background:var(--key);color:var(--on-rose);box-shadow:var(--key-edge),0 10px 24px -12px rgba(196,18,58,.7)}
 .btn.bone{font-weight:600;background:linear-gradient(180deg,#fff,#E9E2E6);color:#140d12;box-shadow:inset 0 1px 0 #fff,inset 0 -2px 0 rgba(60,40,50,.16)}
 .btn.quiet{background:none;box-shadow:none;color:var(--t2);padding:0 12px}
 .btn.icon{width:44px;padding:0}
@@ -204,7 +204,7 @@ svg{display:block}
 #win.is-home:not(.is-story) .bgi-g.is-cover .bgi-m{filter:brightness(.5) saturate(.85)}
 
 /* Aucun jeu ni image : braise rose ton sur ton, qui part du logo console */
-#bgx{position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .3s var(--e-md),visibility 0s .3s;background:radial-gradient(42% 58% at 74% 48%,rgba(255,92,134,.2),rgba(163,18,63,.1) 46%,transparent 76%),radial-gradient(30% 40% at 96% 100%,rgba(163,18,63,.18),transparent 70%),var(--ink)}
+#bgx{position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .3s var(--e-md),visibility 0s .3s;background:radial-gradient(42% 58% at 74% 48%,rgba(232,38,79,.2),rgba(163,18,63,.1) 46%,transparent 76%),radial-gradient(30% 40% at 96% 100%,rgba(163,18,63,.18),transparent 70%),var(--ink)}
 #win.bg-none #bgx{opacity:calc(var(--bg-k,1)*var(--bg-dim,1));visibility:visible;transition-delay:0s}
 #win.bg-none #bgi{visibility:hidden}
 #bgx .bgx-l{display:block;position:absolute;left:74%;top:48%;width:min(30cqw,46cqh,420px);height:auto;aspect-ratio:1;translate:-50% -50%;opacity:.2;transition:opacity .3s var(--e-md)}

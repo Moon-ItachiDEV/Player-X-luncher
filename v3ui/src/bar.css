@@ -47,10 +47,10 @@ button.ln-node::after{content:"";position:absolute;inset:-10px;border-radius:50%
 [data-mode=idle] .ln-node{cursor:pointer}
 @media(hover:hover){[data-mode=idle] .ln-node:hover{color:var(--bone);background:#332a3a}}
 .ln-node.done{background:var(--bone);color:#150d12;box-shadow:none}
-.ln-node.cur{background:var(--rose);color:var(--on-rose);box-shadow:0 0 0 4px rgba(255,92,134,.25);scale:1.1}
+.ln-node.cur{background:var(--rose);color:var(--on-rose);box-shadow:0 0 0 4px rgba(232,38,79,.25);scale:1.1}
 .no-route .ln-track{opacity:0}
 .ln-x{position:absolute;top:50%;margin:-8px 0 0 -8px;width:16px;height:16px;display:grid;place-items:center;color:var(--rose)}
-.ln-x .xm{width:13px;height:13px;filter:drop-shadow(0 0 5px rgba(255,92,134,.55))}
+.ln-x .xm{width:13px;height:13px;filter:drop-shadow(0 0 5px rgba(232,38,79,.55))}
 .ln-x.pop{animation:xPop .46s var(--spring) both}
 .ln-x.pop::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 1.5px var(--rose);animation:xRip .5s var(--e-out) both}
 @keyframes xPop{from{transform:scale(.2) rotate(-35deg);opacity:0}to{transform:none;opacity:1}}

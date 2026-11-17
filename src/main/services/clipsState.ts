@@ -64,10 +64,14 @@ export interface Recorder {
     last?: { frames: number; at: number }
     /** 0.7.4 : le compteur d'images reçues, relevé chaque seconde (le temps du tampon), pour le rythme des clips. */
     marks: CountMark[]
+    /** 0.7.6 : la cadence du fichier (clipRate), au-dessus de la cadence demandée sur un écran rapide. */
+    clipFps: number
   }
 }
 
 export interface Capture {
+  /** Le rappel du raccourci est déjà passé pour cette partie (jeux sans clip automatique, BF6 par exemple). */
+  hinted?: boolean
   game: RunningGame
   sessionId: string
   win: BrowserWindow | null

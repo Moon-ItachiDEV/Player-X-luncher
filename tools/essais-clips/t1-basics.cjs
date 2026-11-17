@@ -4,7 +4,10 @@ const { start, sleep, until, launcher, test, simPost, simRunning, payload, probe
 
 ;(async () => {
   const dirs = freshDirs('t1')
-  const { app, p, errs, logs, proc } = await start(dirs, { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '1' })
+  // Lot A : une petite musique (sinus d'une seconde) pour les contrôles de pxclip://music
+  const musicFile = path.join(dirs.base, 'bip.wav')
+  H.execFileSync('/usr/bin/ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', musicFile])
+  const { app, p, errs, logs, proc } = await start(dirs, { PX_CS2_SIM: 'manual', PX_CLIP_TEST_SOURCE: '1', PX_FFMPEG: '/usr/bin/ffmpeg', PX_FFMPEG_ENCODER: 'libx264', PX_MUSIC_PICK: musicFile })
   const report = {}
   try {
     await until(() => app.evaluate(() => !!globalThis.pxCs2Sim && !!globalThis.pxClipsTest), 15000, 'simulateur prêt')
@@ -80,6 +83,25 @@ const { start, sleep, until, launcher, test, simPost, simRunning, payload, probe
     console.log('range', JSON.stringify(range), 'taille', c.sizeBytes)
     const pageFetch = await p.evaluate(async (url) => { try { const r = await fetch(url, { headers: { Range: 'bytes=0-9' } }); return [r.status, r.headers.get('content-range'), (await r.arrayBuffer()).byteLength] } catch (e) { return String(e) } }, c.videoUrl)
     console.log('fetch depuis la page', JSON.stringify(pageFetch))
+    // Lot A : pxclip://music/<id> sert une musique connue, et rien d'autre. 404 pour tout le reste.
+    const music = await launcher(p, 'editMusicPick')
+    const clipId = c.videoUrl.split('/').pop()
+    const m = await app.evaluate(async ({ session }, [mid, cid]) => {
+      const f = (u, h) => session.defaultSession.fetch(u, h ? { headers: h } : undefined).then(async (r) => [r.status, r.headers.get('content-type'), (await r.arrayBuffer()).byteLength])
+      return {
+        ok: await f('pxclip://music/' + mid), range: await f('pxclip://music/' + mid, { Range: 'bytes=0-99' }),
+        clipSousMusic: await f('pxclip://music/' + cid), musiqueSousVideo: await f('pxclip://video/' + mid), musiqueSousThumb: await f('pxclip://thumb/' + mid),
+        traversee: await f('pxclip://music/..%2F..%2Fetc%2Fpasswd'), traversee2: await f('pxclip://music/%2e%2e/%2e%2e/etc/passwd'), inconnue: await f('pxclip://music/000000000000'), longue: await f('pxclip://music/' + mid + 'a')
+      }
+    }, [music.id, clipId])
+    console.log('musique', JSON.stringify(m))
+    const chk = (cond, label) => { console.log(cond ? 'OK ' : 'NON', label); if (!cond) process.exitCode = 1 }
+    chk(m.ok[0] === 200 && m.ok[1] === 'audio/wav' && m.ok[2] > 1000, 'music/<id d’une musique> : 200, audio/wav')
+    chk(m.range[0] === 206 && m.range[2] === 100, 'music/<id> avec Range : 206, 100 octets')
+    chk(m.clipSousMusic[0] === 404, 'music/<id d’un clip> : 404')
+    chk(m.musiqueSousVideo[0] === 404 && m.musiqueSousThumb[0] === 404, 'video/<id d’une musique> et thumb/<id d’une musique> : 404')
+    chk(m.traversee[0] === 404 && m.traversee2[0] === 404, 'music/ avec traversée de chemin : 404')
+    chk(m.inconnue[0] === 404 && m.longue[0] === 404, 'music/ avec un identifiant inconnu ou mal formé : 404')
     console.log('journal', (await launcher(p, 'clipsLogTail')).split('\n').slice(-12).join('\n'))
     // Fin du jeu
     await simRunning(app, false)

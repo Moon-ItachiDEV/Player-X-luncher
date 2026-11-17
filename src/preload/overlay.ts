@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Cs2Live, Cs2OverlayConfig, Cs2RecapEvent, OverlayApi } from '@shared/types'
 
-// Pont de la fenêtre de l'overlay CS2 (main/services/cs2Overlay.ts, page renderer/index.html) : ses six envois cs2:*
-// seulement (réglages de l'overlay, page peinte, état et match en direct, bilans). Ni window.launcher, ni rien d'autre ;
+// Pont de la fenêtre de l'overlay CS2 (main/services/cs2Overlay.ts, page renderer/index.html) : ses envois cs2:*
+// seulement (réglages de l’overlay, page peinte, état et match en direct, bilans, réglage en plein écran). Ni window.launcher, ni rien d'autre ;
 // src/main/ipc.ts refuse en plus, depuis cette fenêtre, tout canal qui ne commence pas par cs2:.
 
 function on<T>(channel: string, cb: (v: T) => void): () => void {
@@ -17,7 +17,10 @@ const api: OverlayApi = {
   cs2State: () => ipcRenderer.invoke('cs2:state'),
   onCs2OverlayConfig: (cb) => on<Cs2OverlayConfig>('cs2:overlay-config', cb),
   onCs2Live: (cb) => on<Cs2Live | null>('cs2:live', cb),
-  onCs2Recap: (cb) => on<Cs2RecapEvent>('cs2:recap', cb)
+  onCs2Recap: (cb) => on<Cs2RecapEvent>('cs2:recap', cb),
+  cs2OverlayPlace: (key, place) => ipcRenderer.invoke('cs2:overlay-place', key, place),
+  cs2OverlayEditStyle: (style) => ipcRenderer.invoke('cs2:overlay-edit-style', style),
+  cs2OverlayEditEnd: () => ipcRenderer.invoke('cs2:overlay-edit-end')
 }
 
 contextBridge.exposeInMainWorld('pxOverlay', api)

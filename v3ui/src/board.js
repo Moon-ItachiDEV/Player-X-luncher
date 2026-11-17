@@ -58,7 +58,11 @@ const Board = (() => {
   ]
   const P = {}
   let ME = null, tracked = [], metric = 'kd', readAt = 0, busy = false, root = null, loaded = false, loadP = null
-  const loading = new Set(), rows = new Map()
+  const loading = new Set(), rows = new Map(), subs = new Set()
+  let reading = null
+  // Les abonnés (onChange) sont prévenus une seule fois par rafale de changements
+  let pend = false
+  const notify = () => { if (pend || !subs.size) return; pend = true; queueMicrotask(() => { pend = false; subs.forEach((f) => { try { f() } catch { /* un abonné fautif ne bloque pas les autres */ } }) }) }
   try { const m = localStorage.getItem(METRIC_KEY); if (METRICS.some((x) => x.k === m)) metric = m } catch { /* stockage indisponible : le K/D */ }
   const newP = (a, me) => ({ n: a.name, acc: a, plat: PLATFORM_FR[a.platform] || a.platform, me: !!me, matches: 0, kd: 0, kpm: 0, win: 0, kills: 0, rev: 0, time: 0 })
   const setup = () => {
@@ -72,17 +76,18 @@ const Board = (() => {
   // Un joueur à la fois : le service limite les appels rapprochés
   async function readOne(k, refresh) {
     try { fill(k, await API.bf6Stats(P[k].acc, refresh)) } catch (e) { P[k].error = errText(e) || NOT_FOUND }
-    loading.delete(k)
+    loading.delete(k); notify()
   }
   function repaintRow(k) { const tr = rows.get(k); if (tr && body()) flip(() => { tr.innerHTML = rowHtml(k); order() }); syncBadge() }
   // Lu une fois à l'ouverture des stats : le processus principal garde chaque joueur 10 min
   function ensure() {
     if (loadP || !setup()) return loadP
     ;[ME, ...tracked].forEach((k) => { if (!P[k].read && !P[k].error) loading.add(k) })
+    notify()
     loadP = (async () => { for (const k of [ME, ...tracked]) { if (loading.has(k)) { await readOne(k, false); repaintRow(k) } } readAt = Date.now(); loaded = true; syncBadge(); if (body()) paint() })()
     return loadP
   }
-  const reset = () => { loadP = null; loaded = false; Object.keys(P).forEach((k) => delete P[k]); rows.clear(); loading.clear() }
+  const reset = () => { loadP = null; loaded = false; Object.keys(P).forEach((k) => delete P[k]); rows.clear(); loading.clear(); notify() }
   const cur = () => METRICS.find((m) => m.k === metric)
   const isRanked = (n) => !!P[n] && !loading.has(n) && !P[n].error && P[n].read
   const ranked = (m = cur()) => [ME, ...tracked].filter(isRanked).sort((a, b) => P[b][m.k] - P[a][m.k])
@@ -91,20 +96,23 @@ const Board = (() => {
   const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'à l’instant' : m < 60 ? `il y a ${m} min` : `il y a ${Math.round(m / 60)} h` }
 
   // Ta place au K/D : le badge de l'onglet et la ligne de la vue d'ensemble, comme dans la vraie appli
-  function standing() {
-    const m = METRICS[0], r = ranked(m)
+  function standing(m = METRICS[0]) {
+    const r = ranked(m)
     if (r.length < 2) return null
     const i = r.indexOf(ME); if (i < 0) return null
     const o = r[i > 0 ? i - 1 : 1]
-    return { rank: i + 1, total: r.length, name: P[o].n, kd: fr(P[o].kd, 2), ahead: i > 0 }
+    return { rank: i + 1, total: r.length, name: P[o].n, kd: m.f(P[o][m.k]), ahead: i > 0 }
   }
   const badge = () => { const s = standing(); return s ? ordinal(s.rank) : '' }
-  const rankLine = () => { const s = standing(); return s ? `<strong>${ordinal(s.rank)}</strong> sur ${s.total}, ${s.ahead ? 'derrière' : 'devant'} ${esc(s.name)} (${s.kd})` : '' }
-  const syncBadge = () => { const e = $('.sp-tabs [data-t=board] em'); if (e) e.textContent = badge() }
+  const lineOf = (m) => { const s = standing(m); return s ? `<strong>${ordinal(s.rank)}</strong> sur ${s.total}, ${s.ahead ? 'derrière' : 'devant'} ${esc(s.name)} (${s.kd})` : '' }
+  const rankLine = () => lineOf(METRICS[0])
+  // Écart avec toi, signé comme dans le tableau (d : joueur moins toi)
+  const gapOf = (d, m) => { const s = m.d(Math.abs(d)), zero = !/[1-9]/.test(s); return { s, zero, text: zero ? s : `${d > 0 ? '+' : '−'}${s}` } }
+  const syncBadge = () => { const e = $('.sp-tabs [data-t=board] em'); if (e) e.textContent = badge(); notify() }
 
   /* Les lignes */
   const face = (k, size) => {
-    const p = P[k], m = p.me ? Real.me() : null, img = m ? m.avatar : p.avatar, style = `--h:${p.me ? 338 : Shared.text.hue(p.n)};width:${size}px;height:${size}px;font-size:${Math.round(size * .42)}px`
+    const p = P[k], m = p.me ? Real.me() : null, img = m ? m.avatar : p.avatar, style = `--h:${p.me ? 350 : Shared.text.hue(p.n)};width:${size}px;height:${size}px;font-size:${Math.round(size * .42)}px`
     return `<span class="av ${p.me ? 'me' : ''}" style="${style}" aria-hidden="true">${img ? `<img src="${esc(img)}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block">` : esc((m?.name || p.n)[0].toUpperCase())}</span>`
   }
   const subOf = (n) => { const p = P[n]; return loading.has(n) || p.error ? esc(p.plat) : `${esc(p.plat)}, <span class="num">${fr(p.matches)}</span> match${p.matches > 1 ? 's' : ''}` }
@@ -140,8 +148,8 @@ const Board = (() => {
       $$('.rk-v', tr).forEach((td) => { const x = METRICS.find((y) => y.k === td.dataset.m); td.textContent = x.f(P[n][x.k]); td.classList.toggle('on', x.k === m.k) })
       const g = $('.rk-g', tr)
       if (P[n].me) { g.textContent = '–'; g.className = 'rk-g num' } else {
-        const s = m.d(Math.abs(d)), zero = !/[1-9]/.test(s)
-        g.textContent = zero ? s : `${d > 0 ? '+' : '−'}${s}`
+        const { s, zero, text } = gapOf(d, m)
+        g.textContent = text
         g.className = `rk-g num ${d > 0 && !zero ? 'up' : ''}`
         g.setAttribute('aria-label', zero ? `À égalité avec toi` : `${s} ${d > 0 ? 'devant' : 'derrière'} toi`)
       }
@@ -225,7 +233,7 @@ const Board = (() => {
   const unlisten = () => { outAc?.abort(); outAc = null }
   const outside = (e) => { const p = $('#rkAdd', root); if (!p || p.hidden || !p.isConnected) return unlisten(); if (!e.target.closest('#rkAdd,#rkAddBtn')) closePanel(false) }
   function openPanel() {
-    if (tracked.length >= MAX) { toast(`${MAX} joueurs suivis au maximum : retires-en un pour en ajouter un autre.`, { ms: 4000 }); return }
+    if (tracked.length >= MAX) { toast(FULL, { ms: 4000 }); return }
     const p = $('#rkAdd', root); p.hidden = false; $('#rkAddBtn', root).setAttribute('aria-expanded', 'true')
     $('#rkQ', root).value = ''; $('#rkRes', root).innerHTML = ''; $('#rkQ', root).focus()
     unlisten(); outAc = new AbortController()
@@ -238,11 +246,13 @@ const Board = (() => {
     if (giveBack) $('#rkAddBtn', root).focus()
   }
   const search = (q) => PlayerSearch.run(q, $('#rkRes', root), $('#rkGo', root), { action: 'Ajouter', exclude: () => [ME, ...tracked], onPick: add, input: $('#rkQ', root) })
+  const FULL = `${MAX} joueurs suivis au maximum : retires-en un pour en ajouter un autre.`
+  const refusal = (acc) => { const n = bf6Key(acc); return n === ME ? 'C’est ton propre profil : tu es déjà dans le classement.' : tracked.includes(n) ? 'Déjà suivi.' : tracked.length >= MAX ? FULL : null }
   async function add(acc) {
     const n = bf6Key(acc)
     if (tracked.length >= MAX || tracked.includes(n) || n === ME) return
     P[n] = newP(acc)
-    closePanel(); tracked.push(n); loading.add(n); saveTracked().catch(() => {})
+    closePanel(); tracked.push(n); loading.add(n); notify(); saveTracked().catch(() => {})
     if (!body()) render(root, false)
     else { const tr = makeRow(n); flip(() => { body().append(tr); paint() }) }
     $('#rkAddBtn', root)?.focus()
@@ -251,10 +261,11 @@ const Board = (() => {
     flip(() => { rows.get(n).innerHTML = rowHtml(n); order() })
   }
   function remove(n) {
-    const i = tracked.indexOf(n); if (i < 0) return
-    const tr = rows.get(n), next = tr.nextElementSibling?.querySelector('.rk-rm') || tr.previousElementSibling?.querySelector('.rk-rm') || $('#rkAddBtn', root), name = P[n].n
-    tracked.splice(i, 1); loading.delete(n); saveTracked().catch(() => {})
-    if (!tracked.length) { render(root, false); $('#rkAddBtn', root)?.focus() } else { flip(() => { tr.remove(); rows.delete(n); order() }); next?.focus({ preventScroll: true }) }
+    const i = tracked.indexOf(n); if (i < 0) return Promise.resolve()
+    const tr = rows.get(n), next = tr && (tr.nextElementSibling?.querySelector('.rk-rm') || tr.previousElementSibling?.querySelector('.rk-rm') || $('#rkAddBtn', root)), name = P[n].n
+    tracked.splice(i, 1); loading.delete(n)
+    const saved = saveTracked().catch(() => {})
+    if (tr && body()) { if (!tracked.length) { render(root, false); $('#rkAddBtn', root)?.focus() } else { flip(() => { tr.remove(); rows.delete(n); order() }); next?.focus({ preventScroll: true }) } }
     syncBadge()
     toast(`${esc(name)} retiré du classement`, { ms: 5000, action: { label: 'Annuler', fn: () => {
       if (tracked.includes(n) || tracked.length >= MAX) return
@@ -263,23 +274,25 @@ const Board = (() => {
       if (!body()) { render(root, false); return }
       const row = makeRow(n); flip(() => { body().append(row); order() })
     } } })
+    return saved
   }
   // Les joueurs se relisent un par un : le service limite les appels rapprochés
+  // btn : le bouton du tableau ; sans lui (API de données), on relit tout le monde sans toucher à la page
   async function refresh(btn) {
-    if (busy) return
-    busy = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy', 'true')
+    if (busy || (!ME && !setup())) return
+    busy = true; btn?.classList.add('is-busy'); btn?.setAttribute('aria-busy', 'true'); notify()
     const list = [ME, ...tracked]
     for (let i = 0; i < list.length; i++) {
       const n = list[i], tr = rows.get(n), meta = body() && $('#rkMeta', root)
-      if (!meta) break
-      meta.textContent = `Lecture de ${P[n].n}, ${i + 1} sur ${list.length}`
-      tr?.classList.add('reading')
+      if (btn && !meta) break
+      if (meta) meta.textContent = `Lecture de ${P[n].n}, ${i + 1} sur ${list.length}`
+      tr?.classList.add('reading'); reading = n; notify()
       await readOne(n, true)
-      tr?.classList.remove('reading')
+      reading = null; tr?.classList.remove('reading')
       if (tr && body()) tr.innerHTML = rowHtml(n)
     }
-    busy = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy')
-    readAt = Date.now(); loaded = true
+    busy = false; btn?.classList.remove('is-busy'); btn?.removeAttribute('aria-busy')
+    readAt = Date.now(); loaded = true; notify()
     if (body()) flip(order)
   }
 
@@ -331,10 +344,50 @@ const Board = (() => {
     ;[ME, ...tracked].forEach((n) => tb.append(makeRow(n)))
     order()
     if (race0) race(tb)
-    $$('.rk-s', b).forEach((s) => s.onclick = () => { const k = s.closest('th').dataset.m; if (k === metric) return; metric = k; try { localStorage.setItem(METRIC_KEY, k) } catch { /* gardé pour cette session */ } flip(order) })
+    $$('.rk-s', b).forEach((s) => s.onclick = () => setMetric(s.closest('th').dataset.m))
     tb.addEventListener('click', (e) => { const r = e.target.closest('[data-rm]'); if (r) remove(r.dataset.rm) })
     $('#rkRefresh', b).onclick = (e) => refresh(e.currentTarget)
     bindPanel()
   }
-  return { render, badge, rankLine, ensure, reset }
+
+  /* Les données seules, sans page : pour la page Stats (le Cockpit). Mêmes règles que le tableau ci-dessus. */
+  function setMetric(k) {
+    if (k === metric || !METRICS.some((m) => m.k === k)) return
+    metric = k; try { localStorage.setItem(METRIC_KEY, k) } catch { /* gardé pour cette session */ }
+    flip(order); notify()
+  }
+  // Après reset(), la table est vide alors que la liste reste : on la refait avant de lire
+  const live = () => { if (!ME || !P[ME] || tracked.some((k) => !P[k])) setup() }
+  function player(key) {
+    live(); const p = P[key]; if (!p) return null
+    const v = (k) => (p.read ? p[k] : null)
+    return { key, name: p.n, plat: p.plat, me: p.me, acc: p.acc, kd: v('kd'), kpm: v('kpm'), win: v('win'), kills: v('kills'), rev: v('rev'), time: v('time'), matches: v('matches'), avatar: (p.me ? Real.me()?.avatar : p.avatar) || null, error: p.error || null, stale: p.stale || null, loading: loading.has(key) || reading === key }
+  }
+  function rowsOf(metricKey) {
+    live()
+    const m = METRICS.find((x) => x.k === metricKey) || cur(), r = ranked(m), mine = isRanked(ME) ? P[ME][m.k] : null
+    const all = ME ? [ME, ...tracked] : [], rest = all.filter((n) => !r.includes(n))
+    const list = [...r, ...rest].map((n) => {
+      const p = P[n], ok = r.includes(n), at = ok ? r.indexOf(n) : -1
+      return { key: n, name: p.n, plat: p.plat, me: n === ME, loading: loading.has(n) || reading === n, error: p.error || null, stale: !!p.stale, value: ok ? p[m.k] : null, text: ok ? m.f(p[m.k]) : '', rank: ok ? at + 1 : null, gap: ok && n !== ME && mine !== null ? gapOf(p[m.k] - mine, m).text : '' }
+    })
+    return { metric: { k: m.k, l: m.l }, metrics: METRICS.map((x) => ({ k: x.k, l: x.l })), me: ME, list, line: lineOf(m), readAt, max: MAX, full: tracked.length >= MAX }
+  }
+  // Suivre un joueur : mêmes règles que l'ajout du tableau, mais les stats sont lues avant d'enregistrer. Ne lève jamais.
+  async function follow(acc) {
+    try {
+      live(); if (!ME) return { ok: false, msg: 'Relie d’abord ton profil Battlefield 6.' }
+      const no = refusal(acc); if (no) return { ok: false, msg: no }
+      let snap; try { snap = await API.bf6Stats(acc, false) } catch (e) { return { ok: false, msg: errText(e) || NOT_FOUND } }
+      const late = refusal(acc); if (late) return { ok: false, msg: late }
+      const n = bf6Key(acc); P[n] = newP(acc); fill(n, snap); tracked.push(n)
+      try { await saveTracked() } catch (e) { tracked.splice(tracked.indexOf(n), 1); delete P[n]; notify(); return { ok: false, msg: errText(e) || 'Le joueur n’a pas pu être enregistré.' } }
+      if (root?.isConnected) { if (!body()) render(root, false); else { const tr = makeRow(n); flip(() => { body().append(tr); order() }) } }
+      syncBadge()
+      return { ok: true, key: n }
+    } catch (e) { return { ok: false, msg: errText(e) || 'Le joueur n’a pas pu être suivi.' } }
+  }
+  const keys = () => { live(); return ME ? [ME, ...tracked] : [] }
+  const onChange = (fn) => { subs.add(fn); return () => { subs.delete(fn) } }
+  return { render, badge, rankLine, ensure, reset, rows: rowsOf, setMetric, player, follow, unfollow: remove, reread: () => refresh(), keys, onChange }
 })()

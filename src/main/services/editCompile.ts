@@ -1,5 +1,9 @@
 import type { EditShot } from '@shared/types'
-import { shotParts, type ShotSpec } from '@shared/editShots'
+import { filmPieces, frameStep, type FilmPiece } from '@shared/editShots'
+
+// frameStep et filmPieces vivent dans src/shared/editShots.ts (l'aperçu de l'éditeur calcule les mêmes coupes) ; ils restent importables d'ici.
+export { filmPieces, frameStep }
+export type { FilmPiece }
 
 // Les commandes du moteur pour fabriquer un film, sans Electron ni fichier (testé par editCompile.test.ts).
 // Un film se fabrique plan par plan, un seul ffmpeg à la fois : chaque plan devient un petit fichier (image encodée une fois
@@ -23,7 +27,6 @@ const READ_MARGIN_S = 0.5
 export const pixelFormat = (encoder: string): string => (/^h264_(nvenc|amf|qsv|mf)$/.test(encoder) ? 'nv12' : 'yuv420p')
 const r3 = (x: number): number => Math.round(x * 1000) / 1000
 const num = (x: number): string => String(r3(x))
-const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a)
 
 export interface FilmFormat {
   width: number
@@ -48,14 +51,6 @@ function checkedFormat(f: FilmFormat): FilmFormat {
   const { width: w, height: h, fps } = f
   if (![w, h, fps].every((n) => Number.isInteger(n) && n > 0) || w > 7680 || h > 4320 || w % 2 || h % 2 || fps > 240) throw new Error('Format de film refusé.')
   return f
-}
-
-/**
- * Le pas des durées, en images : un plan compte un multiple de ce pas, pour que sa durée tombe juste à la fois en images, en
- * échantillons de son et en microsecondes (3 images à 60 images/s : 50 ms). Les morceaux se suivent alors sans aucun arrondi.
- */
-export function frameStep(fps: number): number {
-  return fps / gcd(fps, 20)
 }
 
 /** Nombre d'images d'un plan de `seconds` secondes : le multiple du pas le plus proche, un pas au moins. */
@@ -247,36 +242,4 @@ export function percentOf(doneS: number, totalS: number, joinS = 0): number {
   if (!(totalS > 0)) return 0
   const part = (x: number): number => Math.min(1, Math.max(0, x / totalS))
   return Math.min(99, Math.floor((part(doneS) * (1 - JOIN_SHARE) + part(joinS) * JOIN_SHARE) * 100))
-}
-
-/** Un morceau à fabriquer, avec son nombre d'images pris sur la ligne de temps du film. */
-export interface FilmPiece {
-  clipId: string
-  inS: number
-  outS: number
-  speed: number
-  frames: number
-}
-
-/**
- * Les morceaux d'un projet, avec leurs images : chaque fin de morceau est arrondie au pas des images sur la ligne de temps du
- * film entier (pas morceau par morceau). L'écart avec les temps de la musique reste sous un demi-pas (25 ms à 60 images/s)
- * et ne s'additionne jamais. Un morceau qui ne garderait aucun pas est laissé de côté.
- */
-export function filmPieces(shots: readonly ShotSpec[], unit: number, fps: number): FilmPiece[] {
-  const step = frameStep(fps)
-  const out: FilmPiece[] = []
-  let t = 0
-  let doneFrames = 0
-  for (const s of shots) {
-    for (const p of shotParts(s, unit)) {
-      t += (p.toS - p.fromS) / p.speed
-      const end = Math.round((t * fps) / step) * step
-      const frames = end - doneFrames
-      if (frames < step) continue
-      doneFrames = end
-      out.push({ clipId: s.clipId, inS: p.fromS, outS: p.toS, speed: p.speed, frames })
-    }
-  }
-  return out
 }

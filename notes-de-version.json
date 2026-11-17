@@ -1,0 +1,90 @@
+[
+  {
+    "version": "0.7.6",
+    "date": "2026-11-17",
+    "items": [
+      {
+        "kind": "ameliore",
+        "title": "Clips plus fluides sur les écrans rapides",
+        "text": "Le clip suit ton écran (72 images/s sur un écran à 144 Hz), et le chiffre d’images/s d’un clip montre sa vraie cadence."
+      }
+    ]
+  },
+  {
+    "version": "0.7.5",
+    "date": "2026-11-17",
+    "items": [
+      {
+        "kind": "ameliore",
+        "title": "Tes données mieux protégées",
+        "text": "Si la base de Player X est abîmée, il reprend la copie de secours ou ce qui se lit encore, et te le dit."
+      },
+      {
+        "kind": "ameliore",
+        "title": "Player X se relève tout seul",
+        "text": "Si la fenêtre plante, elle se recharge sans couper ton enregistrement."
+      }
+    ]
+  },
+  {
+    "version": "0.7.4",
+    "date": "2026-11-16",
+    "items": [
+      {
+        "kind": "corrige",
+        "title": "Mises à jour plus fiables",
+        "text": "Player X trouve bien les nouvelles versions sur GitHub.",
+        "page": "set-about"
+      },
+      {
+        "kind": "corrige",
+        "title": "Les clips ne saccadent plus",
+        "text": "Ils sortent à 60 images par seconde régulières."
+      },
+      {
+        "kind": "corrige",
+        "title": "Alt + C rappelé sur Battlefield 6",
+        "text": "Sur les jeux sans clip automatique, Player X te rappelle au début de la partie que Alt + C garde un moment."
+      },
+      {
+        "kind": "corrige",
+        "title": "Le raccourci marche sans son",
+        "text": "Sans son du jeu ni micro, Alt + C ne gardait rien. C’est réglé."
+      },
+      {
+        "kind": "ameliore",
+        "title": "Fenêtres de mise à jour plus sobres",
+        "text": "Texte plus fin et plus léger."
+      }
+    ]
+  },
+  {
+    "version": "0.7.2",
+    "date": "2026-11-16",
+    "items": [
+      {
+        "kind": "nouveau",
+        "title": "Les mises à jour arrivent dans l’appli",
+        "text": "Player X te prévient quand une version sort. Tu choisis : maintenant, ou à la fermeture. Jamais pendant une partie.",
+        "page": "set-about"
+      }
+    ]
+  },
+  {
+    "version": "0.7.1",
+    "date": "2026-11-16",
+    "items": [
+      {
+        "kind": "nouveau",
+        "title": "Éditeur de films",
+        "text": "Ton montage est gardé, la musique joue dans l’aperçu avec sa tête de lecture, et le tempo se corrige à la main.",
+        "page": "clips"
+      },
+      {
+        "kind": "corrige",
+        "title": "Son des clips",
+        "text": "Il arrive 85 ms plus tôt sur les clips filmés par le moteur."
+      }
+    ]
+  }
+]

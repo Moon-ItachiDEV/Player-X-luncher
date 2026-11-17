@@ -4,6 +4,7 @@ import './styles/fonts.css'
 import './styles/tokens.css'
 import './styles/base.css'
 import './overlay/overlay.css'
+import './overlay/trois.css'
 import { startOverlay } from './overlay/overlay'
 
 document.documentElement.classList.add('ov-page')

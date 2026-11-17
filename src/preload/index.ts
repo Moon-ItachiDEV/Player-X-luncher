@@ -10,11 +10,13 @@ import type {
   Cs2RecapEvent,
   EditEngineStep,
   CaptureTestStep,
+  DriverUpdateState,
   FilmState,
   FriendAlert,
   GameEventStarted,
   GameReady,
   LauncherApi,
+  MajState,
   RareUnlock,
   SteamUpdates,
 } from '@shared/types'
@@ -89,6 +91,7 @@ const api: LauncherApi = {
   },
   cs2OverlayConfig: () => ipcRenderer.invoke('cs2:overlay-config'),
   cs2OverlayPreview: () => ipcRenderer.invoke('cs2:overlay-preview'),
+  cs2OverlayEdit: (style, moment) => ipcRenderer.invoke('cs2:overlay-edit', style, moment),
   cs2OverlayHotkeyCheck: (accel: string) => ipcRenderer.invoke('cs2:overlay-hotkey-check', accel),
   cs2OverlayReady: () => ipcRenderer.invoke('cs2:overlay-ready'),
   onCs2OverlayConfig: (cb) => {
@@ -204,6 +207,7 @@ const api: LauncherApi = {
   editMusicList: () => ipcRenderer.invoke('edit:music-list'),
   editMusicPick: () => ipcRenderer.invoke('edit:music-pick'),
   editMusicForget: (id) => ipcRenderer.invoke('edit:music-forget', id),
+  editMusicTempo: (id, opts) => ipcRenderer.invoke('edit:music-tempo', id, opts),
   editPlan: (clipIds, musicId) => ipcRenderer.invoke('edit:plan', clipIds, musicId),
   editCaptureTest: () => ipcRenderer.invoke('edit:capture-test'),
   onEditCaptureStep: (cb) => {
@@ -217,6 +221,34 @@ const api: LauncherApi = {
     const listener = (_e: unknown, s: FilmState): void => cb(s)
     ipcRenderer.on('edit:film', listener)
     return () => ipcRenderer.removeListener('edit:film', listener)
+  },
+  pcState: (refresh) => ipcRenderer.invoke('pc:state', refresh === true),
+  pcOpenDisplaySettings: () => ipcRenderer.invoke('pc:display-settings'),
+  pcDriverUpdate: (opts) => ipcRenderer.invoke('pc:driver-update', opts ?? {}),
+  pcDriverState: () => ipcRenderer.invoke('pc:driver-state'),
+  pcDriverStop: () => ipcRenderer.invoke('pc:driver-stop'),
+  pcSystemRestore: () => ipcRenderer.invoke('pc:system-restore'),
+  onPcDriver: (cb) => {
+    const listener = (_e: unknown, s: DriverUpdateState): void => cb(s)
+    ipcRenderer.on('pc:driver', listener)
+    return () => ipcRenderer.removeListener('pc:driver', listener)
+  },
+  majState: () => ipcRenderer.invoke('maj:state'),
+  majCheck: () => ipcRenderer.invoke('maj:check'),
+  majDownload: () => ipcRenderer.invoke('maj:download'),
+  majLater: () => ipcRenderer.invoke('maj:later'),
+  majCancel: () => ipcRenderer.invoke('maj:cancel'),
+  majInstall: () => ipcRenderer.invoke('maj:install'),
+  majInstallCancel: () => ipcRenderer.invoke('maj:install-cancel'),
+  majRetry: () => ipcRenderer.invoke('maj:retry'),
+  majSkip: () => ipcRenderer.invoke('maj:skip'),
+  majOpenRelease: () => ipcRenderer.invoke('maj:open-release'),
+  majNotes: (review) => ipcRenderer.invoke('maj:notes', review === true),
+  majNotesSeen: () => ipcRenderer.invoke('maj:notes-seen'),
+  onMajState: (cb) => {
+    const listener = (_e: unknown, s: MajState): void => cb(s)
+    ipcRenderer.on('maj:state', listener)
+    return () => ipcRenderer.removeListener('maj:state', listener)
   },
   platform: process.platform,
   version: __APP_VERSION__

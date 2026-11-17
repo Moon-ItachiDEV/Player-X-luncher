@@ -33,10 +33,288 @@ const Clips = (() => {
   const wordOf = (c) => (isFilm(c) ? 'film' : 'clip')
   // Un film ne part jamais tout seul : son favori ne promet rien de plus
   const starTip = (c) => (isFilm(c) ? 'Ajouter aux favoris' : 'Ajouter aux favoris, jamais effacé')
+  // 0.6.2 : la page Clips a deux styles, au choix dans Paramètres > Enregistrement : « Viseur » (par défaut : un écran de caméra, les
+  // réglages écrits dessus) et « Régie » (les réglages à gauche, tes clips à droite). Les réglages sont ceux de Paramètres : le même
+  // code (Settings.QUAL, TRIG, kcap, bindKc, bindSeg, copyLog) et les mêmes enregistrements (Real.saveClips). La page ne lance aucun jeu.
+  const STYLE_KEY = 'pxv3-clips-style'
+  let styleMem = null
+  const style = () => { if (styleMem) return styleMem; try { return localStorage.getItem(STYLE_KEY) === 'a' ? 'a' : 'b' } catch { return 'b' } }
+  const here = () => !!el && S.view === 'clips' && !S.gameId && !player
+  function setStyle(v) {
+    styleMem = v === 'a' ? 'a' : 'b'
+    try { localStorage.setItem(STYLE_KEY, styleMem) } catch { /* gardé pour cette session */ }
+    pop = null
+    if (here()) render()
+  }
+  // La bulle ouverte du Viseur (une seule), un curseur en cours de glissement, ce que la page montrait au dernier dessin
+  let pop = null, dragging = false, pageSig = '', seenSince = 0
+  const cs2Here = () => GAMES.some((g) => g.id === 'cs2' && g.installed)
+  const cs2Live = () => Real.st.settings?.cs2Live !== false
+  // Le jeu montré : celui que le moteur filme, sinon celui qui tourne, sinon le dernier joué, et seulement un jeu que l'enregistrement filme
+  const heroGame = (cfg) => { const l = GAMES.filter((g) => g.installed && !g.hidden && (cfg?.games !== 'cs2bf6' || g.id === 'cs2' || g.id === 'bf6')); const live = Real.clipsLive?.game; return (live && l.find((g) => g.name === live)) || l.find((g) => g.running) || l[0] || null }
+  // Seul CS2 dit ses kills à Player X (et seulement avec au moins un moment coché) : ailleurs, rien n'est gardé sans le raccourci
+  const autoHere = (cfg, g) => { const live = Real.clipsLive?.game; return (live ? /counter-strike 2/i.test(live) : g?.id === 'cs2') && cs2Live() && Settings.TRIG.some(([k]) => cfg?.triggers?.[k]) }
+  const keyHint = (cfg) => `Appuie sur ${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} pour garder un moment`
+  // Une vraie image du jeu, large d'abord ; jamais le repli « nom sur sa teinte »
+  const realArt = (u) => (u && A(u) !== BLANK && !/^data:image\/svg/.test(A(u)) ? A(u) : null)
+  const heroArt = (g) => [g?.heroWide, g?.hero, g?.cover].map(realArt).find(Boolean) || null
+  // Le mur du Viseur : les vraies jaquettes de ta bibliothèque (installés, pas masqués)
+  const wallCovers = () => [...new Set(GAMES.filter((g) => g.installed && !g.hidden && g.id !== '__all').map((g) => realArt(g.cover)).filter(Boolean))]
+  function recState(cfg) {
+    const s = Real.clipsLive
+    if (!cfg?.enabled) return { k: 'off', word: 'Caméra coupée' }
+    if (s?.status === 'error') return { k: 'err', word: 'Caméra en panne' }
+    if (s?.status === 'recording') return { k: 'rec', word: 'Enregistre' }
+    return { k: 'ready', word: 'Caméra prête' }
+  }
+  const between = (rid, from, to) => CLIPS.filter((c) => !isFilm(c) && (!rid || c.gameId === rid) && c.at >= from - 60000 && c.at <= to + 60000)
+  // Les clips de la partie en cours : ceux du jeu filmé, depuis le début de la partie (la session de Player X, sinon le moment où la page a vu l'enregistrement)
+  function sessionClips(cfg) {
+    const g = heroGame(cfg); if (recState(cfg).k !== 'rec' || !g) return []
+    return between(g.rid, S.session?.since || seenSince || Date.now(), Date.now()).sort((a, b) => b.at - a.at)
+  }
+  // Le dernier clip (jamais un film s'il y a un clip) ; sans clip, le dernier film
+  const lastClip = () => { const by = (l) => l.reduce((m, c) => (!m || c.at > m.at ? c : m), null); return by(CLIPS.filter((c) => !isFilm(c))) || by(CLIPS) }
+  const usedBytes = () => CLIPS.reduce((a, c) => a + (isFilm(c) ? 0 : c.sizeBytes || 0), 0)
+  // Ce que la page montre : elle n'est redessinée que si l'une de ces choses change
+  const sigOf = () => { const c = Real.clipsCfg, l = Real.clipsLive, g = heroGame(c); return JSON.stringify([style(), c, l && [l.status, l.error, l.game], Real.st.settings?.cs2Live, cs2Here(), g?.id, heroArt(g), wallCovers().length, CLIPS.length, sessionClips(c).map((x) => x.id)]) }
+  function syncPage() {
+    if (!here() || !$('#cxRoot', el) || dragging || sigOf() === pageSig) return
+    render()
+  }
+
+  /* Les réglages : les mêmes blocs dans les bulles du Viseur et dans la Régie */
+  const swHTML = (k, on, label) => `<button class="sw" role="switch" data-sw="${k}" data-fk="sw-${k}" aria-checked="${!!on}" aria-label="${esc(label)}"><i></i></button>`
+  const qualLine = (c) => (c.capture === 'chrome' ? (Settings.QUAL[c.quality] || Settings.QUAL.balanced)[1] : Settings.QUAL_ENGINE[c.quality] || Settings.QUAL_ENGINE.balanced)
+  const fpsOf = (c) => qualLine(c).split(', ').find((x) => /images\/s/.test(x)) || ''
+  const sKey = () => `<div class="cx-lst"><div class="cx-row"><span>Raccourci</span>${Settings.kcap('clip', 'cx-rk')}</div></div>`
+  const sTrig = (c) => { const live = cs2Live(); return `<div class="cx-grp"><p class="cx-lab">Clips automatiques sur Counter-Strike 2</p>${live ? '' : '<p class="cx-note">Le suivi des matchs est coupé : seul le raccourci garde un clip. <button class="cx-lnk cx-inl" data-act="live">Activer le suivi</button></p>'}<div class="pills${live ? '' : ' cx-inert'}" role="group" aria-label="Moments gardés sur Counter-Strike 2"${live ? '' : ' inert'}>${Settings.TRIG.map(([k, l]) => `<button class="pill" data-trig="${k}" data-fk="t-${k}" aria-pressed="${!!c.triggers[k]}">${ic('check')}${l}</button>`).join('')}</div></div>` }
+  const sDur = (c) => `<div class="cx-grp"><p class="cx-lab">Durée</p><div class="cx-lst">
+    <label class="cx-row"><span class="kn">Avant</span><input type="range" min="5" max="120" step="1" value="${c.before}" data-r="before" data-fk="r-before" aria-label="Avant le moment"><span class="kv num" data-val="before"></span></label>
+    <label class="cx-row"><span class="kn">Après</span><input type="range" min="0" max="30" step="1" value="${c.after}" data-r="after" data-fk="r-after" aria-label="Après le moment"><span class="kv num" data-val="after"></span></label></div>
+    <p class="cx-note num" data-res></p></div>`
+  const sQual = (c) => `<div class="cx-grp"><p class="cx-lab">Qualité</p><div class="cx-seg" role="radiogroup" aria-label="Qualité">${Object.entries(Settings.QUAL).map(([k, [n]]) => `<button role="radio" data-q="${k}" data-fk="q-${k}" aria-checked="${c.quality === k}" tabindex="${c.quality === k ? 0 : -1}">${n}</button>`).join('')}</div><p class="cx-note num">${qualLine(c)}</p></div>`
+  const sSon = (c) => `<div class="cx-lst"><div class="cx-row"><span>Son du PC</span>${swHTML('gameAudio', c.gameAudio, 'Son du PC')}</div><div class="cx-row"><span>Micro</span>${swHTML('mic', c.mic, 'Micro')}</div></div>`
+  const tail = (c) => { const used = usedBytes(), lim = (c.limitGb || 0) * 1024 ** 3; return `<div class="cx-tail"><div class="cx-store"><span class="cx-g"><i style="width:${lim ? Math.min(100, used / lim * 100) : 0}%"></i></span><span class="num">${used ? esc(Shared.steamUpdate.formatBytes(used)) : '0 Go'} sur ${c.limitGb} Go</span></div><button class="cx-lnk" data-act="all">${ic('gear')}Tous les réglages</button></div>` }
+  const corners = '<i class="cx-c cx-c1"></i><i class="cx-c cx-c2"></i><i class="cx-c cx-c3"></i><i class="cx-c cx-c4"></i>'
+  // Le style caméléon du jeu (comme l'Accueil), posé dans le HTML pour que le fondu ne rejoue pas à chaque dessin
+  const gsAttrs = (g) => { const s = g ? GameStyle.now(g) : null; return s && s.style !== 'neutre' && s.accent ? ` data-gs="${esc(s.style)}" style="--gs-acc:${esc(s.accent)};--gs-on:${esc(s.onAccent)}"` : '' }
+  function paintGs() {
+    const host = $('.cx-gs', el); if (!host) return
+    const g = G(host.dataset.gid) || GAMES.find((x) => x.id === host.dataset.gid); if (!g) return void GameStyle.paint(host, null)
+    const s = GameStyle.now(g)
+    if (s) GameStyle.paint(host, s); else GameStyle.of(g).then((s2) => { if (host.isConnected) GameStyle.paint(host, s2) }).catch(() => {})
+  }
+  // Les boutons d'un clip : « Regarder » (le vrai bouton caméléon du jeu) et « Copier pour Discord »
+  const watchBtn = (c, label) => `<button class="play-btn" data-act="watch" data-id="${esc(c.id)}" data-fk="watch"><span class="pb-ring" aria-hidden="true"></span><span class="pb-in">${ic('play')}<span>${label}</span></span></button>`
+  const copyBtn = (c) => `<button class="dk-b" data-act="copy" data-id="${esc(c.id)}" data-fk="copy">${ic('copy')}<span>Copier pour Discord</span></button>`
+  const logPill = () => `<button class="cx-pill" data-act="log" data-fk="log">Copier le journal</button>`
+  const POPS = { dur: 'Durée d’un clip', qual: 'Qualité', trig: 'Clips automatiques sur Counter-Strike 2', more: 'Plus de réglages' }
+  // Une bulle (Viseur) : le bouton, et une place pour sa bulle, remplie seulement quand elle est ouverte
+  const pw = (id, btn, up) => `<span class="cx-pw" data-pw="${id}"${up ? ' data-up="1"' : ''}>${btn}<div class="cx-slot"></div></span>`
+  const popBtn = (id, cls, inner, aria = '', extra = '') => `<button class="${cls}" data-pop="${id}" data-fk="pop-${id}" aria-expanded="${pop === id}" aria-haspopup="dialog"${aria ? ` aria-label="${aria}"` : ''}${extra}>${inner}</button>`
+  function popHTML(id, up) {
+    const c = Real.clipsCfg, off = !c.enabled, dim = (h) => `<div class="cx-set${off ? ' cx-inert' : ''}"${off ? ' inert' : ''}>${h}</div>`
+    const body = id === 'dur' ? sDur(c) : id === 'qual' ? sQual(c) : id === 'trig' ? sTrig(c)
+      : !zeroNow() ? `${dim(`${cs2Here() ? sTrig(c) : ''}${sSon(c)}`)}${tail(c)}` : `<div class="cx-sm-only">${dim(sSon(c))}</div>${tail(c)}`
+    return `<div class="cx-pop${up ? ' up' : ''}" role="dialog" aria-label="${POPS[id]}" data-pop-for="${id}"><div class="cx-set">${body}</div></div>`
+  }
+  const zeroNow = () => !CLIPS.length
+  function paintPops() {
+    // La bulle ouverte n'existe plus dans cette page (disposition changée) : on l'oublie, sinon le prochain Échap serait avalé
+    if (pop && !$(`[data-pw="${pop}"]`, el)) pop = null
+    $$('.cx-pw', el).forEach((w) => {
+      const id = w.dataset.pw, open = pop === id, slot = $('.cx-slot', w)
+      $('[data-pop]', w)?.setAttribute('aria-expanded', open)
+      if (!open) { slot.innerHTML = ''; return }
+      if (slot.firstElementChild) return
+      slot.innerHTML = popHTML(id, w.dataset.up)
+      paintDur(slot)
+      $$('.cx-seg', slot).forEach((s) => Settings.bindSeg(s, (v) => save({ quality: v })))
+    })
+  }
+  function openPop(id, focus = true) {
+    pop = pop === id ? null : id; paintPops()
+    if (!pop) return $(`[data-pop="${id}"]`, el)?.focus({ preventScroll: true })
+    // Le focus entre dans la bulle : sur le choix en cours s'il y en a un (qualité), sinon sur le premier réglage visible
+    if (focus) { const l = $$('.cx-pop input:not([disabled]), .cx-pop button:not([disabled])', el).filter((x) => !x.closest('[inert]') && (x.checkVisibility?.() ?? x.offsetParent)); (l.find((x) => x.getAttribute('aria-checked') === 'true' && x.getAttribute('role') === 'radio') || l[0])?.focus({ preventScroll: true }) }
+  }
+  function closePop(giveBack) {
+    if (!pop) return
+    const id = pop; pop = null; paintPops()
+    if (giveBack) $(`[data-pop="${id}"]`, el)?.focus({ preventScroll: true })
+  }
+  // Les durées, la taille d'un clip et le dessin « ce qu'un clip garde » : mis à jour sur place pendant qu'un curseur glisse
+  function paintDur(root) {
+    const c = Real.clipsCfg; if (!c) return
+    const be = c.before, af = c.after, mo = Settings.clipMo(c)
+    const span = Math.max(66, be + af + 14), pct = (x) => x / span * 100, x = span - af - 7
+    $$('[data-born]', root).forEach((e) => { e.innerHTML = `<i class="t"></i><i class="c" style="left:${pct(x - be)}%;width:${pct(be + af)}%"></i><span class="x" style="left:${pct(x)}%">${xm()}</span><span class="l b" style="left:calc(${pct(x)}% - 26px)">${be} s avant</span><span class="l" style="left:calc(${pct(x)}% + 26px)">${af} s après</span>` })
+    $$('[data-val=before]', root).forEach((e) => { e.textContent = be + ' s' }); $$('[data-val=after]', root).forEach((e) => { e.textContent = af + ' s' })
+    $$('[data-res]', root).forEach((e) => { e.textContent = `${be + af} s par clip, environ ${mo} Mo` })
+    $$('[data-tot]', root).forEach((e) => { e.textContent = `${be + af} s` })
+    $$('[data-split]', root).forEach((e) => { e.textContent = `${be} avant, ${af} après` })
+    $$('input[type=range]', root).forEach((i) => { i.style.setProperty('--pct', ((i.value - i.min) / (i.max - i.min) * 100) + '%'); if (+i.value !== c[i.dataset.r] && c[i.dataset.r] != null && document.activeElement !== i) i.value = c[i.dataset.r] })
+  }
+  async function save(patch) {
+    try { await Real.saveClips(patch); Settings.syncBar(); Settings.sync() } catch (e) { toast(esc(errText(e)), { tone: 'warn', ms: 5000 }); render() }
+  }
+  async function camSet(on, b) {
+    if (b?.getAttribute('aria-busy') === 'true') return
+    b?.setAttribute('aria-busy', 'true')
+    try { await Real.saveClips({ enabled: on }) } catch (e) { b?.removeAttribute('aria-busy'); render(); return toast(esc(errText(e)), { tone: 'warn', ms: 4000 }) }
+    Settings.syncBar(); Settings.sync()
+    if (b?.isConnected) b.removeAttribute('aria-busy')
+  }
+  const act = {
+    all() { closePop(); Settings.open('rec') },
+    log() { Settings.copyLog() },
+    async live() { try { await Real.saveSettings({ cs2Live: true }); render() } catch (e) { toast(esc(errText(e)), { tone: 'warn', ms: 5000 }) } },
+    async retry(b) { b.disabled = true; await Real.loadClipsCfg().catch(() => null); Settings.syncBar(); render() },
+    on(b) { camSet(true, b) },
+    watch(b) { const c = CLIPS.find((x) => x.id === b.dataset.id); if (c) openClip(c, null) },
+    copy(b) { const c = CLIPS.find((x) => x.id === b.dataset.id); if (c) copy(c, b) }
+  }
+  function onClick(e) {
+    const t = e.target
+    const a = t.closest('[data-act]'); if (a) return void act[a.dataset.act]?.(a)
+    const s = t.closest('[data-sw]')
+    if (s) { const on = s.getAttribute('aria-checked') !== 'true'; s.setAttribute('aria-checked', on); return void (s.dataset.sw === 'en' ? camSet(on, s) : save({ [s.dataset.sw]: on })) }
+    const tr = t.closest('[data-trig]')
+    if (tr) { const on = tr.getAttribute('aria-pressed') !== 'true'; tr.setAttribute('aria-pressed', on); return void save({ triggers: { ...Real.clipsCfg.triggers, [tr.dataset.trig]: on } }) }
+    const po = t.closest('[data-pop]'); if (po) openPop(po.dataset.pop)
+  }
+  const fkOf = (n) => (n.closest('.cx-pop') ? 'pop|' : '') + (n.dataset.fk || (n.dataset.key ? 'kc-' + n.dataset.key : n.dataset.act ? 'act-' + n.dataset.act : n.classList.contains('ct-tile') ? 'tile:' + n.dataset.id : n.dataset.f ? 'f:' + n.dataset.f : n.id || ''))
+  const fkFind = (sc, k) => (!k ? null : k.startsWith('pop|') ? fkFind($('.cx-pop', sc) || sc, k.slice(4)) : k.startsWith('act-') ? $(`[data-act="${k.slice(4)}"]`, sc) : k.startsWith('tile:') ? $(`.ct-tile[data-id="${k.slice(5)}"]`, sc) : k.startsWith('kc-') ? $(`.kc[data-key="${k.slice(3)}"]`, sc) : k.startsWith('f:') ? $(`[data-f="${k.slice(2)}"]`, sc) : $(`[data-fk="${k}"]`, sc) || $('#' + k, sc))
+
+  /* La liste : la même dans les deux styles */
+  function libHTML(cfg, st) {
+    const F = filters(); if (!F.some(([k]) => k === S.clipFilter)) S.clipFilter = 'all'
+    const shown = CLIPS.filter(filt), g = heroGame(cfg)
+    const live = st.k === 'rec' && g ? sessionClips(cfg) : null
+    const liveShown = live ? live.filter(filt) : []
+    const liveIds = new Set((live || []).map((c) => c.id))
+    // Une session de jeu, un groupe : les clips d'un même match restent ensemble. Un film se range à la fin du groupe de sa partie
+    // (même sessionId) ; les autres films ont leur groupe, en dernier.
+    const groups = new Map()
+    shown.forEach((c) => { if (isFilm(c) || liveIds.has(c.id)) return; const k = c.sessionId || `${c.gameId}:${new Date(c.at).toDateString()}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c) })
+    const loose = []
+    shown.filter(isFilm).forEach((f) => { if (f.sessionId && groups.has(f.sessionId)) groups.get(f.sessionId).push(f); else loose.push(f) })
+    const filmCtl = (k, list) => {
+      if (film.status === 'running' && list.some((c) => c.id === film.fromClipId)) return `<div class="cm-a" id="cmRun" role="group" tabindex="-1" aria-label="Film en cours de fabrication"><span class="cm-run">Film en cours</span><progress class="cm-bar" id="cmBar" max="100" value="${film.percent || 0}" aria-label="Avancement du film"></progress><b class="cm-pct num" id="cmPct">${film.percent || 0} %</b><button class="btn sm" id="cmStop">Arrêter</button></div>`
+      if (pick) return ''
+      // Lot A : un groupe dont le montage est gardé propose de le reprendre (à la place de « Monter un film »)
+      const d = Editor.draftOf(k)
+      return d ? `<div class="cm-a"><button class="cx-lnk cm-go is-draft" data-k="${esc(k)}">${ic('film')}<span>Reprendre le montage <em class="num">· ${d.n} plan${d.n > 1 ? 's' : ''}, ${fmtTime(d.totalS)}</em></span></button></div>`
+        : `<div class="cm-a"><button class="cx-lnk cm-go" data-k="${esc(k)}">${ic('film')}<span>Monter un film</span></button></div>`
+    }
+    const bar = pick ? `<div class="cl-bar"><div class="cl-sel" role="group" aria-label="Clips choisis"><span id="clSelN" class="num" aria-live="polite"></span><button class="btn sm" id="clSelFilm">${ic('film')}Monter un film</button><button class="btn sm danger" id="clSelDel">${ic('trash')}Supprimer</button><button class="btn sm" id="clSelEnd">Terminé</button></div></div>`
+      : `<div class="cl-bar"><div class="pills" role="group" aria-label="Filtrer">${F.map(([k, l]) => `<button class="pill" data-f="${esc(k)}" aria-pressed="${S.clipFilter === k}">${esc(l)}</button>`).join('')}</div><div class="cl-sel"><button class="cx-lnk" id="clSel">Sélectionner</button></div></div>`
+    const liveG = live && (liveShown.length || S.clipFilter === 'all') ? `<section class="cm cx-live" aria-label="Partie en cours"><header class="cm-h"><span class="cm-cov" data-name="${esc(g.name)}"><img src="${esc(A(g.cover) === BLANK ? Real.coverPh(g.name) : A(g.cover))}" alt=""></span><div class="cm-t"><h2><i class="cx-dot" aria-hidden="true"></i>${esc(liveShown[0] ? whereOf(liveShown[0]) : g.name)}</h2><p>En cours</p></div></header>
+        <div class="ct-grid">${liveShown.map(tile).join('')}${S.clipFilter === 'all' ? '<div class="ct-tile cx-wait"><span class="ct-frame">Le prochain arrive ici</span></div>' : ''}</div></section>` : ''
+    const head = (a, k, list) => `<header class="cm-h">
+          <span class="cm-cov" data-name="${esc(a.gameName)}"><img src="${esc(A(gameOf(a)?.cover) === BLANK ? Real.coverPh(a.gameName) : A(gameOf(a).cover))}" alt=""></span>
+          <div class="cm-t"><h2>${esc(whereOf(a))}</h2><p>${[a.score ? `${a.score.us ?? a.score[0]}–${a.score.them ?? a.score[1]}` : '', a.mode ? Shared.cs2.modeLabel(a.mode) : a.map ? '' : '', T.timeAgo(a.at)].filter(Boolean).map(esc).join(', ')}</p></div>
+          ${filmCtl(k, list)}
+        </header>`
+    const html = `<div class="cx-lib">${bar}${liveG}
+      ${[...groups.entries()].map(([k, list]) => `<section class="cm">${head(list[0], k, list)}<div class="ct-grid">${list.map(tile).join('')}</div></section>`).join('')}
+      ${loose.length ? `<section class="cm" aria-label="Films"><header class="cm-h"><span class="cm-cov cm-ico">${ic('film')}</span><div class="cm-t"><h2>Films</h2></div></header><div class="ct-grid">${loose.map(tile).join('')}</div></section>` : ''}
+      ${!shown.length && !liveG ? `<div class="empty"><span class="empty-x">${xm()}</span><h2>Aucun clip ici</h2><p>Aucun clip ne correspond à ce filtre.</p><button class="btn sm" id="clReset">Effacer le filtre</button></div>` : ''}</div>`
+    return { html, groups }
+  }
+  function bindLib(sc, groups) {
+    $$('.pill[data-f]', sc).forEach((b) => b.onclick = () => { S.clipFilter = b.dataset.f; render() })
+    $('#clReset', sc)?.addEventListener('click', () => { S.clipFilter = 'all'; render() })
+    $$('.cm-go', sc).forEach((b) => b.onclick = () => (b.classList.contains('is-draft') ? resumeFilm(b, b.dataset.k) : makeFilm(b, groups.get(b.dataset.k) || [], b.dataset.k)))
+    $('#clSel', sc)?.addEventListener('click', () => { pick = new Set(); render(); $('.ct-tile', sc)?.focus({ preventScroll: true }) })
+    $('#clSelEnd', sc)?.addEventListener('click', () => { pick = null; render(); $('#clSel', sc)?.focus({ preventScroll: true }) })
+    $('#clSelDel', sc)?.addEventListener('click', () => { const l = CLIPS.filter((c) => pick?.has(c.id)); if (!l.length) return toast('Choisis d’abord des clips.', { ms: 2200 }); deleteMany(l) })
+    $('#clSelFilm', sc)?.addEventListener('click', (e) => { const l = CLIPS.filter((c) => pick?.has(c.id)); if (!l.length) return toast('Choisis d’abord des clips.', { ms: 2200 }); makeFilm(e.currentTarget, l) })
+    paintPick()
+    $('#cmStop', sc)?.addEventListener('click', (e) => { e.currentTarget.setAttribute('aria-busy', 'true'); API.editFilmStop().catch((x) => toast(esc(errText(x)), { tone: 'warn', ms: 4000 })) })
+    bindTiles(sc, (c, t) => openClip(c, t))
+  }
+
+  /* Le Viseur */
+  const wallHTML = () => { const cv = wallCovers(); return cv.length < 4 ? '' : `<div class="cx-wall" aria-hidden="true">${Array.from({ length: 10 }, (_, c) => `<div>${Array.from({ length: 5 }, (_, r) => `<img src="${esc(cv[(c * 2 + r) % cv.length])}" alt="" loading="lazy" decoding="async" draggable="false">`).join('')}</div>`).join('')}</div>` }
+  const errLine = (live) => `<p class="cx-kick cx-bad">${ic('warn')}<span>${esc(live?.error || 'La caméra est en panne.')}</span></p>`
+  function pageB(cfg, st) {
+    const live = Real.clipsLive, off = st.k === 'off', g = heroGame(cfg), zero = !CLIPS.length
+    const dim = off ? ' cx-inert' : '', inert = off ? ' inert' : ''
+    const q = Settings.QUAL[cfg.quality] || Settings.QUAL.balanced, nT = Settings.TRIG.filter(([k]) => cfg.triggers[k]).length, ctx = `cx cx-b cx-s-${st.k}`
+    const gear = (up) => pw('more', popBtn('more', 'cx-chip ico', ic('gear'), 'Plus de réglages'), up)
+    const down = !!(st.k === 'err')
+    if (zero) {
+      const art = st.k === 'rec' ? heroArt(g) : null
+      const pic = art ? `<img src="${esc(art)}" alt="" decoding="async" draggable="false">` : wallHTML()
+      const lead = st.k === 'ready' ? 'Elle démarre toute seule avec ton jeu.' : off ? 'Aucun clip n’est gardé.' : st.k === 'rec' ? `En cours${live?.game ? ` sur ${esc(live.game)}` : ''}. ${autoHere(cfg, g) ? 'Tes clips arriveront ici.' : `${keyHint(cfg)} : ce jeu ne garde rien tout seul.`}` : esc(live?.error || 'La caméra est en panne.')
+      const tiles = 3 + (cs2Here() ? 1 : 0)
+      const cs2Tile = !cs2Here() ? '' : pw('trig', popBtn('trig', 'cx-tile', `<span class="lab">Counter-Strike 2</span><span class="val">${!cs2Live() ? 'Suivi coupé' : nT ? `${nT} moment${nT > 1 ? 's' : ''}` : 'Aucun'}</span><span class="sub">${!cs2Live() ? 'Raccourci seulement' : nT > 1 ? 'Clips automatiques' : nT ? 'Clip automatique' : 'Raccourci seulement'}</span>`), 1)
+      return { groups: new Map(), html: `<div class="${ctx} cx-full" id="cxRoot"><figure class="cx-vf cx-band" aria-label="Caméra">
+        <div class="cx-pic${pic ? '' : ' cx-plain'}">${pic}</div>${corners}
+        <div class="cx-top" style="justify-content:flex-end">${gear(0)}</div>
+        <div class="cx-txt"><span class="cx-shw">${logo(`cx-shield${off ? ' dark' : ''}${st.k === 'rec' ? ' rec' : ''}`)}</span>
+          <h1 class="cx-tt sw-t">${st.word}${swHTML('en', cfg.enabled, 'Caméra')}</h1><p class="cx-lead">${lead}</p>
+          ${down ? `<div class="cx-acts">${logPill()}<button class="cx-lnk" data-act="all">${ic('gear')}Tous les réglages</button></div>` : ''}</div>
+        <div class="cx-deck${dim}" style="--n:${tiles}"${inert}>
+          <div class="cx-tile cx-tile-k"><span class="lab">Raccourci</span><span class="val">${Settings.kcap('clip', 'cx-tk')}</span><span class="sub">Dans tous tes jeux</span></div>
+          ${pw('dur', popBtn('dur', 'cx-tile', '<span class="lab">Durée</span><span class="val num" data-tot></span><span class="sub num" data-split></span>'), 1)}
+          ${pw('qual', popBtn('qual', 'cx-tile', `<span class="lab">Qualité</span><span class="val">${q[0]}</span><span class="sub num">${esc(fpsOf(cfg))}</span>`), 1)}
+          ${cs2Tile}
+          <div class="cx-side">${sSon(cfg)}</div>
+        </div></figure></div>` }
+    }
+    // Avec des clips : un bandeau viseur, la liste dessous
+    const last = lastClip(), sess = st.k === 'rec' ? sessionClips(cfg) : null
+    const gameC = st.k === 'rec' ? g : gameOf(last)
+    const img = (st.k === 'rec' ? (sess?.[0]?.thumbUrl || heroArt(g)) : null) || last.thumbUrl
+    let txt
+    if (st.k === 'rec') {
+      const m = sess?.[0]?.map ? Shared.cs2.mapLabel(sess[0].map) : ''
+      txt = `<p class="cx-kick">${esc(g?.name || live?.game || 'Partie en cours')}${m ? `, ${esc(m)}` : ''}</p><h1 class="cx-title">${sess.length ? `${sess.length} clip${sess.length > 1 ? 's' : ''} dans cette partie` : autoHere(cfg, g) ? 'Le prochain clip arrive ici' : keyHint(cfg)}</h1>
+        ${sess.length ? `<div class="ht-acts">${watchBtn(sess[0], 'Regarder le dernier')}</div>` : ''}`
+    } else {
+      txt = `${down ? `<div class="cx-kickrow">${errLine(live)}${logPill()}</div>` : `<p class="cx-kick">Dernier ${wordOf(last)}, ${esc(T.timeAgo(last.at))}</p>`}<h1 class="cx-title">${esc(last.title || 'Clip')}</h1>
+        <div class="ht-acts">${watchBtn(last, 'Regarder')}${copyBtn(last)}</div>`
+    }
+    const stChip = `<span class="cx-chip cx-st cx-s-${st.k}"><i class="cx-dot" aria-hidden="true"></i>${st.k === 'rec' ? 'Enregistre' : st.k === 'err' ? 'En panne' : 'Caméra'}${swHTML('en', cfg.enabled, 'Caméra')}</span>`
+    const lib = libHTML(cfg, st)
+    return { html: `<div class="${ctx}" id="cxRoot"><figure class="cx-vf cx-band cx-gs" data-gid="${esc(gameC?.id || '')}"${gsAttrs(gameC)} aria-label="Caméra">
+      <div class="cx-pic"><img src="${esc(img)}" alt="" decoding="async" draggable="false" style="--pos:50% 42%"></div>${corners}
+      <div class="cx-top">${stChip}
+        <div class="cx-chips">
+          <span class="${dim}"${inert}>${Settings.kcap('clip', 'cx-chip')}</span>
+          ${pw('dur', popBtn('dur', `cx-chip${dim}`, '<span>Clips de <span class="num" data-tot></span></span>', '', inert))}
+          ${pw('qual', popBtn('qual', `cx-chip${dim}`, `Qualité ${esc(q[0].toLowerCase())}`, '', inert))}
+          ${gear(0)}
+        </div></div>
+      <div class="cx-txt">${txt}</div>
+    </figure>${lib.html}</div>`, groups: lib.groups }
+  }
+
+  /* La Régie */
+  function pageA(cfg, st) {
+    const live = Real.clipsLive, off = st.k === 'off', dim = off ? ' cx-inert' : '', inert = off ? ' inert' : ''
+    const zero = !CLIPS.length
+    const con = `<aside class="cx-con" aria-label="Caméra">
+      <div class="cx-master"><span class="cx-mk">${logoS()}</span><div><b>Caméra</b>${st.k === 'rec' ? '<span><i class="cx-dot" aria-hidden="true"></i>Enregistre</span>' : ''}</div>${swHTML('en', cfg.enabled, 'Caméra')}</div>
+      ${st.k === 'err' ? `<div class="cx-merr"><p>${esc(live?.error || 'La caméra est en panne.')}</p>${logPill()}</div>` : ''}
+      <div class="cx-body"><div class="cx-set${dim}"${inert}>${sKey()}${cs2Here() ? sTrig(cfg) : ''}${sDur(cfg)}${sQual(cfg)}${sSon(cfg)}</div></div>
+      <footer class="cx-foot">${tail(cfg)}</footer></aside>`
+    if (!zero) { const lib = libHTML(cfg, st); return { html: `<div class="cx cx-a cx-s-${st.k}" id="cxRoot">${con}<div class="cx-rlib">${lib.html}</div></div>`, groups: lib.groups } }
+    const lead = off ? 'La caméra est coupée.' : st.k === 'rec' && !autoHere(cfg, heroGame(cfg)) ? `${keyHint(cfg)} : ce jeu ne garde rien tout seul.` : 'Joue, ils arriveront ici.'
+    const sub = cs2Here() ? `Un kill sur Counter-Strike 2, ou ${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} dans n’importe quel jeu.` : `${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} dans n’importe quel jeu.`
+    return { groups: new Map(), html: `<div class="cx cx-a cx-s-${st.k}" id="cxRoot">${con}<div class="cx-rlib cx-empty"><div class="cx-mid"><h1 class="cx-tt">Aucun clip</h1><p class="cx-lead">${lead}</p>
+      ${off ? `<div class="cx-off2"><button class="cx-pill" data-act="on" data-fk="on">Allumer la caméra</button></div>` : `<div class="cx-borncard"><div class="cx-born" data-born></div><p class="cx-note">${sub}</p></div>`}</div>
+      <div class="cx-here" aria-hidden="true"><div><i class="cx-ghost"></i><i class="cx-ghost"></i><i class="cx-ghost"></i><i class="cx-ghost"></i></div></div></div></div>` }
+  }
+  const downHTML = () => `<div class="cx cx-b cx-down" id="cxRoot"><div class="empty"><h2>Enregistrement indisponible</h2><p>Le moteur d’enregistrement n’a pas répondu. Réessaie, ou relance Player X si ça continue.</p><button class="cx-pill" data-act="retry" data-fk="retry">${ic('refresh')}Réessayer</button></div></div>`
   async function boot() {
     if (!API.clipsGetSettings) return
     const [cfg, live, list] = await Promise.all([API.clipsGetSettings().catch(() => null), API.clipsState().catch(() => null), API.clipsList().catch(() => [])])
     Real.clipsCfg = cfg; Real.clipsLive = live; CLIPS = list || []
+    if (live?.status === 'recording') seenSince = Date.now()
     if (API.editFilmState) { film = (await API.editFilmState().catch(() => null)) || film; API.onEditFilm(onFilm) }
     API.onClipsChanged(async () => {
       const before = new Set(CLIPS.map((c) => c.id))
@@ -44,6 +322,8 @@ const Clips = (() => {
       const fresh = CLIPS.filter((c) => !before.has(c.id))
       // Un film qui arrive a son propre message (onFilm) : « Clip gardé » ne vaut que pour un clip
       if (fresh.length) { Bar.dot(S.view !== 'clips'); if (S.session && fresh.some((c) => !isFilm(c))) toast(`${xm()} Clip gardé`, { ms: 1600 }) }
+      // Un montage ouvert : le brouillon est gardé et les plans dont le clip a disparu sont repeints
+      Editor.sync()
       if (S.view === 'clips' && !S.gameId && !player) render()
     })
     // Un problème se dit une fois : pas de nouvelle alerte tant que c'est le même
@@ -51,7 +331,7 @@ const Clips = (() => {
     // Bêta 46 : le rythme des clips se dit une fois, quand la partie finit (jamais pendant), et seulement s'il y a un souci
     let paceAt = live?.lastGame?.at || 0
     API.onClipsState((s) => {
-      Real.clipsLive = s; Settings.sync()
+      Real.clipsLive = s; seenSince = s.status === 'recording' ? seenSince || Date.now() : 0; Settings.sync(); syncPage()
       if (s.error && s.error !== lastErr) toast(esc(s.error), { tone: 'warn', ms: 7000, action: { label: 'Voir les réglages', fn: () => Settings.open('rec') } })
       lastErr = s.error || ''
       if (s.lastGame && s.lastGame.at > paceAt) {
@@ -61,6 +341,8 @@ const Clips = (() => {
       }
     })
     Real.applyGames()
+    Real.on('games', syncPage); Real.on('settings', syncPage)
+    GameStyle.onChange(() => { if (here()) paintGs() })
   }
   // Fabrication d'un film : l'avancement se met à jour sur place (la liste n'est pas redessinée, les vignettes ne sautent pas) ;
   // la fin, l'arrêt et l'échec se disent une fois, où que l'on soit dans l'appli
@@ -70,6 +352,9 @@ const Clips = (() => {
       $('#cmPct').textContent = `${s.percent || 0} %`; $('#cmBar').value = s.percent || 0
       return
     }
+    // Le montage gardé s'efface quand son film est prêt ; un film arrêté ou raté le laisse (sans la marque « en fabrication »)
+    if (s.status === 'done') Editor.filmDone(s)
+    else if (s.status === 'stopped' || s.status === 'failed') Editor.filmUndone(s)
     if (s.status === 'done') {
       const left = s.skipped ? ` ${s.skipped} clip${s.skipped > 1 ? 's n’ont' : ' n’a'} pas pu être monté${s.skipped > 1 ? 's' : ''}.` : ''
       toast(`${ic('check')} Film prêt.${left}`, { ms: 9000, action: { label: 'Voir le film', fn: () => openFilm(s.clipId) } })
@@ -82,14 +367,24 @@ const Clips = (() => {
   }
   // Monter un film : l'éditeur s'ouvre avec ces clips (bêta 35). Le film se fabrique ensuite depuis l'éditeur, et son
   // avancement revient ici, dans le groupe du premier clip.
-  async function makeFilm(b, list) {
+  // groupKey : la clé du groupe d'où il part (null : une sélection). Le montage est gardé sous cette clé (« Reprendre le montage »).
+  const afterEditor = () => { render(); ($('#cmRun') || $('.cm-go') || $('.ct-tile'))?.focus({ preventScroll: true }) }
+  async function makeFilm(b, list, groupKey = null) {
     if (b?.getAttribute('aria-busy')) return
     const clips = list.filter((c) => !isFilm(c))
     if (!clips.length) return toast('Choisis au moins un clip (pas un film).', { ms: 2600 })
     b?.setAttribute('aria-busy', 'true')
     pick = null
-    await Editor.open(clips.map((c) => c.id), el, () => { render(); ($('#cmRun') || $('.cm-go') || $('.ct-tile'))?.focus({ preventScroll: true }) })
+    await Editor.open(clips.map((c) => c.id), el, afterEditor, groupKey)
     b?.removeAttribute('aria-busy')
+  }
+  async function resumeFilm(b, groupKey) {
+    if (b?.getAttribute('aria-busy')) return
+    b?.setAttribute('aria-busy', 'true')
+    pick = null
+    const ok = await Editor.resume(groupKey, el, afterEditor)
+    b?.removeAttribute('aria-busy')
+    if (!ok) render()
   }
   // Supprimer plusieurs clips d'un coup, après une confirmation qui dit combien
   function deleteMany(list) {
@@ -126,10 +421,23 @@ const Clips = (() => {
       <div class="cp" id="cp" hidden></div>
     </section>`)
     host.append(el)
+    el.addEventListener('click', onClick)
+    el.addEventListener('input', (e) => { const r = e.target.closest?.('input[data-r]'); if (!r || !Real.clipsCfg) return; Real.clipsCfg[r.dataset.r] = +r.value; paintDur(el) })
+    el.addEventListener('change', (e) => { const r = e.target.closest?.('input[data-r]'); if (!r) return; dragging = false; save({ [r.dataset.r]: +r.value }) })
+    el.addEventListener('pointerdown', (e) => { if (e.target.closest?.('input[type=range]')) dragging = true })
+    // Une image qui ne charge pas s'enlève : l'écran reste sombre, rien ne casse
+    el.addEventListener('error', (e) => { const i = e.target; if (i?.tagName === 'IMG' && i.closest('.cx-pic')) i.remove() }, true)
+    document.addEventListener('pointerup', () => { dragging = false }); document.addEventListener('pointercancel', () => { dragging = false })
+    // Une bulle se ferme d'un clic dehors (le focus revient au bouton, sauf si on a cliqué sur autre chose qui le prend) et d'Échap
+    document.addEventListener('click', (e) => { if (!pop || !here() || !e.target.isConnected || e.target.closest?.('.cx-pw')) return; closePop(!e.target.closest?.('button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])')) })
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !pop || !here() || el.querySelector('.kc.wait') || document.querySelector('[data-modal]:not([hidden]), dialog[open]')) return
+      e.preventDefault(); e.stopPropagation(); closePop(true)
+    }, true)
   }
   const filters = () => {
     const games = [...new Map(CLIPS.map((c) => [c.gameId, c.gameName])).entries()].slice(0, 4).map(([rid, n]) => ['g:' + rid, Real.byRid(rid)?.short || n])
-    return [['all', 'Tout'], ...(games.length > 1 ? games : []), ...(CLIPS.some(isFilm) ? [['film', 'Films']] : []), ['star', 'Favoris'], ['multi', '3 kills et plus'], ['hs', 'Headshots']]
+    return [['all', 'Tout'], ['star', 'Favoris'], ...(CLIPS.some(isFilm) ? [['film', 'Films']] : []), ...(games.length > 1 ? games : [])]
   }
   function filt(c) {
     const f = S.clipFilter
@@ -137,17 +445,15 @@ const Clips = (() => {
     if (f.startsWith('g:')) return c.gameId === f.slice(2)
     if (f === 'film') return isFilm(c)
     if (f === 'star') return c.pinned
-    if (f === 'multi') return (c.kills || 0) >= 3
-    if (f === 'hs') return (c.headshots || 0) > 0
     return true
   }
   function tile(c) {
     const sel = pick ? ` is-pick" aria-pressed="${pick.has(c.id)}` : ''
-    return `<button class="ct-tile${sel}" data-id="${esc(c.id)}" aria-label="${esc(c.title)}, ${Math.round(c.durationS)} secondes">
+    return `<button class="ct-tile${sel}" data-id="${esc(c.id)}" aria-label="${esc(c.title || 'Clip')}, ${Math.round(c.durationS)} secondes">
       <span class="ct-frame">${pick ? `<span class="ct-chk">${ic('check')}</span>` : ''}<img src="${esc(c.thumbUrl)}" alt="" loading="lazy" decoding="async" draggable="false" data-fb="1"><i class="ct-shade"></i>
         <span class="ct-time num">${fmtTime(c.durationS)}</span><span class="ct-flags">${isFilm(c) ? `<span class="ct-film">${ic('film')}</span>` : ''}${c.pinned ? `<span class="ct-star">${ic('starf')}</span>` : ''}</span>
       </span>
-      <span class="ct-t"><b>${esc(c.title)}</b><span>${esc(isFilm(c) ? T.capitalize(T.timeAgo(c.at)) : [slowOf(c), noteOf(c) || whereOf(c)].filter(Boolean).join(' · '))}</span></span>
+      <span class="ct-t"><b>${esc(c.title || 'Clip')}</b><span>${esc(isFilm(c) ? T.capitalize(T.timeAgo(c.at)) : [slowOf(c), noteOf(c) || whereOf(c)].filter(Boolean).join(' · '))}</span></span>
     </button>`
   }
   // Survoler un clip le lit sans le son : l'image fixe ne dit pas tout
@@ -165,58 +471,31 @@ const Clips = (() => {
       t.addEventListener('pointerleave', () => { clearTimeout(timer); vid?.remove(); vid = null })
     })
   }
-  function render() {
+  function render(o = {}) {
     const sc = $('#clipScroll', el), cfg = Real.clipsCfg
-    const F = filters(); if (!F.some(([k]) => k === S.clipFilter)) S.clipFilter = 'all'
-    // Un film ne compte pas dans la place réservée aux clips, et ne part jamais tout seul
-    const shown = CLIPS.filter(filt), used = CLIPS.reduce((a, c) => a + (isFilm(c) ? 0 : c.sizeBytes || 0), 0), limit = (cfg?.limitGb || 0) * 1024 ** 3
-    const films = shown.filter(isFilm)
-    // Une session de jeu, un groupe : les clips d'un même match restent ensemble. Les films ont leur groupe à eux, en tête.
-    const groups = new Map()
-    shown.forEach((c) => { if (isFilm(c)) return; const k = c.sessionId || `${c.gameId}:${new Date(c.at).toDateString()}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c) })
-    const n = shown.length
-    const zero = !CLIPS.length
-    // Le film d'un groupe : les clips affichés, mis bout à bout. Pendant sa fabrication, le groupe d'où il a été demandé la suit.
-    const filmCtl = (k, list) => {
-      if (film.status === 'running' && list.some((c) => c.id === film.fromClipId)) return `<div class="cm-a" id="cmRun" role="group" tabindex="-1" aria-label="Film en cours de fabrication"><span class="cm-run">Film en cours</span><progress class="cm-bar" id="cmBar" max="100" value="${film.percent || 0}" aria-label="Avancement du film"></progress><b class="cm-pct num" id="cmPct">${film.percent || 0} %</b><button class="btn sm" id="cmStop">Arrêter</button></div>`
-      return pick ? '' : `<div class="cm-a"><button class="btn sm cm-go" data-k="${esc(k)}">${ic('film')}<span>Monter un film</span></button></div>`
-    }
-    // Le focus était sur la fabrication en cours (ou sur « Arrêter ») : il reviendra sur le bouton du groupe quand elle finit
-    const hadRun = !!document.activeElement?.closest?.('#cmRun'), hadStop = document.activeElement?.id === 'cmStop'
-    sc.innerHTML = `<header class="pg-head">
-        <div><h1 class="pg-title">Clips</h1></div>
-        ${cfg ? `<button class="cl-store" id="clStore" aria-label="Réglages de l’enregistrement"><span class="cl-g"><i style="width:${limit ? Math.min(100, used / limit * 100) : 0}%"></i></span><span><b class="num">${used ? esc(Shared.steamUpdate.formatBytes(used)) : '0 Go'}</b> sur ${cfg.limitGb} Go</span></button>` : ''}
-      </header>
-      ${zero ? '' : pick ? `<div class="cl-bar"><div class="cl-sel" role="group" aria-label="Clips choisis"><span id="clSelN" class="num" aria-live="polite"></span><button class="btn sm" id="clSelFilm">${ic('film')}Monter un film</button><button class="btn sm danger" id="clSelDel">${ic('trash')}Supprimer</button><button class="btn sm" id="clSelEnd">Terminé</button></div></div>` : `<div class="cl-bar"><div class="pills" role="group" aria-label="Filtrer">${F.map(([k, l]) => `<button class="pill" data-f="${esc(k)}" aria-pressed="${S.clipFilter === k}">${esc(l)}</button>`).join('')}</div><div class="cl-sel"><button class="btn sm" id="clSel">${ic('check')}Sélectionner</button>${searchBtn()}</div></div>`}
-      ${films.length ? `<section class="cm" aria-label="Films">
-        <header class="cm-h"><span class="cm-cov cm-ico">${ic('film')}</span><div class="cm-t"><h2>Films</h2></div></header>
-        <div class="ct-grid">${films.map(tile).join('')}</div>
-      </section>` : ''}
-      ${[...groups.entries()].map(([k, list]) => { const a = list[0], g = gameOf(a); return `<section class="cm">
-        <header class="cm-h">
-          <span class="cm-cov" data-name="${esc(a.gameName)}"><img src="${esc(A(g?.cover) === BLANK ? Real.coverPh(a.gameName) : A(g.cover))}" alt=""></span>
-          <div class="cm-t"><h2>${esc(whereOf(a))}</h2><p>${[a.score ? `${a.score.us ?? a.score[0]}–${a.score.them ?? a.score[1]}` : '', a.mode ? Shared.cs2.modeLabel(a.mode) : a.map ? '' : '', T.timeAgo(a.at)].filter(Boolean).map(esc).join(', ')}</p></div>
-          ${filmCtl(k, list)}
-        </header>
-        <div class="ct-grid">${list.map(tile).join('')}</div>
-      </section>` }).join('')}
-      ${zero ? `<div class="empty"><span class="empty-x">${xm()}</span>${cfg?.enabled ? `<h2>Aucun clip pour l’instant</h2><p>Sur Counter-Strike 2, chaque kill garde son clip tout seul. Partout ailleurs, appuie sur ${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} pour garder les dernières secondes.</p><button class="btn sm" id="clGo">Régler l’enregistrement</button>` : `<h2>L’enregistrement est coupé</h2><p>Active-le pour garder tes kills et tes meilleurs moments, sur ce PC.</p><button class="btn sm rose" id="clOn">Activer l’enregistrement</button>`}</div>` : ''}
-      ${!zero && !n ? `<div class="empty"><span class="empty-x">${xm()}</span><h2>Aucun clip ici</h2><p>Aucun clip ne correspond à ce filtre.</p><button class="btn sm" id="clReset">Effacer le filtre</button></div>` : ''}`
-    $$('.pill', sc).forEach((b) => b.onclick = () => { S.clipFilter = b.dataset.f; render() })
-    $('#clReset', sc)?.addEventListener('click', () => { S.clipFilter = 'all'; render() })
-    $('#clStore', sc)?.addEventListener('click', () => Settings.open('rec'))
-    $('#clGo', sc)?.addEventListener('click', () => Settings.open('rec'))
-    $('#clOn', sc)?.addEventListener('click', async () => { await Real.saveClips({ enabled: true }).catch((e) => toast(esc(errText(e)), { tone: 'warn', ms: 4000 })); Settings.syncBar(); render() })
-    $$('.cm-go', sc).forEach((b) => b.onclick = () => makeFilm(b, groups.get(b.dataset.k) || []))
-    $('#clSel', sc)?.addEventListener('click', () => { pick = new Set(); render(); $('.ct-tile', sc)?.focus({ preventScroll: true }) })
-    $('#clSelEnd', sc)?.addEventListener('click', () => { pick = null; render(); $('#clSel', sc)?.focus({ preventScroll: true }) })
-    $('#clSelDel', sc)?.addEventListener('click', () => { const l = CLIPS.filter((c) => pick?.has(c.id)); if (!l.length) return toast('Choisis d’abord des clips.', { ms: 2200 }); deleteMany(l) })
-    $('#clSelFilm', sc)?.addEventListener('click', (e) => { const l = CLIPS.filter((c) => pick?.has(c.id)); if (!l.length) return toast('Choisis d’abord des clips.', { ms: 2200 }); makeFilm(e.currentTarget, l) })
-    paintPick()
-    $('#cmStop', sc)?.addEventListener('click', (e) => { e.currentTarget.setAttribute('aria-busy', 'true'); API.editFilmStop().catch((x) => toast(esc(errText(x)), { tone: 'warn', ms: 4000 })) })
+    // Ce qui doit survivre au dessin : le focus, le défilement, une fabrication de film en cours
+    const act0 = document.activeElement; let fk = act0 && sc.contains(act0) ? fkOf(act0) : null
+    const hadRun = !!act0?.closest?.('#cmRun'), hadStop = act0?.id === 'cmStop'
+    const ys = [sc.scrollTop, $('.cx-rlib', sc)?.scrollTop || 0, $('.cx-body', sc)?.scrollTop || 0]
+    // Une capture de raccourci commencée sur cette page s'abandonne avec le dessin ; celle des Paramètres (ouverts par-dessus) continue
+    if ($('.kc.wait', sc)) Settings.cancelKey()
+    const st = recState(cfg), a = style(), zero = !CLIPS.length
+    // Caméra coupée : une bulle de réglage (sauf « Plus de réglages ») devient inerte, on la ferme, et le focus qui s'y trouvait revient à l'interrupteur
+    if (st.k === 'off' && pop && pop !== 'more') { pop = null; if (act0?.closest?.('.cx-pw:not([data-pw="more"])')) fk = 'sw-en' }
+    let out
+    if (!cfg) { const lib = CLIPS.length ? libHTML(null, st) : null; out = { html: `${downHTML()}${lib ? `<div class="cx cx-b">${lib.html}</div>` : ''}`, groups: lib?.groups || new Map() } }
+    else out = a === 'a' ? pageA(cfg, st) : pageB(cfg, st)
+    sc.classList.toggle('cx-sc-a', !!cfg && a === 'a'); sc.classList.toggle('cx-sc-b', !cfg || a === 'b'); sc.classList.toggle('cx-sc-full', !!cfg && a === 'b' && zero)
+    sc.innerHTML = out.html
+    pageSig = sigOf()
+    $$('.cx-seg', sc).forEach((s) => Settings.bindSeg(s, (v) => save({ quality: v })))
+    Settings.bindKc(sc)
+    paintPops(); paintDur(sc); paintGs()
+    bindLib(sc, out.groups)
+    sc.scrollTop = ys[0]; const rl = $('.cx-rlib', sc), bd = $('.cx-body', sc); if (rl) rl.scrollTop = ys[1]; if (bd) bd.scrollTop = ys[2]
     // La fabrication vient de finir, son bloc a disparu : le focus revient sur un bouton de la liste. Tant qu'elle dure, il y reste.
     if (hadRun) ((hadStop && $('#cmStop', sc)) || $('#cmRun', sc) || $('.cm-go', sc) || $('.ct-tile', sc))?.focus({ preventScroll: true })
-    bindTiles(sc, (c, t) => openClip(c, t))
+    else if (fk) fkFind(sc, fk)?.focus({ preventScroll: true })
   }
 
   function paintPick() {
@@ -225,6 +504,7 @@ const Clips = (() => {
 
   // Lecteur
   function openClip(c, fromTile) {
+    Settings.cancelKey()
     const shared = fromTile && $('.ct-frame', fromTile)
     if (shared) shared.style.viewTransitionName = 'clip-frame'
     vt(() => {
@@ -233,6 +513,7 @@ const Clips = (() => {
     }, { done: () => $('#cpShare')?.focus({ preventScroll: true }) })
   }
   function paintPlayer(c) {
+    Settings.cancelKey()
     const g = gameOf(c)
     if (g) Fluid.game(g)
     const cp = $('#cp', el); cp.hidden = false
@@ -252,7 +533,7 @@ const Clips = (() => {
         <p class="cp-det">${esc(T.capitalize(T.timeAgo(c.at)))}</p>
         ${noteOf(c) ? `<p class="cp-det">${esc(noteOf(c))}</p>` : ''}
         ${slowOf(c) ? `<p class="cp-det cp-slow">${esc(slowOf(c))}</p>` : ''}
-        <button class="btn rose cp-share" id="cpShare">${ic('copy')}<span>Copier pour Discord</span></button>
+        <button class="cx-pill cp-share" id="cpShare">${ic('copy')}<span>Copier pour Discord</span></button>
         <p class="cp-size num" id="cpSize"></p>
         <div class="cp-acts">
           <button class="btn sm icon" id="cpStar" aria-label="Favori" aria-pressed="${!!c.pinned}" data-tip="${c.pinned ? 'Retirer des favoris' : starTip(c)}" data-tip-l><span class="ic-swap"><span class="a">${ic('star')}</span><span class="b">${ic('starf')}</span></span></button>
@@ -429,26 +710,27 @@ const Clips = (() => {
       if (player) return
       $('#cp', el).hidden = true; $('#cp', el).innerHTML = ''; $('#clipScroll', el).style.visibility = ''
       leaveBar()
-      Fluid.set(['#150c1c', '#47123a', '#c21c55', '#3b1a66'])
+      Fluid.set(['#120a10', '#3a0f1c', '#b3112f', '#5a1420'])
       render()
     }, { done: () => ($(`.ct-tile[data-id="${pc.id}"]`, el) || $('.ct-tile', el) || $('.pill', el))?.focus({ preventScroll: true }) })
   }
   /* L'onglet Clips de la fiche d'un jeu */
   function gameTab(g, b) {
     const list = CLIPS.filter((c) => c.gameId === g.rid), cfg = Real.clipsCfg
-    b.innerHTML = list.length ? `<div class="ct-grid">${list.slice(0, 12).map(tile).join('')}</div>` : `<div class="empty"><span class="empty-x">${xm()}</span><h2>Pas encore de clip sur ce jeu</h2><p>${g.id === 'cs2' && cfg?.enabled ? 'Joue un match : chaque kill garde son clip tout seul.' : cfg?.enabled ? `En jeu, appuie sur ${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} pour garder les dernières secondes.` : 'L’enregistrement est coupé : active-le dans Paramètres.'}</p>${g.installed ? `<button class="btn sm" id="gbPlay">${ic('play')}Lancer ${esc(g.short)}</button>` : ''}</div>`
-    $('#gbPlay', b)?.addEventListener('click', () => $('#gpPlay').click())
+    const on = !!cfg?.enabled
+    b.innerHTML = list.length ? `<div class="ct-grid">${list.slice(0, 12).map(tile).join('')}</div>` : `<div class="empty"><span class="empty-x">${xm()}</span><h2>Pas encore de clip sur ce jeu</h2><p>${!on ? 'La caméra est coupée.' : g.id === 'cs2' ? 'Joue un match : chaque kill garde son clip tout seul.' : `En jeu, appuie sur ${esc(Shared.hotkey.hotkeyText(cfg.hotkey))} pour garder les dernières secondes.`}</p>${cfg && !on ? `<button class="cx-pill" id="gbOn">Allumer la caméra</button>` : ''}</div>`
+    $('#gbOn', b)?.addEventListener('click', async (e) => { await camSet(true, e.currentTarget); if (b.isConnected && Real.clipsOn()) gameTab(g, b) })
     bindTiles(b, (c) => { const back = { game: g.id, prev: S.prevView }; S.gameId = null; openById(c.id, back) })
   }
   const openById = (id, back = null) => { const c = CLIPS.find((x) => x.id === id); if (!c) return; ret = null; go('clips'); setTimeout(() => { ret = back; paintPlayer(c) }, 320) }
   function onLeaveNow() { if (player) { leavePlayer(); $('#cp', el).hidden = true; $('#cp', el).innerHTML = ''; $('#clipScroll', el).style.visibility = ''; leaveBar() } }
   return {
-    boot, mount, open: openById, close, playerToggle, copy, gameTab, sizeLabel,
+    boot, mount, open: openById, close, playerToggle, copy, gameTab, sizeLabel, style, setStyle,
     isOpen: () => !!player,
     tileHTML: tile,
     // Les clips gardés pendant une session de jeu (un film fabriqué après coup n'en fait pas partie)
-    between: (rid, from, to) => CLIPS.filter((c) => !isFilm(c) && (!rid || c.gameId === rid) && c.at >= from - 60000 && c.at <= to + 60000),
-    onEnter() { if (!player && !Editor.isOpen()) { render(); Fluid.set(['#150c1c', '#47123a', '#c21c55', '#3b1a66']) } Bar.dot(false) },
-    onLeave() { ret = null; pick = null; if (Editor.isOpen()) Editor.close(); onLeaveNow() }
+    between,
+    onEnter() { if (!player && !Editor.isOpen()) { render({ enter: true }); Fluid.set(['#120a10', '#3a0f1c', '#b3112f', '#5a1420']) } Bar.dot(false) },
+    onLeave() { ret = null; pick = null; pop = null; Settings.cancelKey(); if (Editor.isOpen()) { Editor.sync(); Editor.close() } onLeaveNow() }
   }
 })()

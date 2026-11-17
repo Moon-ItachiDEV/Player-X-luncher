@@ -1,7 +1,7 @@
 /* Overlay CS2 (bêta), overlay/overlay.ts : la fenêtre transparente par-dessus le jeu. Classes en .ov- seulement.
    Placement commun (écran de 1080 px de haut, mis à l'échelle par `zoom`) : achat et mi-temps sous le radar (zone A),
    bilan de fin sous le fil des éliminations (zone B), pastille au-dessus des munitions (zone C, l'île du style A sous le score).
-   Trois styles : .ov-a façon Apple, .ov-b verre, .ov-c finition du style Player X (design Braise).
+   Un seul style depuis la 0.6.1 : .ov-c, le style Player X (blason). Apple (.ov-a) et Verre (.ov-b) sont retirés.
    Camps : bleu CT et ocre T, les couleurs du jeu lui-même (pas celles de l'appli). */
 
 html.ov-page,
@@ -299,285 +299,209 @@ html.ov-page #root {
 }
 
 /* =====================================================================
-   A · façon Apple : matériau sombre épais, ressorts amortis (sans rebond), sheet depuis le bord, île sous le score.
-   Police du système (Segoe UI Variable sous Windows), serrée sur les grands chiffres.
+   C · style Player X, 0.6 : le thème du logo blason (comme l'installeur, les boutons caméléon et Paramètres), au rouge sans rose de la bêta 50.
+   Verre sombre teinté de carmin, liseré rouge, petit écu du logo en tête de carte, filet rouge qui s'efface
+   (la barre de l'installeur), losanges du logo comme repères, frise des rounds au dégradé du blason (✓ / ✕ gardés).
+   Sans flou : la fenêtre transparente ne peut pas flouter le jeu. Les couleurs CT / T restent celles du jeu.
    ===================================================================== */
 
-.ov-a {
-  --ov-font: 'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  --ov-spring: linear(0, 0.249, 0.528, 0.731, 0.856, 0.927, 0.965, 0.984, 0.993, 0.997, 0.999, 1);
-  color: #f5f5f7;
+.ov-c {
+  --bz-a: #ff3a5c;
+  --bz-b: #c4123a;
+  --bz: linear-gradient(180deg, var(--bz-a), var(--bz-b));
+  --bz-ink: #ff7a8a;
+  --bz-glow: rgba(232, 38, 79, 0.45);
+  color: #f7eef1;
 }
-.ov-a,
-.ov-a .ov-title,
-.ov-a .ov-sub,
-.ov-a .ov-kicker,
-.ov-a .ov-line,
-.ov-a .ov-k,
-.ov-a .ov-stat dt,
-.ov-a .ov-side,
-.ov-a .ov-pill {
-  font-family: var(--ov-font);
-}
-.ov-a .ov-score-side b,
-.ov-a .ov-stat dd,
-.ov-a .ov-money b,
-.ov-a .ov-lead b,
-.ov-a .ov-lead span,
-.ov-a .ov-end-title b,
-.ov-a .ov-end-title span,
-.ov-a .ov-pill-kda,
-.ov-a .ov-dash {
-  font-family: var(--ov-font);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-transform: none;
-}
-.ov-a .ov-card {
-  background: rgba(28, 28, 30, 0.86);
-  box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14);
-}
-.ov-a .ov-buy {
-  padding: 18px;
-  border-radius: 22px;
-  transform-origin: top left;
-}
-.ov-a .ov-stat {
-  padding: 10px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.07);
-}
-.ov-a .ov-end {
-  padding: 10px 22px 22px;
-  border-radius: 28px;
-  background: rgba(28, 28, 30, 0.9);
-}
-.ov-a .ov-grabber {
-  align-self: center;
-  width: 40px;
-  height: 5px;
-  border-radius: 3px;
-  background: rgba(235, 235, 245, 0.3);
-}
-.ov-a .ov-kicker {
-  text-transform: none;
-  letter-spacing: 0.01em;
-  font-size: 13px;
-  opacity: 0.75;
-}
-.ov-a .ov-res.is-win {
-  color: #30d158;
-}
-.ov-a .ov-res.is-loss {
-  color: #ff6961;
-}
-.ov-a .ov-pill.is-island {
-  left: 50%;
-  right: auto;
-  top: 92px;
-  bottom: auto;
-  translate: -50% 0;
-  height: 44px;
-  padding: 0 18px;
-  border-radius: 22px;
-  background: rgba(18, 18, 20, 0.9);
-}
-.ov-a .ov-pill-hot {
-  color: #30d158;
-}
-/* Frise : un round perdu est plus bas qu'un round gagné. */
-.ov-a .ov-strip {
-  align-items: flex-end;
-  height: 22px;
-}
-.ov-a .ov-r {
-  border-radius: 6px;
-}
-.ov-a .ov-r.is-won {
-  height: 22px;
-  background: #30d158;
-}
-.ov-a .ov-r.is-lost {
-  height: 10px;
-  background: rgba(255, 105, 97, 0.9);
-}
-.ov-a .ov-r.is-unknown,
-.ov-a .ov-r.is-next {
-  height: 10px;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .ov-a .ov-buy.ov-enter {
-    animation: ov-a-grow 560ms var(--ov-spring) both;
-  }
-  .ov-a .ov-end.ov-enter {
-    animation: ov-a-sheet 620ms var(--ov-spring) both;
-  }
-  .ov-a .ov-pill.ov-enter {
-    animation: ov-a-island 520ms var(--ov-spring) both;
-  }
-}
-@keyframes ov-a-grow {
-  from {
-    scale: 0.88;
-    opacity: 0;
-  }
-}
-@keyframes ov-a-sheet {
-  from {
-    translate: calc(100% + 32px) 0;
-  }
-}
-@keyframes ov-a-island {
-  from {
-    opacity: 0;
-    scale: 0.5 1;
-  }
-}
-
-/* =====================================================================
-   B · verre (style par défaut) : l'ancienne carte « À la une » des Actus (0.9.5), demande de
-   Breezydev (0.9.5-beta.2) : verre sombre --glass, liseré --glass-line, reflet du haut --glass-hi, coins de 24 px,
-   surtitre rose, titres en Sora. Sans flou : une fenêtre transparente ne peut pas flouter le jeu derrière elle, et
-   l'aperçu de Paramètres › Overlay doit montrer ce qu'on verra en jeu.
-   ===================================================================== */
-
-.ov-b {
-  color: var(--text-1);
-}
-.ov-b .ov-card {
-  isolation: isolate;
-  background: var(--glass);
-  box-shadow:
-    inset 0 0 0 1px var(--glass-line),
-    inset 0 1px 0 var(--glass-hi),
-    0 22px 40px -28px rgba(0, 0, 0, 0.9);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-.ov-b .ov-buy {
-  padding: 24px;
-  border-radius: 24px;
-}
-.ov-b .ov-end {
-  padding: 24px;
-  border-radius: 24px;
-}
-.ov-b .ov-pill {
-  height: 44px;
-  border-radius: 22px;
-}
-.ov-b .ov-kicker {
-  color: var(--accent-text);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.ov-b .ov-title {
-  font: 700 17px/22px var(--font-display);
-  letter-spacing: -0.01em;
-}
-.ov-b .ov-sub {
-  color: var(--text-2);
-  opacity: 1;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .ov-b .ov-enter {
-    animation: ov-in 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-}
-.ov-b .ov-r.is-won {
-  background: rgba(52, 211, 153, 0.36);
-  border: 1px solid rgba(160, 255, 215, 0.6);
-}
-.ov-b .ov-r.is-lost {
-  background: rgba(255, 84, 104, 0.3);
-  border: 1px dashed rgba(255, 170, 180, 0.65);
-}
-.ov-b .ov-r {
-  box-sizing: border-box;
-  border-radius: 6px;
-}
-.ov-b .ov-pill-hot {
-  color: #a0ffd7;
-}
-@media (prefers-reduced-transparency: reduce) {
-  .ov-b .ov-card {
-    background: #1a1622;
-  }
-}
-
-/* =====================================================================
-   C · finition du style Player X : ombres plutôt que bordures, coins concentriques, entrée en cascade de 100 ms,
-   ✓ / ✕ dans la frise, chiffres à chasse fixe.
-   ===================================================================== */
-
 .ov-c .ov-card {
-  border: 1px solid transparent;
-  background: rgba(19, 16, 25, 0.95);
+  border: 0;
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(232, 38, 79, 0.17), transparent 62%),
+    radial-gradient(90% 70% at 100% 100%, rgba(196, 18, 58, 0.12), transparent 70%),
+    linear-gradient(180deg, rgba(38, 12, 21, 0.95), rgba(17, 7, 11, 0.96));
   box-shadow:
-    0 0 0 1px rgba(255, 200, 220, 0.1),
-    0 2px 4px rgba(0, 0, 0, 0.2),
-    0 18px 40px rgba(0, 0, 0, 0.36);
+    inset 0 0 0 1px rgba(232, 38, 79, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 18px 40px rgba(0, 0, 0, 0.45),
+    0 0 36px -12px var(--bz-glow);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
-/* Le dégradé de l'icône (corail → rose → framboise) en filet sur le haut des grandes cartes */
+/* La barre de l'installeur : un filet rouge en haut, vif à gauche, qui s'efface vers la droite */
 .ov-c .ov-buy::before,
 .ov-c .ov-end::before {
   content: '';
   position: absolute;
   top: 0;
-  left: 18px;
-  right: 18px;
+  left: 22px;
+  right: 22px;
   height: 2px;
   border-radius: 0 0 2px 2px;
-  background: linear-gradient(90deg, var(--brand-1), var(--brand-2) 55%, var(--brand-3));
+  background: linear-gradient(90deg, var(--bz-a), color-mix(in srgb, var(--bz-b) 55%, transparent) 40%, transparent 88%);
+  box-shadow: 0 0 10px var(--bz-glow);
 }
 .ov-c .ov-buy {
-  padding: 12px;
+  padding: 16px 16px 14px;
   border-radius: 20px;
+}
+.ov-c .ov-end {
+  padding: 16px 16px 14px;
+  border-radius: 24px;
 }
 .ov-c .ov-buy > .ov-head,
 .ov-c .ov-buy > .ov-row,
 .ov-c .ov-buy > .ov-lead,
-.ov-c .ov-buy > .ov-line {
-  padding: 0 4px;
-}
-.ov-c .ov-stat {
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--surface-2);
-}
-.ov-c .ov-end {
-  padding: 12px;
-  border-radius: 24px;
-}
+.ov-c .ov-buy > .ov-line,
 .ov-c .ov-end > .ov-end-top,
 .ov-c .ov-end > .ov-end-title,
 .ov-c .ov-end > .ov-line {
-  padding: 0 8px;
+  padding: 0 4px;
 }
-.ov-c .ov-end > .ov-end-top {
-  padding-top: 8px;
+
+/* L'écu du logo en tête de carte */
+.ov-c .ov-head,
+.ov-c .ov-end-top {
+  justify-content: flex-start;
+}
+.ov-c .ov-head > .ov-sub,
+.ov-c .ov-end-top > .ov-sub {
+  margin-left: auto;
+}
+.ov-mark {
+  flex: none;
+  width: 20px;
+  height: 24px;
+  filter: drop-shadow(0 0 6px var(--bz-glow));
+}
+.ov-pill .ov-mark {
+  width: 16px;
+  height: 19px;
+  margin-left: -4px;
+}
+.ov-c .ov-title {
+  font: 600 16px/20px var(--font-display);
+  letter-spacing: -0.01em;
+}
+.ov-c .ov-sub {
+  color: rgba(247, 238, 241, 0.6);
+  opacity: 1;
 }
 .ov-c .ov-kicker {
-  color: var(--accent-text);
+  color: var(--bz-ink);
+}
+.ov-c .ov-k {
+  color: rgba(247, 238, 241, 0.6);
+  opacity: 1;
+}
+
+/* Les chiffres : tuiles de verre, libellé marqué du losange du logo */
+.ov-c .ov-stat {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.ov-c .ov-stat dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(247, 238, 241, 0.64);
+  opacity: 1;
+}
+.ov-c .ov-stat dt::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 1px;
+  rotate: 45deg;
+  background: var(--bz);
+  box-shadow: 0 0 6px var(--bz-glow);
+}
+/* Mi-temps : quatre tuiles dans la petite carte, les chiffres un peu plus petits pour que « 14/9/3 » tienne */
+.ov-c .ov-buy .ov-stats[style*='repeat(4'] .ov-stat {
+  padding: 8px 7px;
+}
+.ov-c .ov-buy .ov-stats[style*='repeat(4'] dd {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+.ov-c .ov-end .ov-stat:first-child {
+  background: linear-gradient(180deg, rgba(232, 38, 79, 0.2), rgba(196, 18, 58, 0.08));
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 38, 79, 0.45),
+    0 8px 22px -14px var(--bz-glow);
 }
 .ov-c .ov-end .ov-stat:first-child dd {
-  color: var(--accent);
+  color: #fff;
+}
+.ov-c .ov-res.is-win {
+  color: #fff;
+  text-shadow: 0 0 14px rgba(232, 38, 79, 0.7);
+}
+.ov-c .ov-res.is-loss {
+  color: rgba(247, 238, 241, 0.55);
+}
+
+/* Frise des rounds : gagné au dégradé du blason avec ✓, perdu en verre éteint avec ✕ */
+.ov-c .ov-strip {
+  gap: 4px;
 }
 .ov-c .ov-r {
-  height: 26px;
+  height: 24px;
+  border-radius: 6px;
+  box-sizing: border-box;
 }
 .ov-c .ov-r.is-won {
-  background: var(--success-soft);
-  color: var(--success);
+  background: var(--bz);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 10px -3px var(--bz-glow);
 }
 .ov-c .ov-r.is-lost {
-  background: var(--danger-soft);
-  color: var(--danger-text);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(247, 238, 241, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+}
+.ov-c .ov-r.is-next {
+  border: 1px dashed rgba(232, 38, 79, 0.6);
+}
+.ov-c .ov-r.is-swap::before {
+  background: var(--bz-a);
+  opacity: 0.8;
+}
+
+/* Pastille du round : verre carmin, petit écu, losange entre les chiffres */
+.ov-c .ov-pill {
+  height: 42px;
+  border-radius: 21px;
+  padding: 0 18px 0 16px;
+}
+.ov-c .ov-pill-sep {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  rotate: 45deg;
+  background: var(--bz);
+  opacity: 1;
+  box-shadow: 0 0 6px var(--bz-glow);
 }
 .ov-c .ov-pill-hot {
-  color: var(--success);
+  color: #ff7a8a;
 }
+.ov-c .ov-pill-hot b {
+  color: #fff;
+}
+
+.ov-c .ov-sample {
+  background: rgba(20, 7, 9, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(232, 38, 79, 0.35);
+  color: var(--bz-ink);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .ov-c .ov-enter .ov-s1 {
     animation: ov-in 300ms ease-out both;
@@ -594,4 +518,185 @@ html.ov-page #root {
   .ov-c .ov-pill.ov-enter {
     animation: ov-in 300ms ease-out both;
   }
+  .ov-c .ov-enter .ov-mark {
+    animation: ov-mark 420ms cubic-bezier(0.16, 1, 0.3, 1) 60ms both;
+  }
+}
+@keyframes ov-mark {
+  from {
+    opacity: 0;
+    scale: 0.7;
+  }
+}
+
+/* ---------- aperçu en plein écran (0.6.2) ----------
+   « Voir l'aperçu » montre l'overlay sur une image de Dust II en plein écran, comme en jeu, au lieu du bureau.
+   La fenêtre reste transparente aux clics ; l'image part avec l'aperçu (24 s) ou avec le raccourci qui masque. */
+html.ov-page.ov-prev body {
+  background: #000 url('../assets/apercu-dust2.webp') center / cover no-repeat !important;
+  animation: ov-prev-in 0.35s ease-out both;
+}
+@keyframes ov-prev-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- réglage en plein écran (0.6.2, overlay/editeur.ts) ----------
+   Lancé depuis Paramètres › Overlay › Position : le vrai bloc sur Dust II, un cadre pour le glisser et changer sa taille,
+   une barre pour passer d'un style ou d'un moment à l'autre. Rouge du blason seulement (#e8264f), boutons plats. */
+html.ov-edit body {
+  cursor: default;
+}
+.ed-frame {
+  position: fixed;
+  z-index: 20;
+  border: 1.5px dashed rgba(255, 255, 255, 0.85);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  outline: none;
+  touch-action: none;
+}
+.ed-frame:hover,
+.ed-frame:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+}
+.ed-frame.moving {
+  cursor: grabbing;
+}
+.ed-frame i {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 0 0 2px #e8264f, 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.ed-frame i[data-c='nw'] {
+  left: -8px;
+  top: -8px;
+  cursor: nwse-resize;
+}
+.ed-frame i[data-c='ne'] {
+  right: -8px;
+  top: -8px;
+  cursor: nesw-resize;
+}
+.ed-frame i[data-c='sw'] {
+  left: -8px;
+  bottom: -8px;
+  cursor: nesw-resize;
+}
+.ed-frame i[data-c='se'] {
+  right: -8px;
+  bottom: -8px;
+  cursor: nwse-resize;
+}
+.ed-tag {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(12, 10, 12, 0.82);
+  font: 600 12px/1 var(--font-ui);
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ed-bar {
+  position: fixed;
+  z-index: 30;
+  left: 16px;
+  right: 16px;
+  top: 18px;
+  width: fit-content;
+  margin-inline: auto;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(14, 11, 13, 0.72);
+  backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 32px -12px rgba(0, 0, 0, 0.8);
+  color: #fff;
+  font: 500 14px/1 var(--font-ui);
+}
+.ed-bar.low {
+  top: auto;
+  bottom: 18px;
+}
+.ed-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.ed-t {
+  font: 600 14px/1 var(--font-ui);
+  margin: 0 4px;
+}
+.ed-seg,
+.ed-size {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.ed-bar button {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  font: 500 14px/1 var(--font-ui);
+  cursor: pointer;
+}
+.ed-bar button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.ed-bar button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+.ed-bar .ed-seg button[aria-checked='true'] {
+  background: #e8264f;
+  color: #fff;
+}
+.ed-size {
+  align-items: center;
+}
+.ed-size button {
+  width: 32px;
+  padding: 0;
+  font-size: 18px;
+}
+.ed-size span {
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.ed-btn {
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.ed-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ed-done {
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+.ed-hint {
+  margin: 0;
+  font: 500 12px/1 var(--font-ui);
+  color: rgba(255, 255, 255, 0.62);
 }

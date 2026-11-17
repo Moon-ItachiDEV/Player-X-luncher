@@ -1,5 +1,5 @@
 // Overlay CS2 : quelle pièce montrer, à quel moment. Sans DOM (testé par view.test.ts) ; overlay.ts la dessine.
-import type { Cs2Live, Cs2OverlayConfig, Cs2Recap } from '@shared/types'
+import type { Cs2Live, Cs2OverlayConfig, Cs2OverlayMoment, Cs2Recap, Cs2Round } from '@shared/types'
 
 /** Fin du match : le bilan reste 20 s, puis se replie. */
 export const END_MS = 20_000
@@ -64,7 +64,9 @@ export function sampleCs2Recap(): Cs2Recap {
   }
 }
 
-export function sampleLive(phase: 'buy' | 'pill' | 'half'): Cs2Live {
+/** `pill3` : la même pastille au même round, après un triplé (l'aperçu montre le logo qui compte les élim.). */
+export function sampleLive(phase: 'buy' | 'pill' | 'pill3' | 'half'): Cs2Live {
+  if (phase === 'pill3') return { ...sampleLive('pill'), kills: 11, roundKills: 3 }
   const r = sampleCs2Recap()
   const done = phase === 'half' ? 12 : 7
   const rounds = r.rounds.slice(0, done)
@@ -92,11 +94,12 @@ export function sampleLive(phase: 'buy' | 'pill' | 'half'): Cs2Live {
   }
 }
 
-/** Les quatre pièces, 6 s chacune, puis rien. */
+/** Les quatre pièces, 6 s chacune, puis rien. La pastille passe d'une élim. à trois (un triplé) à mi-chemin. */
 export function previewView(at: number, now: number): View {
   const t = now - at
   if (t < 6_000) return { kind: 'buy', live: sampleLive('buy') }
-  if (t < 12_000) return { kind: 'pill', live: sampleLive('pill') }
+  if (t < 9_000) return { kind: 'pill', live: sampleLive('pill') }
+  if (t < 12_000) return { kind: 'pill', live: sampleLive('pill3') }
   if (t < 18_000) return { kind: 'half', live: sampleLive('half') }
   if (t < 24_000) return { kind: 'end', recap: sampleCs2Recap() }
   return null
@@ -113,14 +116,67 @@ export function liveView(live: Cs2Live | null, end: Cs2Recap | null, now: number
   return { kind: 'pill', live }
 }
 
-/** Ce que l'overlay montre : rien s'il est coupé ou masqué, l'aperçu s'il tourne, sinon le match. */
+/** Réglage en plein écran : le moment choisi, avec les chiffres d'exemple (en round : après un triplé, le plus grand). */
+export function editView(moment: Cs2OverlayMoment): View {
+  if (moment === 'end') return { kind: 'end', recap: sampleCs2Recap() }
+  return { kind: moment, live: sampleLive(moment === 'pill' ? 'pill3' : moment) } as View
+}
+
+/** Ce que l'overlay montre : rien s'il est coupé ou masqué, le réglage ou l'aperçu s'il tourne, sinon le match. */
 export function pickView(cfg: Cs2OverlayConfig, live: Cs2Live | null, end: Cs2Recap | null, now: number): View {
+  if (cfg.edit) return editView(cfg.edit.moment)
   if (cfg.style === 'off' || cfg.hidden) return null
   return cfg.previewAt !== undefined ? previewView(cfg.previewAt, now) : liveView(live, end, now)
 }
 
 /** Secondes avant que le bilan se replie (20 au plus) ; dans l'aperçu, le bilan commence à 18 s. */
 export function endSecondsLeft(cfg: Cs2OverlayConfig, recap: Cs2Recap, now: number): number {
+  if (cfg.edit) return 20
   const from = cfg.previewAt !== undefined ? cfg.previewAt + 18_000 : recap.endedAt
   return Math.min(20, Math.max(0, Math.ceil((END_MS - (now - from)) / 1000)))
+}
+
+// ---------- argent (temps d'achat) ----------
+
+/** Achat complet : CT 4 300 $ (M4 2 900 + gilet et casque 1 000 + kit 400), T 3 700 $ (AK 2 700 + gilet et casque 1 000). */
+export const FULL_BUY = { CT: 4300, T: 3700 } as const
+/** Sous 2 000 $, on ne force pas : éco. */
+export const FORCE_MIN = 2000
+
+export interface BuyAdvice {
+  kind: 'full' | 'almost' | 'force' | 'eco'
+  title: string
+  detail: string
+}
+
+/** Ce que permet l'argent du début du temps d'achat (pas celui qui reste après tes achats). */
+export function buyAdvice(money: number, side: 'CT' | 'T'): BuyAdvice {
+  const full = FULL_BUY[side]
+  if (money >= full) return { kind: 'full', title: 'Achat complet', detail: side === 'CT' ? 'fusil, gilet, casque et kit' : 'fusil, gilet et casque' }
+  if (money >= FORCE_MIN) {
+    const miss = full - money
+    if (miss <= 400) return { kind: 'almost', title: 'Presque complet', detail: `il manque ${miss}\u00a0$ pour ${side === 'CT' ? 'le kit' : 'le casque'}` }
+    return { kind: 'force', title: 'Force', detail: 'arme légère et gilet' }
+  }
+  return { kind: 'eco', title: 'Éco', detail: 'garde ton argent pour le round suivant' }
+}
+
+/** Les rounds 12 et 24 finissent une mi-temps : l'argent repart de zéro, pas de « round suivant » à annoncer. */
+const LAST_OF_HALF = 12
+
+/**
+ * Le bonus de défaite le plus bas possible au prochain round, si celui-ci est perdu : 1 400 $, plus 500 $ par défaite
+ * d'affilée juste avant (jusqu'à 3 400 $). CS2 ne remet pas son compteur à zéro après une victoire (il le baisse d'un cran),
+ * donc compter seulement la série en cours donne toujours un minimum. Rien en fin de mi-temps ni en prolongation.
+ */
+export function lossBonusMin(rounds: Cs2Round[], round: number): number | null {
+  if (round % LAST_OF_HALF === 0 || round > 2 * LAST_OF_HALF) return null
+  const halfStart = round > LAST_OF_HALF ? LAST_OF_HALF + 1 : 1
+  let streak = 0
+  for (let i = rounds.length - 1; i >= 0; i--) {
+    const r = rounds[i]
+    if (r.n < halfStart || !r.side || r.winner === r.side) break
+    streak++
+  }
+  return Math.min(3400, 1400 + 500 * streak)
 }

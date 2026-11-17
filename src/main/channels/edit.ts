@@ -2,7 +2,7 @@ import { BrowserWindow } from 'electron'
 import { handle } from '../ipc'
 import { engine, openEngineFolder, stopEngineTest, testEngine } from '../services/editFfmpeg'
 import { filmState, planFilm, startFilm, stopFilm } from '../services/editFilm'
-import { forgetMusic, musicList, pickMusic } from '../services/editMusic'
+import { forgetMusic, musicList, musicTempo, pickMusic } from '../services/editMusic'
 import { runCaptureTest } from '../services/captureTest'
 import { sendTo } from '../windows'
 
@@ -28,6 +28,7 @@ export function registerEditChannels(): void {
   handle('edit:music-list', () => musicList())
   handle('edit:music-pick', () => pickMusic())
   handle('edit:music-forget', (_e, id: unknown) => forgetMusic(id))
+  handle('edit:music-tempo', (_e, id: unknown, opts: unknown) => musicTempo(id, opts))
   handle('edit:plan', (_e, ids: unknown, musicId: unknown) => planFilm(ids, musicId))
   // L'essai « capture comme OBS » (Paramètres › Enregistrement) : son avancement part vers la fenêtre qui l'a demandé.
   handle('edit:capture-test', (e) => {

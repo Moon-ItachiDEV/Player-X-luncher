@@ -5,6 +5,7 @@ import { CS2_GAME_ID } from '@shared/cs2'
 import { cleanName, isBf6Name } from '@shared/text'
 import type { ClipDisplay, ClipSettings, Game } from '@shared/types'
 import { hotkeyRefusal } from '../hotkeys'
+import { hotkeyText } from '@shared/hotkey'
 import { handle } from '../ipc'
 import { appWindows } from '../windows'
 import { CLIP_ID, cleanClipSettings, QUALITY } from './clipsPlan'
@@ -16,12 +17,13 @@ import { filesBusy, filesDone, forgetFiles, serial } from './clipsQueue'
 import { chooseFolder, clipSettings, folderOf, loadClipSettings, resolved, storeClipSettings, usableFolder } from './clipsSettings'
 import { cleanShareCopies } from './clipsShare'
 import { bufferRoot, capture, emitState, frags, libraryRunning, loadLastGame, noteGamePace, pendings, recorders, setCapture, setHotkeyError, setLastProblem, setLibraryRunning, setTestRunning, sleep, stateNow, testRunning, thumbAllowed, type Capture, type Recorder, type RunningGame } from './clipsState'
-import { fromRecorder, launchRecorder, onRecordersChanged, onRecorderStopped, openWindow, recorderLost, send, targetDisplayId } from './clipsWindow'
+import { fromRecorder, launchRecorder, onRecordersChanged, onRecorderStopped, onVideoHeader, openWindow, recorderLost, send, targetDisplayId } from './clipsWindow'
 import { clearBuffer, pruneBuffer } from './clipsBuffer'
 import { decideEngine, onChunk } from './clipsEngine'
 import { ensureTick, finalize, onMoment, saveNow } from './clipsSave'
 import { showClipToast } from './clipsToast'
 import { cs2IsRunning, onCs2Moment, onCs2Running } from './cs2Live'
+import { musicServe } from './editMusic'
 import { Fmp4Splitter } from './fmp4'
 import { getSettings } from './settings'
 import { PCM_FRAME_BYTES } from './engineCapture'
@@ -57,6 +59,9 @@ let suspended = false
 /** Toutes les fenêtres de l'appli sont fermées pour de bon : on arrête la capture, sinon l'appli ne quitterait pas. */
 let windowsGone = false
 let hotkeyNow: string | null = null
+/** Rappel du raccourci au début d'une partie sans clip automatique : plus long et plus large que « Clip gardé ». */
+const HINT_MS = 6_000
+const HINT_W = 400
 
 // ---------- l'image par le moteur vidéo (bêta 42) ----------
 
@@ -112,6 +117,8 @@ function syncHotkey(): void {
     }
     if (globalShortcut.register(want, onKey)) {
       hotkeyNow = want
+      // La première image a pu arriver avant que le raccourci soit pris : le rappel attendait lui.
+      for (const r of [capture?.eng, capture?.rec]) if (r?.init?.tracks.some((t) => t.kind === 'video')) hotkeyHint(r)
       return
     }
   } catch (e) {
@@ -120,6 +127,19 @@ function syncHotkey(): void {
   const taken = `Le raccourci ${want} est déjà pris : choisis-en un autre.`
   setHotkeyError(taken)
   log(taken)
+}
+
+/**
+ * Seul CS2 dit ses kills à Player X. Sur les autres jeux (BF6…), rien n'est gardé sans le raccourci : la première image de la
+ * partie le rappelle une fois, en haut de l'écran, sans être filmée.
+ */
+function hotkeyHint(rec: Recorder): void {
+  const c = capture
+  if (!c || c.hinted || c.stopping || (c.rec !== rec && c.eng !== rec) || !hotkeyNow) return
+  if (c.game.id === CS2_GAME_ID && getSettings().cs2Live !== false && Object.values(clipSettings().triggers).some(Boolean)) return
+  c.hinted = true
+  log(`Rappel du raccourci montré (${c.game.name} ne garde pas de clip tout seul).`)
+  showClipToast(`Caméra prête. ${hotkeyText(hotkeyNow)} garde un moment`, false, targetDisplayId(), { ms: HINT_MS, width: HINT_W })
 }
 
 function checkHotkey(accel: unknown): void {
@@ -409,13 +429,14 @@ async function cleanLeftovers(): Promise<void> {
 export function startClips(): void {
   if (started) return
   onRecordersChanged(syncHotkey)
+  onVideoHeader(hotkeyHint)
   loadClipSettings()
   loadClipIndex()
   loadLastGame()
   registerClipProtocol(SCHEME, (id) => {
     const c = clipById(id)
     return c ? { video: c.file, thumb: thumbPath(c.id) } : undefined
-  }, (e) => log(`pxclip : ${errText(e)}`))
+  }, (e) => log(`pxclip : ${errText(e)}`), musicServe)
   registerRecorderIpc()
   registerApi()
   void cleanLeftovers()

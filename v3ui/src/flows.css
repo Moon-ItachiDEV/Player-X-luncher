@@ -7,7 +7,7 @@
 /* Overlay Player X, en verre, hors des zones du jeu */
 .ov{position:absolute;right:1.6%;top:21%;width:216px;padding:16px 16px 12px;border-radius:20px;background:rgba(20,15,24,.34);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);box-shadow:var(--glass-edge),0 16px 40px -14px rgba(0,0,0,.5);z-index:4;opacity:0;translate:14px 0;transition:opacity .3s var(--e-md),translate .3s var(--spring-soft)}
 .ov.in{opacity:1;translate:0 0}
-@keyframes recP{50%{box-shadow:0 0 0 5px rgba(255,92,134,.08)}}
+@keyframes recP{50%{box-shadow:0 0 0 5px rgba(232,38,79,.08)}}
 @keyframes bump{0%{transform:scale(.96)}60%{transform:scale(1.02)}100%{transform:none}}
 .is-launching .tbar{opacity:0}
 
@@ -181,5 +181,5 @@
 /* Battlefield 6 : un HUD réduit, pour que l'image se lise comme un match */
 
 /* L'installeur tourne avant le scan : pas de jaquettes derrière lui, seulement la lumière du logo */
-#win.is-inst{background:radial-gradient(420px 300px at 50% calc(50% - 150px),rgba(255,92,134,.26),transparent),#120b12}
+#win.is-inst{background:radial-gradient(420px 300px at 50% calc(50% - 150px),rgba(232,38,79,.26),transparent),#120b12}
 #win.is-inst.wall-soft #bgw{visibility:hidden}

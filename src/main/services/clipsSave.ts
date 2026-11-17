@@ -184,7 +184,7 @@ async function writeClip(p: PendingClip): Promise<void> {
   // 0.7.4 : le moteur sort à cadence fixe (images répétées comprises), son rythme vient de son compteur d'images reçues ;
   // inconnu si les relevés ne couvrent pas le clip.
   const pace = rec.engine
-    ? (paceOfCounts(rec.engine.marks, firstWall, firstWall + plan.durationS * 1000, rec.wantedFps) ?? undefined)
+    ? (paceOfCounts(rec.engine.marks, firstWall, firstWall + plan.durationS * 1000, rec.wantedFps, rec.engine.clipFps) ?? undefined)
     : paceOfTracks(cut, plan.durationS, rec.wantedFps)
   const events = clipEvents(p.events, firstWall, plan.durationS)
   const kills = clipKills(p)

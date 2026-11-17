@@ -11,6 +11,7 @@ const Views = {
   host: null,
   show(v, opts = {}) {
     const change = () => {
+      if (v !== 'stats') StatsPage.leave()
       S.view = v; S.gameId = null
       $('#win').dataset.view = v
       $$('.v', this.host).forEach((e) => { e.hidden = e.dataset.v !== v })
@@ -29,8 +30,7 @@ function goBack() {
   if (Clips.isOpen()) { Clips.close(); return true }
   if (S.gameId) { Pages.closeGame(); return true }
   if (S.atelier && S.view === 'stats') { Atelier.leave(); return true }
-  const all = S.view === 'stats' && !S.atelier && $('#loAll')
-  if (all) { all.click(); return true }
+  if (S.view === 'stats' && !S.atelier && StatsPage.close()) return true
   return false
 }
 // Les flèches dans une grille de jaquettes ou de clips : la case d'à côté, celle du dessus, celle du dessous
@@ -99,8 +99,9 @@ async function boot() {
   if (bootFailed) toast(`Tes jeux n’ont pas pu être lus. ${esc(errText(bootFailed))}`, { tone: 'warn', ms: 20000, action: { label: 'Réessayer', fn: () => location.reload() } })
   Palette.mount(win)
   Install.mount(win)
+  Maj.mount(win)
   Recap.mount()
-  const syncInert = () => { const kids = [...win.children], open = kids.filter((c) => c.matches('[data-modal]:not([hidden])')).pop(); kids.forEach((c) => { if (c.id !== 'toasts') c.inert = !!open && c !== open }) }
+  const syncInert = () => { const kids = [...win.children], open = kids.filter((c) => c.matches('[data-modal]:not([hidden])')).pop(); kids.forEach((c) => { if (c.id !== 'toasts') c.inert = (!!open && c !== open) || c.hasAttribute('data-ck-inert') }) }
   new MutationObserver(syncInert).observe(win, { childList: true })
   new MutationObserver(syncInert).observe(win, { subtree: true, attributes: true, attributeFilter: ['hidden'] })
   Play.intro()
@@ -116,9 +117,10 @@ async function boot() {
     // Ctrl 1 à 5 : les pages de la barre. e.code, pour que ça marche aussi en AZERTY (Ctrl & donne « & »)
     const pg = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && /^(Digit|Numpad)[1-5]$/.test(e.code) ? ['play', 'lib', 'clips', 'stats', 'friends'][+e.code.slice(-1) - 1] : null
     if (pg) { e.preventDefault(); if (document.querySelector('[data-modal]:not([hidden])')) return; if (Clips.isOpen()) Clips.close(); go(pg); return }
-    if (e.key === 'F2') { e.preventDefault(); const m = Fluid.next(); toast(`Fond : ${m.t}. ${m.d}`, { ms: 1800 }); return }
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')
     const modal = document.querySelector('[data-modal]:not([hidden])')
+    // F2 sur l'accueil Arsenal passe d'un sol à l'autre (Brume, Laqué)
+    if (e.key === 'F2' && !typing && !modal && S.view === 'play' && !S.gameId && Play.home() === 'r') { e.preventDefault(); toast(`Sol de l’Arsenal : ${Play.nextSol()}`, { ms: 1600 }); return }
     // Ctrl F : « Chercher un réglage » marche aussi paramètres fermés
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !modal && !typing && !(S.atelier && S.view === 'stats')) { e.preventDefault(); Settings.find(); return }
     if ((e.altKey && e.key === 'ArrowLeft') || e.key === 'BrowserBack') { if (!typing && goBack()) e.preventDefault(); return }

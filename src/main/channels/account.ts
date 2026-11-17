@@ -66,7 +66,7 @@ export function registerAccountChannels(d: ChannelDeps): void {
     if (next.startWithWindows !== before.startWithWindows) syncStartup()
     if (next.bf6Recap !== before.bf6Recap) syncBf6Recaps()
     if (next.cs2Live !== before.cs2Live) void syncCs2()
-    if (next.cs2Overlay !== before.cs2Overlay || next.overlayHotkey !== before.overlayHotkey) syncCs2Overlay()
+    if (next.cs2Overlay !== before.cs2Overlay || next.overlaySize !== before.overlaySize || JSON.stringify(next.overlayPos) !== JSON.stringify(before.overlayPos) || next.overlayHotkey !== before.overlayHotkey) syncCs2Overlay()
     if (next.gameNews !== before.gameNews) {
       // Badges retirés tout de suite, ou relevés dès la réactivation.
       d.notifyGamesChanged()
