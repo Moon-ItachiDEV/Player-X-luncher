@@ -126,7 +126,7 @@ Les services, par domaine :
 - **Bibliothèque** : `library.ts` (les jeux vus par toute l'appli, le scan, « quels jeux tournent »), `games.ts` (Steam, Epic, EA,
   GOG), `gogInfo.ts`, `artwork.ts`, `steamLibrary.ts`, `steamUpdates.ts`, `shelves.ts`, `recentGames.ts`, `demo.ts`.
 - **Lancement et temps de jeu** : `launches.ts`, `launchWatch.ts`, `launchWatchParse.ts`, `tracking.ts`, `playtime.ts`.
-- **Clips** : `clips.ts`, `clipsState.ts` (l'état de la capture), `clipsWindow.ts` (la fenêtre qui filme), `clipsBuffer.ts` (le tampon), `clipsEngine.ts` (le moteur vidéo), `clipsIndex.ts` (la liste des clips), `clipsQueue.ts`, `clipsFiles.ts`, `clipsSettings.ts`,
+- **Clips** : `clips.ts`, `clipsState.ts` (l'état de la capture), `clipsWindow.ts` (la fenêtre qui filme), `clipsBuffer.ts` (le tampon), `clipsEngine.ts` (le moteur vidéo), `clipsSave.ts` (les événements et l'écriture d'un clip), `clipsIndex.ts` (la liste des clips), `clipsQueue.ts`, `clipsFiles.ts`, `clipsSettings.ts`,
   `clipsPlan.ts`, `fmp4.ts`, `engineCapture.ts`, `cs2Moments.ts`, `clipsProtocol.ts`, `clipsToast.ts`, `clipsLog.ts`,
   `clipsCopy.ts` (copier un clip : le presse-papiers, « Copier pour Discord »), `clipsShare.ts`, `sharePlan.ts`,
   `captureTest.ts`.
@@ -215,9 +215,9 @@ part (`spawnCaptureEngine`).
   « clips ». Les scripts `test:launch`, `test:clips`… restent pour lancer un groupe.
 - Garde-fous qui lisent le code : `architecture.test.ts` (couches, boucles), `ipcContract.test.ts` (canaux),
   `src/renderer/src/styles/tokens.test.ts` (thème).
-- La vraie appli : `tools/essais` (a1 à a18, la fenêtre) et `tools/essais-clips` (t0 à t15, t17 à t25 : capture, clips,
+- La vraie appli : `tools/essais` (a1 à a18, la fenêtre) et `tools/essais-clips` (t0 à t15, t17 à t26 : capture, clips,
   films, partage, lecteur, dossier des clips, liste des clips, copie d'un clip, image filmée par le moteur vidéo,
-  état de la capture, fenêtre de capture, tampon, relances et erreurs du moteur ; t16 est dans la source de la 0.6, pas encore ici). Les scénarios lancent l'appli construite, sous Linux seulement
+  état de la capture, fenêtre de capture, tampon, relances et erreurs du moteur, écriture d'un clip ; t16 est dans la source de la 0.6, pas encore ici). Les scénarios lancent l'appli construite, sous Linux seulement
   (Xvfb, ffmpeg), en mode démo. Une compilation réussie ne prouve pas la stabilité : après un changement du moteur, ce sont eux qui comptent.
 - Tout lancer : `npm run build`, puis `node tools/essais/tous.cjs` (une demi-heure). Les scénarios passent un par un, chacun
   sur un écran et un dossier de données neufs. `node tools/essais/tous.cjs a8 t1` n'en lance que deux. Une ligne par
@@ -248,7 +248,9 @@ principales, dans l'ordre proposé :
    attente, ce que les pages en voient) est dans `clipsState.ts`, surveillé par les scénarios t21 et t22 ; la fenêtre qui filme et son
    enregistreur sont dans `clipsWindow.ts`, surveillés par t23 ; le tampon (les fragments sur le disque, le son en PCM
    du moteur) est dans `clipsBuffer.ts`, surveillé par t24 ; le moteur vidéo (le lancer, lire son flux, le relancer,
-   y renoncer) est dans `clipsEngine.ts`, surveillé par t21 et t25. Il reste 746 lignes à `clips.ts` (1 971 avant).
+   y renoncer) est dans `clipsEngine.ts`, surveillé par t21 et t25 ; les événements, l'horloge de la capture et l'écriture
+   d'un clip sont dans `clipsSave.ts`, surveillés par t26. Il reste 536 lignes à `clips.ts` (1 971 avant) : le service
+   lui-même (démarrer et arrêter la capture, le raccourci, les canaux des pages).
 2. Un appel s'écrit encore à la main à trois endroits (`types/api.ts`, pont, récepteur) : une seule table typée suffirait.
 3. Les services n'ont pas d'arrêt propre (douze minuteries, la fermeture de l'appli gérée à six endroits dans cinq fichiers).
 4. L'interface V3 : 21 fichiers dans un seul espace global, sans contrôle de types.
