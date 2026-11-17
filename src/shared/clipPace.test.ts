@@ -148,3 +148,9 @@ test('0.7.4 : rythme d’un clip du moteur d’après son compteur d’images re
   assert.equal(paceOfCounts(marks, 1000, 1500, 60), null)
   assert.equal(paceOfCounts([], 0, 2000, 60), null)
 })
+
+test('0.7.6 : le rythme ne dépasse pas la cadence du clip, le seuil reste celui demandé', () => {
+  const marks = [0, 1, 2, 3, 4].map((k) => ({ at: k * 1000, n: k * 165 }))
+  assert.deepEqual(paceOfCounts(marks, 0, 4000, 60, 72), { fps: 72, low: 72, wanted: 60 })
+  assert.equal(paceOfCounts(marks, 0, 4000, 60)!.fps, 60)
+})

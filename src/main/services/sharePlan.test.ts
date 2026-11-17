@@ -177,3 +177,8 @@ test('l’avancement, le délai et l’ordre des encodeurs', () => {
   assert.deepEqual(shareEncoders(['h264_nvenc', 'h264_amf'], 'inconnu'), ['h264_nvenc', 'h264_amf'])
   assert.deepEqual(shareEncoders(['h264_nvenc', 'h264_amf'], null), ['h264_nvenc', 'h264_amf'])
 })
+
+test('0.7.6 : un clip calé à 72 images/s (écran à 144 Hz) garde sa cadence dans la copie', () => {
+  const p = sharePlan({ sizeBytes: 60_000_000, durationS: 12, width: 1920, height: 1080, fps: 72, hasAudio: true }, FREE)
+  assert.equal(p.kind === 'encode' && p.fps, 72)
+})
