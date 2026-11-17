@@ -260,12 +260,15 @@ const firstWallOf = (c) => c.at - c.events[0].t * 1000
     // ----- le moteur figé : après 60 s sans image, l'appli le relance
     m = await mark()
     const frozen = engines()[0], tStop = Date.now()
+    // Les enregistreurs du moteur déjà là : défigé, l'ancien moteur rend encore des images (répétées, à cadence fixe) avant
+    // de s'arrêter, et leurs fragments sont datés après le gel. Seuls comptent ceux d'un nouveau moteur.
+    const oldEng = new Set((await info()).list.map((f) => f.recId).filter((id) => id.startsWith('e')))
     process.kill(frozen.pid, 'SIGSTOP')
     const said = await until(async () => ((await since(m)).includes('Moteur : plus aucune image depuis 60 s, relance.') ? Date.now() - tStop : null), 80000, 'moteur figé vu par l’appli', 500)
     const stFrozen = await L('clipsState')
     // Un processus figé ne lit pas la demande d'arrêt de l'appli : une fois défigé, il la reçoit et s'arrête.
     process.kill(frozen.pid, 'SIGCONT')
-    await until(async () => { const e = engines(); return e.length === 1 && e[0].pid !== frozen.pid && (await info()).list.some((f) => f.startWall > tStop + said) }, 20000, 'le moteur repart après le gel', 200)
+    await until(async () => { const e = engines(); return e.length === 1 && e[0].pid !== frozen.pid && (await info()).list.some((f) => f.recId.startsWith('e') && !oldEng.has(f.recId) && f.startWall > tStop + said) && (await since(m)).includes(FILMING) }, 20000, 'le moteur repart après le gel', 200)
     const jS = await since(m)
     note(`moteur figé : l’appli le relance ${(said / 1000).toFixed(1)} s après`)
     check('moteur figé : après 60 s sans image, l’appli lui demande de s’arrêter, puis le relance', said >= 58000 && said <= 66000 && stFrozen.status === 'recording' && count(jS, STOPPED) === 1 && count(jS, TRIED) === 1 && jS.includes(FILMING), { said, stFrozen, jS })
