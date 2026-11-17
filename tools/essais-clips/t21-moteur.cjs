@@ -42,7 +42,9 @@ const mean = (list) => list.reduce((s, x) => s + x, 0) / list.length
 const count = (lines, what) => lines.filter((l) => (typeof what === 'string' ? l === what : what.test(l))).length
 const STOPPED = /^Moteur arrêté \(code \w+\) après \d+ s\.$/, ASKED = /^Enregistreur \w+ demandé \(/, OPENED = /^Clip [0-9a-f]{16} ouvert : /
 
-/** L'horloge d'écran, dans ce carré : `flashes` reçoit l'heure du système (ms) de chaque passage au blanc, une fois peint. */
+/** L'horloge d'écran, dans ce carré : `flashes` reçoit l'heure du système (ms) de chaque passage au blanc, prise juste avant de
+ *  le peindre. L'heure d'après la peinture peut tomber plus tard que l'image elle-même (le serveur X a peint, l'horloge attend
+ *  encore sa réponse, jusqu'à 16 ms vus sous charge) : un flash filmé paraissait alors arrivé avant l'horloge. */
 function startClock(box) {
   const child = spawn('python3', [path.join(__dirname, 'xflash.py'), box.x, box.y, box.w, box.h].map(String), { stdio: ['ignore', 'pipe', 'inherit'] })
   const clock = { child, box, flashes: [], ready: false, slowest: 0 }
@@ -52,7 +54,7 @@ function startClock(box) {
     rest = lines.pop()
     for (const l of lines) {
       const m = /^F ([\d.]+) ([\d.]+)$/.exec(l)
-      if (m) { clock.flashes.push(+m[2]); clock.slowest = Math.max(clock.slowest, +m[2] - +m[1]) } else if (l.startsWith('PRET')) clock.ready = true
+      if (m) { clock.flashes.push(+m[1]); clock.slowest = Math.max(clock.slowest, +m[2] - +m[1]) } else if (l.startsWith('PRET')) clock.ready = true
     }
   })
   return clock
@@ -159,8 +161,16 @@ const firstWallOf = (c) => c.at - c.events[0].t * 1000
     check('le tampon du moteur : des fragments d’une demi-seconde qui se suivent, une image clé toutes les 2 s, 30 images/s', spans1.every((d) => d > 0.3 && d < 0.8) && i1.list.every((f, i) => i === 0 || Math.abs(f.startS - i1.list[i - 1].endS) < 0.05) && keyGaps1.length >= 1 && keyGaps1.every((g) => Math.abs(g - 2) < 0.15) && Math.abs(rate1 - 30) < 1.5, { spans1, keyGaps1, rate1 })
     check('le raccourci Alt+C est pris', i1.hotkey === 'Alt+C' && i1.hotkeyRegistered === true, { hotkey: i1.hotkey, pris: i1.hotkeyRegistered })
 
+    // L'heure réelle de chaque bip, prise dans la page au moment où la source d'essai le lance. La source bipe à son premier
+    // dessin après chaque passage de 2 s (et à la reprise), sur une minuterie de la page : ce dessin peut venir des dizaines
+    // de ms après le passage quand la page est occupée. Mesuré contre le passage, ce retard de la source se comptait dans
+    // l'heure du son de l'appli (un bip vu à 115-122 ms) ; mesuré contre le bip réel, il ne reste que l'heure de l'appli.
+    const pages = () => s.app.windows().filter((w) => w.url().includes('clips-recorder'))
+    for (const w of pages()) await w.evaluate(() => { window.__beeps = []; const set = AudioParam.prototype.setValueAtTime; AudioParam.prototype.setValueAtTime = function (v, at) { if (v === 0.6) window.__beeps.push(Date.now()); return set.call(this, v, at) } })
     // La source d'essai en pause autour d'un passage de 2 s (B + 2 s) : pas de bip à ce passage, un bip à la reprise.
-    const B = Math.ceil((Date.now() + 600) / 2000) * 2000
+    // Le clip remonte jusqu'à 2,8 s avant B (6 s avant l'appui, reprises à l'image clé d'avant) : B vient assez tard pour que
+    // tous ses bips soient vus par la page.
+    const B = Math.ceil((Date.now() + 4600) / 2000) * 2000
     await waitWall(B + 400)
     const pause = { from: Date.now() }
     await test(s.app, 'command', 'pause-video', true)
@@ -188,14 +198,16 @@ const firstWallOf = (c) => c.at - c.events[0].t * 1000
     const img = seen.map((w) => Math.round(w - nearest(clock.flashes, w)))
     note(`image : ${seen.length} flashs dans le clip, vus ${img.join(', ')} ms après l’horloge d’écran (elle peint en ${clock.slowest.toFixed(1)} ms au plus)`)
     check('l’heure de l’image : chaque flash du clip tombe sur un flash de l’horloge d’écran, de 0 à 90 ms après', img.length >= 4 && img.every((d) => d >= 0 && d <= 90), img)
-    // L'heure du son : les bips attendus (les passages de 2 s hors de la pause, et la reprise), contre ceux du fichier.
-    const endWall = k.first + k.c.durationS * 1000, expected = [pause.resume]
-    for (let t = Math.floor(k.first / 2000) * 2000; t <= endWall; t += 2000) if (!(pause.from < t && t < pause.to)) expected.push(t)
+    // L'heure du son : chaque bip du fichier contre le bip réel le plus proche, lancé par la source dans la page.
+    const endWall = k.first + k.c.durationS * 1000
+    let real = []
+    for (const w of pages()) real = real.concat(await w.evaluate(() => window.__beeps || []))
+    const grid = real.filter((t) => Math.abs(t - pause.resume) >= 400).map((t) => t - Math.round(t / 2000) * 2000)
     const heard = audioBeeps(k.file).filter((b) => b > 0.06).map((b) => k.first + b * 1000)
-    const snd = heard.map((w) => Math.round(w - nearest(expected, w)))
-    const missing = expected.filter((t) => t > k.first + 100 && t < endWall - 600 && !heard.some((w) => Math.abs(w - t) < 400))
-    note(`son : ${heard.length} bips dans le clip, entendus ${snd.join(', ')} ms après leur heure (pause de ${pause.to - pause.from} ms, reprise demandée en ${pause.to - pause.resume} ms)`)
-    check('l’heure du son : chaque bip du clip tombe sur un bip attendu, de 0 à 90 ms après, celui de la reprise compris, et aucun pendant la pause', snd.length >= 4 && snd.every((d) => d >= 0 && d <= 90) && missing.length === 0 && heard.some((w) => Math.abs(w - pause.resume) < 400), { snd, missing: missing.map((t) => t - k.first) })
+    const snd = heard.map((w) => Math.round(w - nearest(real, w)))
+    const missing = real.filter((t) => t > k.first + 100 && t < endWall - 600 && !heard.some((w) => Math.abs(w - t) < 400))
+    note(`son : ${heard.length} bips dans le clip, entendus ${snd.join(', ')} ms après le bip de la source (pause de ${pause.to - pause.from} ms, reprise demandée en ${pause.to - pause.resume} ms ; la source bipe ${grid.join(', ')} ms après les passages de 2 s)`)
+    check('l’heure du son : chaque bip du clip tombe sur un bip de la source, de 0 à 90 ms après, celui de la reprise compris, et aucun pendant la pause', snd.length >= 4 && snd.every((d) => d >= 0 && d <= 90) && missing.length === 0 && heard.some((w) => Math.abs(w - pause.resume) < 400) && !real.some((t) => pause.from + 50 < t && t < pause.resume - 50), { snd, missing: missing.map((t) => t - k.first) })
     const gap = img.length && snd.length ? Math.round(mean(snd) - mean(img)) : null
     note(`écart moyen du son sur l’image dans ce clip : ${gap} ms`)
     check('l’écart du son sur l’image : de -40 à 60 ms (85 ms de trop avant la correction de la datation du son)', gap !== null && gap >= -40 && gap <= 60, gap)
