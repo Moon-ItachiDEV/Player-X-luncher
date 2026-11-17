@@ -294,6 +294,15 @@ test('publication : refus sans notes pour la version, sans Setup, avec une page 
   assert.throws(() => readNotes(join(tmp, 'n.json')), /page/)
 })
 
+test('nom du Setup : « Player-X-Setup-<version>.exe » (artifactName de package.json) passe la vérification de l’appli et se retrouve dans le dossier de fabrication', () => {
+  const file = 'Player-X-Setup-0.7.7.exe'
+  const r = parseManifest({ ...good(), version: '0.7.7', file, url: `${DOWNLOAD_PREFIX}v0.7.7/${file}` })
+  assert.equal(r.ok, true, JSON.stringify(r))
+  const tmp = mkdtempSync(join(tmpdir(), 'maj-'))
+  writeFileSync(join(tmp, file), Buffer.alloc(10))
+  assert.equal(findSetup(tmp, '0.7.7'), join(tmp, file))
+})
+
 test('publication : la clé publique s’ajoute à updaterKey.ts sans effacer les anciennes', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'maj-'))
   const f = join(tmp, 'updaterKey.ts')
