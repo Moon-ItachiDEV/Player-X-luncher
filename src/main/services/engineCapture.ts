@@ -45,6 +45,21 @@ export function captureRate(fps: number): number {
   return Math.min(GRAB_MAX, fps * GRAB_X)
 }
 
+/**
+ * 0.7.6 : la cadence du clip, calée sur l'écran. Windows ne donne une image qu'au rythme de l'écran : à 144 Hz, un clip à 60
+ * prend tour à tour 2 ou 3 images d'écran (2, 2, 3, 2, 3), un pas court, un pas long, et ça saccade (clip CS2 de Breezydev,
+ * 17/11 : battement à 24 par seconde). On prend donc un nombre entier d'images d'écran par image du clip, sans descendre sous
+ * la cadence demandée : 144 Hz → 72 images/s (2 chacune), 165 → 82,5, 120 et 240 → 60, 60 → 60, 90 → 90. Fréquence
+ * inconnue ou impossible : la cadence demandée.
+ * `refresh` : la fréquence arrondie, ou 0 quand le clip n'est pas calé.
+ */
+export function clipRate(fps: number, refreshHz?: number): { num: number; den: number; value: number; refresh: number } {
+  const r = Math.round(refreshHz ?? 0)
+  if (!(r >= 50 && r <= 500)) return { num: fps, den: 1, value: fps, refresh: 0 }
+  const den = Math.max(1, Math.floor(r / fps + 1e-9))
+  return { num: r, den, value: r / den, refresh: r }
+}
+
 /** Une image clé toutes les 2 s (le tampon coupe un clip sur une image clé), un fragment toutes les 0,5 s au plus. */
 export const KEY_S = 2
 export const FRAG_US = 500_000
@@ -53,12 +68,17 @@ export const FRAG_US = 500_000
  * La commande d'enregistrement : capture, encodage au débit demandé, MP4 fragmenté sur la sortie standard. L'avancement
  * (images, images/s) part sur la sortie d'erreur chaque seconde (0.7.4 : pour le rythme des clips, paceOfCounts). `x11` et `libx264` : essais sous Linux seulement.
  */
-export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number }): string[] {
+export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number; refreshHz?: number }): string[] {
   if (!ENCODERS.includes(a.encoder)) throw new Error('Encodeur refusé.')
   const fps = Math.min(120, Math.max(1, Math.round(q.fps)))
   const m = a.method
+  // 0.7.6 : la cadence calée sur l'écran (pas pour l'essai Linux, qui filme à cadence fixe lui-même).
+  const out = clipRate(fps, m.id === 'x11' ? 0 : q.refreshHz)
+  // Les instants de la capture ramenés sur la grille de l'écran : un écart de 1 ou 2 ms ne fait plus choisir l'image voisine.
+  const snap = out.refresh ? `,setpts=round(PTS*TB*${out.refresh})/(${out.refresh}*TB)` : ''
   // 0.7.4 : la capture est demandée plus vite que le clip (voir GRAB_X), puis le clip est remis à cadence fixe plus bas.
-  const grab = captureRate(fps)
+  // 0.7.6 : écran connu, l'intervalle minimal est une demi-image d'écran : aucune image d'écran n'est sautée.
+  const grab = out.refresh ? Math.min(1000, out.refresh * 2) : captureRate(fps)
   let input: string[]
   if (m.id === 'x11') {
     if (!/^:\d{1,3}(\.\d)?$/.test(m.display)) throw new Error('Écran refusé.')
@@ -70,7 +90,7 @@ export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number 
       src = `gfxcapture=window_exe='${m.exeRegex}':max_framerate=${grab}:capture_cursor=0`
     } else if (m.id === 'ecran-wgc') src = `gfxcapture=monitor_idx=${m.monitor | 0}:max_framerate=${grab}:capture_cursor=0`
     else src = `ddagrab=output_idx=${m.monitor | 0}:framerate=${grab}:dup_frames=0:draw_mouse=0`
-    input = [...(a.mode === 'gpu' ? ['-init_hw_device', 'd3d11va=px', '-filter_hw_device', 'px'] : []), '-filter_complex', `${src}${a.mode === 'copie' ? ',hwdownload,format=bgra' : ''}[v]`, '-map', '[v]']
+    input = [...(a.mode === 'gpu' ? ['-init_hw_device', 'd3d11va=px', '-filter_hw_device', 'px'] : []), '-filter_complex', `${src}${snap}${a.mode === 'copie' ? ',hwdownload,format=bgra' : ''}[v]`, '-map', '[v]']
   }
   const bps = Math.round(q.videoBps)
   const rate =
@@ -85,10 +105,11 @@ export function recordArgs(a: EngineAttempt, q: { fps: number; videoBps: number 
     // 0.7.4 : cadence fixe. Pour chaque instant du clip (1/60 s), l'image reçue la plus proche ; la précédente est répétée si le
     // jeu n'en a pas donné de nouvelle. Avant (passthrough), les écarts entre images suivaient la capture : 57 à 58 images/s
     // aux écarts inégaux chez Breezydev (CS2, 16/11), le clip saccadait dans Player X comme dans VLC.
-    '-fps_mode', 'cfr', '-r', String(fps),
+    // 0.7.6 : à la cadence calée sur l'écran (clipRate), 72 sur un écran à 144 Hz.
+    '-fps_mode', 'cfr', '-r', out.den === 1 ? String(out.num) : `${out.num}/${out.den}`,
     '-c:v', a.encoder, ...rate,
     // Image clé à heure fixe (toutes les 2 s), quelle que soit la cadence reçue.
-    '-g', String(fps * KEY_S), '-force_key_frames', `expr:gte(t,n_forced*${KEY_S})`,
+    '-g', String(Math.round(out.value * KEY_S)), '-force_key_frames', `expr:gte(t,n_forced*${KEY_S})`,
     '-an',
     '-f', 'mp4', '-movflags', '+frag_keyframe+empty_moov+default_base_moof', '-frag_duration', String(FRAG_US), '-flush_packets', '1',
     'pipe:1'

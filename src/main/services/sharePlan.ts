@@ -102,8 +102,9 @@ interface Candidate {
 
 /** Les copies possibles, de la meilleure à la plus légère : d'abord à la cadence du clip (jusqu'en 720p), puis à 30 images/s. */
 function candidates(src: ShareSource): Candidate[] {
-  // Un clip filmé à plus de 40 images/s est un clip à 60 (la capture en perd toujours quelques-unes).
-  const top = src.fps > 40 ? 60 : 30
+  // Un clip filmé à plus de 40 images/s est un clip à 60 (la capture en perd toujours quelques-unes). 0.7.6 : un clip calé sur un
+  // écran rapide (72 images/s sur un écran à 144 Hz, 83 à 165 Hz) garde sa cadence : la ramener à 60 ferait revenir les saccades.
+  const top = src.fps > 61 ? Math.min(120, Math.round(src.fps)) : src.fps > 40 ? 60 : 30
   const fit = (b: readonly [number, number]): { width: number; height: number } => fitSize(src.width, src.height, b[0], b[1])
   const list: Candidate[] = [
     { width: even(src.width), height: even(src.height), fps: top, audioBps: AUDIO_BPS },

@@ -86,10 +86,11 @@ function countAt(marks: readonly CountMark[], t: number): number | null {
  * 0.7.4 : le rythme d'un clip du moteur, d'après son compteur d'images reçues (relevé chaque seconde). Le moteur sort maintenant
  * à cadence fixe (il répète la dernière image quand la capture n'en donne pas), donc compter les images du clip dirait toujours
  * 60 : on compte celles que la capture a vraiment données entre `fromMs` et `toMs`. Les relevés arrivent chaque seconde, la fin
- * du clip les dépasse souvent un peu : on mesure sur la part couverte, si elle fait au moins 80 % du clip.
+ * du clip les dépasse souvent un peu : on mesure sur la part couverte, si elle fait au moins 80 % du clip. `clipFps` : la
+ * cadence du fichier (0.7.6), au-dessus de laquelle les images reçues ne comptent plus.
  * null : relevés qui couvrent trop peu du clip.
  */
-export function paceOfCounts(marks: readonly CountMark[], fromMs: number, toMs: number, wanted: number): ClipPace | null {
+export function paceOfCounts(marks: readonly CountMark[], fromMs: number, toMs: number, wanted: number, clipFps = wanted): ClipPace | null {
   if (!num(fromMs) || !num(toMs) || toMs - fromMs < 1000 || !num(wanted) || wanted <= 0 || marks.length < 2) return null
   const lo = Math.max(fromMs, marks[0].at)
   const hi = Math.min(toMs, marks[marks.length - 1].at)
@@ -97,7 +98,9 @@ export function paceOfCounts(marks: readonly CountMark[], fromMs: number, toMs: 
   const n0 = countAt(marks, lo)
   const n1 = countAt(marks, hi)
   if (n0 === null || n1 === null) return null
-  const fps = r1(Math.max(0, n1 - n0) / ((hi - lo) / 1000))
+  // 0.7.6 : la capture reçoit chaque image du jeu (jusqu'à 185 par seconde chez Breezydev) ; le clip n'en garde que sa cadence
+  // (`clipFps`, 72 sur un écran à 144 Hz). Le seuil « lent » reste celui de la cadence demandée (`wanted`, 60).
+  const fps = Math.min(clipFps, r1(Math.max(0, n1 - n0) / ((hi - lo) / 1000)))
   let low = fps
   for (let t = lo; t + PACE_WINDOW_S * 1000 <= hi + 1e-6; t += PACE_WINDOW_S * 1000) {
     const a = countAt(marks, t)

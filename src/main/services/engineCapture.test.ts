@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-ignore TS5097
-import { attemptLabel, captureRate, engineAttempts, muxArgs, pcmWindow, readEngineProgress, recordArgs } from './engineCapture.ts'
+import { attemptLabel, captureRate, clipRate, engineAttempts, muxArgs, pcmWindow, readEngineProgress, recordArgs } from './engineCapture.ts'
 
 const Q = { fps: 60, videoBps: 40_000_000 }
 const graph = (a: string[]) => a[a.indexOf('-filter_complex') + 1]
@@ -91,4 +91,26 @@ test('son : l’image copiée, le PCM encodé en AAC au débit de la qualité', 
   assert.equal(at('-c:a'), 'aac')
   assert.equal(at('-b:a'), '192000')
   assert.equal(a[a.length - 1], 'file:C:\\Clips\\c.mp4.part')
+})
+
+test('0.7.6 : cadence du clip calée sur l’écran, instants ramenés sur sa grille', () => {
+  assert.deepEqual(clipRate(60, 144), { num: 144, den: 2, value: 72, refresh: 144 })
+  assert.equal(clipRate(60, 165).value, 82.5)
+  // Jamais sous la cadence demandée : 90 Hz → 90, pas 45.
+  assert.equal(clipRate(60, 90).value, 90)
+  assert.equal(clipRate(60, 240).value, 60)
+  assert.equal(clipRate(60, 120).value, 60)
+  assert.equal(clipRate(60, 59.94).value, 60)
+  assert.equal(clipRate(30, 144).value, 36)
+  // Inconnue ou impossible : la cadence demandée, rien de calé.
+  assert.deepEqual(clipRate(60, 0), { num: 60, den: 1, value: 60, refresh: 0 })
+  assert.deepEqual(clipRate(60, 1000).refresh, 0)
+  const a = recordArgs(engineAttempts('(?i)^cs2[.]exe$', 0)[0], { ...Q, refreshHz: 144 })
+  const at = (k: string) => a[a.indexOf(k) + 1]
+  assert.equal(graph(a), "gfxcapture=window_exe='(?i)^cs2[.]exe$':max_framerate=288:capture_cursor=0,setpts=round(PTS*TB*144)/(144*TB)[v]")
+  assert.equal(at('-r'), '144/2')
+  assert.equal(at('-g'), '144')
+  // L'essai Linux n'est jamais calé.
+  const x = recordArgs({ method: { id: 'x11', label: 'x', display: ':93', width: 1920, height: 1080 }, encoder: 'libx264', mode: 'copie' }, { ...Q, refreshHz: 144 })
+  assert.equal(x[x.indexOf('-r') + 1], '60')
 })
