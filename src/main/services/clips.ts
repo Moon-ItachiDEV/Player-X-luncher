@@ -48,7 +48,7 @@ import { gameExeRegex } from './captureTestArgs'
 import { thumbArgs } from './editCompile'
 import { captureEngineReady, spawnCaptureEngine } from './editFfmpeg'
 import { musicServe } from './editMusic'
-import { attemptLabel, engineAttempts, muxArgs, PCM_FRAME_BYTES, PCM_RATE, pcmWindow, readEngineProgress, recordArgs, type EngineAttempt, type PcmPart } from './engineCapture'
+import { attemptLabel, clipRate, engineAttempts, muxArgs, PCM_FRAME_BYTES, PCM_RATE, pcmWindow, readEngineProgress, recordArgs, type EngineAttempt, type PcmPart } from './engineCapture'
 import { DISCORD_MB, type ShareSource } from './sharePlan'
 
 // Clips « comme NVIDIA » : pendant qu'un jeu tourne, une fenêtre cachée capture l'écran et le son du système, MediaRecorder
@@ -133,6 +133,8 @@ interface Recorder {
     last?: { frames: number; at: number }
     /** 0.7.4 : le compteur d'images reçues, relevé chaque seconde (le temps du tampon), pour le rythme des clips. */
     marks: CountMark[]
+    /** 0.7.6 : la cadence du fichier (clipRate), au-dessus de la cadence demandée sur un écran rapide. */
+    clipFps: number
   }
 }
 
@@ -479,6 +481,22 @@ async function decideEngine(c: Capture): Promise<void> {
   emitState()
 }
 
+/**
+ * 0.7.6 : la fréquence de l'écran filmé (Hz), pour caler la cadence du clip (clipRate). Écran filmé : le sien. Fenêtre du jeu :
+ * on ne sait pas sur quel écran elle est, donc seulement si tous les écrans ont la même fréquence. 0 : inconnue (pas calé).
+ */
+function refreshOf(a: EngineAttempt): number {
+  const all = screen.getAllDisplays()
+  const m = a.method
+  const hzOf = (d: Electron.Display | undefined): number => {
+    const hz = d?.displayFrequency
+    return typeof hz === 'number' && Number.isFinite(hz) ? Math.round(hz) : 0
+  }
+  if ('monitor' in m && typeof m.monitor === 'number') return hzOf(all[m.monitor])
+  const rates = [...new Set(all.map(hzOf))]
+  return rates.length === 1 ? rates[0] : 0
+}
+
 function startEngine(c: Capture): void {
   clearTimeout(c.engTimer)
   c.engTimer = undefined
@@ -487,7 +505,7 @@ function startEngine(c: Capture): void {
   if (!attempt) return engineGiveUp(c, 'aucune manière n’a marché')
   let args: string[]
   try {
-    args = recordArgs(attempt, QUALITY[clipSettings().quality])
+    args = recordArgs(attempt, { ...QUALITY[clipSettings().quality], refreshHz: refreshOf(attempt) })
   } catch (e) {
     log(`Moteur : ${errText(e)}`)
     c.engIdx++
@@ -515,12 +533,17 @@ function startEngine(c: Capture): void {
     ended: false,
     restartNow: false,
     mime: `moteur : ${attemptLabel(attempt)}`,
-    engine: { proc, attempt, err: '', progress: '', loggedAt: now, marks: [] }
+    // 0.7.6 : la cadence vraie du fichier, calée sur l'écran (72 sur un écran à 144 Hz).
+    engine: { proc, attempt, err: '', progress: '', loggedAt: now, marks: [], clipFps: clipRate(QUALITY[clipSettings().quality].fps, attempt.method.id === 'x11' ? 0 : refreshOf(attempt)).value }
   }
   recorders.set(id, rec)
   c.eng = rec
   syncHotkey()
-  if (c.engRound === 0 || attempt.method.id !== 'fenetre') log(`Moteur : essai « ${attemptLabel(attempt)} ».`)
+  if (c.engRound === 0 || attempt.method.id !== 'fenetre') {
+    const r = clipRate(QUALITY[clipSettings().quality].fps, attempt.method.id === 'x11' ? 0 : refreshOf(attempt))
+    // 0.7.6 : la cadence calée sur l'écran, dite seulement quand elle l'est (sinon la ligne reste la même qu'avant).
+    log(`Moteur : essai « ${attemptLabel(attempt)} ».${r.refresh ? ` Clip à ${String(Math.round(r.value * 10) / 10).replace('.', ',')} images/s (écran à ${r.refresh} Hz).` : ''}`)
+  }
   proc.stdout?.on('data', (d: Buffer) => {
     if (rec.ended) return
     rec.lastDataAt = Date.now()
@@ -924,7 +947,7 @@ async function writeClip(p: PendingClip): Promise<void> {
   // Bêta 46 : le rythme réel du clip, d'après l'instant de chacune de ses images. 0.7.4 : le moteur sort à cadence fixe (images
   // répétées comprises), son rythme vient de son compteur d'images reçues ; inconnu si les relevés ne couvrent pas le clip.
   const pace = rec.engine
-    ? (paceOfCounts(rec.engine.marks, firstWall, firstWall + plan.durationS * 1000, rec.wantedFps) ?? undefined)
+    ? (paceOfCounts(rec.engine.marks, firstWall, firstWall + plan.durationS * 1000, rec.wantedFps, rec.engine.clipFps) ?? undefined)
     : paceOfTracks(cut, plan.durationS, rec.wantedFps)
   const events = clipEvents(p.events, firstWall, plan.durationS)
   const kills = clipKills(p)
