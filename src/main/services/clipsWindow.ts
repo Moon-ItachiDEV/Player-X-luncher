@@ -244,9 +244,9 @@ export function onRecorderStopped(rec: Recorder, info: { reason?: unknown; badSi
   recorderLost(rec, reason, info.quick === true)
 }
 
-// Le raccourci « garder un clip » est tenu par clips.ts, qui s'y branche au démarrage : la fenêtre le prévient
-// quand un enregistreur arrive ou part.
-let recordersChanged = (): void => {}
+// Le raccourci « garder un clip » est tenu par clips.ts, qui s'y branche au démarrage : la fenêtre, et le moteur
+// (clipsEngine.ts), le préviennent quand un enregistreur arrive ou part.
+export let recordersChanged = (): void => {}
 export function onRecordersChanged(fn: () => void): void {
   recordersChanged = fn
 }
