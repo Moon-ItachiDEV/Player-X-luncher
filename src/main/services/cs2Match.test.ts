@@ -431,3 +431,32 @@ test('en direct pour l’overlay : phase du round, frise des rounds finis, ADR e
   assert.equal(live.hsPct, 67)
   assert.equal(live.money, 2900)
 })
+
+test('prolongation : la remise à zéro de round_wins au round 25 n’efface pas les rounds 1 à 24', () => {
+  const regWins: Record<string, string> = {}
+  for (let i = 1; i <= 24; i++) regWins[String(i)] = i % 2 === 1 ? 'ct_win_elimination' : 't_win_elimination'
+  const { match, ended } = play([
+    { team: 'CT', round: 23, ct: 12, t: 11, wins: regWins, rp: 'live', kills: 20, rk: 1, rdmg: 100 },
+    { team: 'CT', round: 24, ct: 12, t: 12, wins: regWins, rp: 'over', kills: 20, rk: 1, rdmg: 100 },
+    // Début de prolongation : CS2 vide round_wins puis n'y met plus que le round 25.
+    { team: 'T', round: 24, ct: 12, t: 12, wins: {}, rp: 'freezetime', kills: 20, rk: 0 },
+    { team: 'T', round: 25, ct: 12, t: 13, wins: { 25: 't_win_bomb' }, rp: 'over', kills: 21, rk: 1, rdmg: 100 },
+    { phase: 'gameover', team: 'T', round: 25, ct: 12, t: 13, wins: { 25: 't_win_bomb' }, rp: 'over', kills: 21 }
+  ])
+  assert.equal(match, null)
+  const r = recapOf(ended[0].match, 'gameover')!
+  assert.equal(r.rounds.length, 25)
+  assert.equal(r.rounds[0].n, 1)
+  assert.equal(r.rounds[23].n, 24)
+  assert.equal(r.rounds[24].n, 25)
+  assert.equal(r.rounds[24].winner, 'T')
+})
+
+test('mode occasionnel : regarder un adversaire pendant la pause ou le temps d’achat ne retourne pas ton camp', () => {
+  let { match } = play([{ mode: 'casual', team: 'CT', round: 2, ct: 1, t: 1, rp: 'live', kills: 3, rk: 1 }])
+  ;({ match } = play([{ mode: 'casual', who: MATE, team: 'T', phase: 'intermission', round: 3, ct: 1, t: 2, rp: 'over' }], match))
+  assert.equal(match?.side, 'CT')
+  ;({ match } = play([{ mode: 'casual', who: MATE, team: 'T', round: 3, ct: 1, t: 2, rp: 'freezetime' }], match))
+  assert.equal(match?.side, 'CT')
+})
+

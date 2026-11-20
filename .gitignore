@@ -3,7 +3,7 @@ out
 dist
 .env
 
-# Interface V3 : produite par python3 v3ui/build.py (npm run build, dev, preview et dist le lancent d'abord)
+# Interface V3 : produite par node v3ui/build.mjs (npm run build, dev, preview et dist le lancent d'abord)
 src/renderer/public/v3/
 v3ui/.shared.js
 

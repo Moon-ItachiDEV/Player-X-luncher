@@ -1,8 +1,9 @@
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { app } from 'electron'
 import { getKv, setKv } from '../db'
 import { UserError } from '../errors'
+import { renameWithRetry } from './clipsFiles'
 import { errText, log } from './clipsLog'
 import { progressReader } from './editCompile'
 import { scrub } from './editEngineRules'
@@ -29,7 +30,6 @@ const DIR_NAME = /^([0-9a-f]{16})-(\d{1,12})$/
 
 const root = (): string => join(app.getPath('userData'), ROOT)
 const mo = (bytes: number): string => `${(bytes / 1e6).toFixed(1).replace('.', ',')} Mo`
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 /** Ce qui est écrit à côté d'une copie, pour savoir si elle peut resservir. */
 interface Note {
@@ -67,19 +67,6 @@ async function readNote(dir: string): Promise<Note | null> {
   }
 }
 
-/** Sous Windows, un antivirus peut tenir un instant le fichier que le moteur vient de fermer. */
-async function renameSoon(from: string, to: string): Promise<void> {
-  for (let i = 0; ; i++) {
-    try {
-      await rename(from, to)
-      return
-    } catch (e) {
-      if (i === 9 || !['EPERM', 'EBUSY', 'EACCES'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e
-      await sleep(300)
-    }
-  }
-}
-
 let busy = false
 
 /**
@@ -98,7 +85,7 @@ export async function lightCopy(clip: { id: string; file: string; mtimeMs: numbe
     const old = await readNote(dir)
     if (old && old.srcSize === src.sizeBytes && old.srcMtimeMs === clip.mtimeMs && old.sizeBytes <= limit && (await stat(join(dir, old.file)).then((s) => s.size === old.sizeBytes, () => false))) {
       // Le clip a pu être renommé depuis : la copie suit son nom. Si elle est encore ouverte ailleurs, elle garde l'ancien.
-      const file = old.file === name ? name : await renameSoon(join(dir, old.file), join(dir, name)).then(() => name, () => old.file)
+      const file = old.file === name ? name : await renameWithRetry(join(dir, old.file), join(dir, name)).then(() => name, () => old.file)
       await writeFile(join(dir, NOTE), JSON.stringify({ ...old, file, at: Date.now() } satisfies Note)).catch((e) => log(`Copie pour Discord : note non écrite (${errText(e)}).`))
       log(`Copie pour Discord du clip ${clip.id} : déjà faite (${mo(old.sizeBytes)}), reprise.`)
       return { kind: 'copy', file: join(dir, file), sizeBytes: old.sizeBytes, width: old.width, height: old.height, fps: old.fps }
@@ -117,7 +104,7 @@ export async function lightCopy(clip: { id: string; file: string; mtimeMs: numbe
         await rm(dir, { recursive: true, force: true }).catch(() => {})
         return { kind: 'unmade', reason: 'encode' }
       }
-      await renameSoon(join(dir, PART), join(dir, name))
+      await renameWithRetry(join(dir, PART), join(dir, name))
       const p = made.plan
       await writeFile(join(dir, NOTE), JSON.stringify({ v: 1, at: Date.now(), file: name, srcSize: src.sizeBytes, srcMtimeMs: clip.mtimeMs, sizeBytes: made.sizeBytes, width: p.width, height: p.height, fps: p.fps } satisfies Note))
       setKv(ENCODER_KEY, made.encoder)
@@ -146,8 +133,10 @@ async function encode(clip: { id: string; file: string }, src: ShareSource, plan
   const hide = [dir, root(), clip.file, dirname(clip.file), ...filmEngine.hidden()]
   let shown = 0
   for (const encoder of shareEncoders(await filmEngine.encoders(), getKv<unknown>(ENCODER_KEY, null))) {
+    if (filmEngine.quitting()) return null
     let p = plan
     for (let attempt = 1; attempt <= 2; attempt++) {
+      if (filmEngine.quitting()) return null
       const read = progressReader()
       let done = { seconds: 0, end: false }
       const t0 = performance.now()
@@ -160,6 +149,10 @@ async function encode(clip: { id: string; file: string }, src: ShareSource, plan
           onPercent(percent)
         }
       })
+      if (filmEngine.quitting()) {
+        await rm(part, { force: true }).catch(() => {})
+        return null
+      }
       const size = await stat(part).then((s) => s.size, () => 0)
       // Le moteur dit lui-même combien de secondes il a fabriquées : une copie nettement plus courte que le clip est ratée.
       const whole = done.end && done.seconds >= src.durationS * 0.9 - 1

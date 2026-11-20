@@ -5,20 +5,20 @@
   "main": "out/main/index.js",
   "private": true,
   "scripts": {
-    "dev": "python3 v3ui/build.py && electron-vite dev",
-    "build": "python3 v3ui/build.py && electron-vite build",
-    "preview": "python3 v3ui/build.py && electron-vite preview",
-    "test:launch": "node --experimental-strip-types --test src/main/services/tracking.test.ts src/main/services/launchWatchParse.test.ts src/main/services/launches.test.ts src/main/services/gogInfo.test.ts && node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/launchWatch.test.ts src/shared/view/launchCopy.test.ts src/shared/view/launchPhase.test.ts src/main/services/artworkMatch.test.ts",
+    "dev": "node v3ui/build.mjs && electron-vite dev",
+    "build": "node v3ui/build.mjs && electron-vite build",
+    "preview": "node v3ui/build.mjs && electron-vite preview",
+    "test:launch": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/tracking.test.ts src/main/services/launchWatchParse.test.ts src/main/services/launches.test.ts src/main/services/gogInfo.test.ts src/main/services/launchWatch.test.ts src/shared/view/launchCopy.test.ts src/shared/view/launchPhase.test.ts src/main/services/artworkMatch.test.ts",
     "test:news": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/newsFormat.test.ts src/main/services/newsFeed.test.ts",
-    "test:bf6": "node --experimental-strip-types --test src/main/services/bf6Diff.test.ts",
+    "test:bf6": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/bf6Diff.test.ts",
     "test:cs2": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/cs2Match.test.ts src/main/services/cs2Gsi.test.ts",
-    "test:achievements": "node --experimental-strip-types --test src/main/services/achievementsFormat.test.ts",
+    "test:achievements": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/achievementsFormat.test.ts",
     "test:played": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/played.test.ts src/main/services/demo.test.ts",
     "test:friends": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/discordMembers.test.ts src/main/services/steamProfile.test.ts src/main/services/chromiumCrypt.test.ts src/shared/view/friendView.test.ts src/shared/view/voice.test.ts",
     "test:home": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/view/pick.test.ts src/shared/view/around.test.ts src/shared/view/gameStyle.test.ts",
-    "test:ui": "node --experimental-strip-types --test src/renderer/src/styles/*.test.ts",
+    "test:ui": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/renderer/src/styles/*.test.ts",
     "test:overlay": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/hotkey.test.ts src/renderer/src/overlay/view.test.ts",
-    "test:profile": "node --experimental-strip-types --test src/shared/profile.test.ts src/shared/steamApps.test.ts",
+    "test:profile": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/profile.test.ts src/shared/steamApps.test.ts",
     "test:cs2stats": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/cs2Lifetime.test.ts src/shared/statsCockpit.test.ts",
     "test:ready": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/steamUpdate.test.ts src/shared/servers.test.ts src/shared/gameEvents.test.ts src/shared/shelves.test.ts src/main/services/recentGames.test.ts",
     "test:armory": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/shared/bf6Loadouts.test.ts src/shared/bf6Workshop.test.ts",
@@ -30,11 +30,11 @@
     "test:maj": "node --import ./scripts/test-resolve.mjs --experimental-strip-types --test src/main/services/updaterRules.test.ts",
     "test": "node scripts/test-all.mjs",
     "dist": "node scripts/dist-v3.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc -p tsconfig.scripts.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc -p tsconfig.scripts.json && tsc --noEmit -p tsconfig.v3ui.json",
     "postinstall": "node node_modules/electron/install.js",
     "maj:cle": "node scripts/publier-maj.mjs --cle",
     "maj:publier": "node scripts/publier-maj.mjs",
-    "ui": "python3 v3ui/build.py"
+    "ui": "node v3ui/build.mjs"
   },
   "build": {
     "electronFuses": {
@@ -49,7 +49,6 @@
       "fr",
       "en-US"
     ],
-  "productName": "Player X V3 Test",
     "files": [
       "out/**/*",
       "!out/main/launchSim-*.js",
@@ -103,7 +102,7 @@
       "installerIcon": "resources/icon.ico",
       "uninstallerIcon": "resources/icon.ico",
       "artifactName": "Player-X-Setup-${version}.${ext}",
-      "deleteAppDataOnUninstall": true,
+      "deleteAppDataOnUninstall": false,
       "language": "1036",
       "installerLanguages": [
         "fr_FR"

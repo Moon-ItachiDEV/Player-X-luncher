@@ -185,7 +185,7 @@ const Clips = (() => {
     const po = t.closest('[data-pop]'); if (po) openPop(po.dataset.pop)
   }
   const fkOf = (n) => (n.closest('.cx-pop') ? 'pop|' : '') + (n.dataset.fk || (n.dataset.key ? 'kc-' + n.dataset.key : n.dataset.act ? 'act-' + n.dataset.act : n.classList.contains('ct-tile') ? 'tile:' + n.dataset.id : n.dataset.f ? 'f:' + n.dataset.f : n.id || ''))
-  const fkFind = (sc, k) => (!k ? null : k.startsWith('pop|') ? fkFind($('.cx-pop', sc) || sc, k.slice(4)) : k.startsWith('act-') ? $(`[data-act="${k.slice(4)}"]`, sc) : k.startsWith('tile:') ? $(`.ct-tile[data-id="${k.slice(5)}"]`, sc) : k.startsWith('kc-') ? $(`.kc[data-key="${k.slice(3)}"]`, sc) : k.startsWith('f:') ? $(`[data-f="${k.slice(2)}"]`, sc) : $(`[data-fk="${k}"]`, sc) || $('#' + k, sc))
+  const fkFind = (sc, k) => (!k ? null : k.startsWith('pop|') ? fkFind($('.cx-pop', sc) || sc, k.slice(4)) : k.startsWith('act-') ? $(`[data-act="${CSS.escape(k.slice(4))}"]`, sc) : k.startsWith('tile:') ? $(`.ct-tile[data-id="${CSS.escape(k.slice(5))}"]`, sc) : k.startsWith('kc-') ? $(`.kc[data-key="${CSS.escape(k.slice(3))}"]`, sc) : k.startsWith('f:') ? $(`[data-f="${CSS.escape(k.slice(2))}"]`, sc) : $(`[data-fk="${CSS.escape(k)}"]`, sc) || $('#' + CSS.escape(k), sc))
 
   /* La liste : la même dans les deux styles */
   function libHTML(cfg, st) {
@@ -429,7 +429,7 @@ const Clips = (() => {
     el.addEventListener('error', (e) => { const i = e.target; if (i?.tagName === 'IMG' && i.closest('.cx-pic')) i.remove() }, true)
     document.addEventListener('pointerup', () => { dragging = false }); document.addEventListener('pointercancel', () => { dragging = false })
     // Une bulle se ferme d'un clic dehors (le focus revient au bouton, sauf si on a cliqué sur autre chose qui le prend) et d'Échap
-    document.addEventListener('click', (e) => { if (!pop || !here() || !e.target.isConnected || e.target.closest?.('.cx-pw')) return; closePop(!e.target.closest?.('button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])')) })
+    document.addEventListener('click', (e) => { const t = e.target instanceof Element ? e.target : null; if (!pop || !here() || !t?.isConnected || t.closest('.cx-pw')) return; closePop(!t.closest('button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])')) })
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || !pop || !here() || el.querySelector('.kc.wait') || document.querySelector('[data-modal]:not([hidden]), dialog[open]')) return
       e.preventDefault(); e.stopPropagation(); closePop(true)
@@ -656,7 +656,7 @@ const Clips = (() => {
     b.setAttribute('aria-busy', 'true'); lab.textContent = 'Copie…'
     const off = original ? null : API.onClipsShare?.((s) => { if (s.id === c.id) lab.textContent = `Préparation… ${s.percent} %` })
     try {
-      const r = original || !API.clipsShare ? ((await API.clipsCopyFile(c.id)) ? { status: 'copied', sizeBytes: c.sizeBytes } : { status: 'failed' }) : await API.clipsShare(c.id)
+      const r = /** @type {Awaited<ReturnType<typeof API.clipsShare>>} */ (original || !API.clipsShare ? ((await API.clipsCopyFile(c.id)) ? { status: 'copied', sizeBytes: c.sizeBytes, limitMb: 0 } : { status: 'failed' }) : await API.clipsShare(c.id))
       if (r.status === 'failed') throw new Error(`Le ${wordOf(c)} n’a pas pu aller dans le presse-papiers. Ouvre le dossier et glisse le fichier dans Discord.`)
       if (r.status === 'copied') {
         lab.textContent = 'Prêt : Ctrl V dans Discord'
@@ -712,7 +712,7 @@ const Clips = (() => {
       leaveBar()
       Fluid.set(['#120a10', '#3a0f1c', '#b3112f', '#5a1420'])
       render()
-    }, { done: () => ($(`.ct-tile[data-id="${pc.id}"]`, el) || $('.ct-tile', el) || $('.pill', el))?.focus({ preventScroll: true }) })
+    }, { done: () => ($(`.ct-tile[data-id="${CSS.escape(pc.id)}"]`, el) || $('.ct-tile', el) || $('.pill', el))?.focus({ preventScroll: true }) })
   }
   /* L'onglet Clips de la fiche d'un jeu */
   function gameTab(g, b) {

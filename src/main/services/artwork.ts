@@ -1,3 +1,4 @@
+import { net } from 'electron'
 import { cleanName as clean, norm } from '@shared/text'
 import { MATCH_VERSION, NOT_FOUND_RETRY_MS, firstWithCover, looseIds, matchIds, searchTerms } from './artworkMatch'
 import type { Game } from '@shared/types'
@@ -12,6 +13,12 @@ import { getKv, kvStamp, setKv } from '../db'
 const CDN = 'https://shared.steamstatic.com/store_item_assets/'
 const LEGACY_CDN = 'https://cdn.cloudflare.steamstatic.com/steam/apps/'
 const MAX_AGE = 7 * 24 * 3600_000
+const SEARCH_PARALLEL = 2
+/** Pause après un 429 de Steam pour éviter d'insister en boucle. */
+const RATE_LIMIT_BACKOFF_MS = 10 * 60_000
+
+class RateLimitError extends Error {}
+let rateLimitedUntil = 0
 
 interface Art {
   appId: string | null
@@ -37,11 +44,19 @@ type ArtCache = Record<string, Art>
  * résultat venu). Vide : pas trouvé.
  */
 async function findSteamAppIds(name: string): Promise<string[]> {
+  if (Date.now() < rateLimitedUntil) throw new RateLimitError('storesearch 429')
   // Plusieurs façons d'écrire la recherche : Steam ne retrouve pas toujours un titre avec « : » ou une édition. Une erreur
   // du réseau remonte (rien n'est gardé en cache), un « pas trouvé » ne sort qu'après tous les essais.
   const seen: { id: number; name: string }[] = []
   for (const term of searchTerms(name)) {
-    const res = await fetch(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(term)}&l=french&cc=FR`, { signal: AbortSignal.timeout(20_000) })
+    const res = await net.fetch(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(term)}&l=french&cc=FR`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20_000)
+    })
+    if (res.status === 429) {
+      rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
+      throw new RateLimitError('storesearch 429')
+    }
     if (!res.ok) throw new Error(`storesearch ${res.status}`)
     const items = ((await res.json()) as { items?: { id: number; name: string }[] }).items ?? []
     const ids = matchIds(items, name)
@@ -71,6 +86,7 @@ interface Assets {
 
 /** Chemins exacts des images pour une liste d'appids (par lots de 50). */
 export async function fetchAssets(appIds: string[]): Promise<Map<string, Assets>> {
+  if (Date.now() < rateLimitedUntil) throw new RateLimitError('GetItems 429')
   const out = new Map<string, Assets>()
   for (let i = 0; i < appIds.length; i += 50) {
     const input = {
@@ -78,10 +94,15 @@ export async function fetchAssets(appIds: string[]): Promise<Map<string, Assets>
       context: { language: 'french', country_code: 'FR' },
       data_request: { include_assets: true, include_tag_count: 12 }
     }
-    const res = await fetch(`https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json=${encodeURIComponent(JSON.stringify(input))}`, {
+    const res = await net.fetch(`https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json=${encodeURIComponent(JSON.stringify(input))}`, {
       // Sans limite, une réponse qui ne vient jamais bloquait les jaquettes jusqu'au redémarrage
+      cache: 'no-store',
       signal: AbortSignal.timeout(20_000)
     })
+    if (res.status === 429) {
+      rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
+      throw new RateLimitError('GetItems 429')
+    }
     if (!res.ok) throw new Error(`GetItems ${res.status}`)
     const items = ((await res.json()) as { response?: { store_items?: StoreItem[] } }).response?.store_items ?? []
     for (const item of items) {
@@ -106,6 +127,7 @@ export async function fetchAssets(appIds: string[]): Promise<Map<string, Assets>
 
 /** Va chercher sur Steam les images manquantes ou périmées. Renvoie true si le cache a changé. */
 export async function updateArtwork(games: Game[]): Promise<boolean> {
+  if (Date.now() < rateLimitedUntil) return false
   const cache = getKv<ArtCache>('artwork', {})
   const now = Date.now()
   const fresh = (g: Game): Art | undefined => {
@@ -121,18 +143,21 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
   /** Ce que cette recherche a trouvé : seul écrit à la fin, par-dessus le cache relu (une autre recherche a pu finir entre-temps). */
   const found: ArtCache = {}
   let changed = false
+  let limited = false
 
-  // 1. Appid Steam des jeux EA / Epic (recherche par nom, 4 à la fois). Une erreur réseau n'est pas mise en cache.
+  // 1. Appid Steam des jeux EA / Epic / GOG (recherche par nom, 2 à la fois). Une erreur réseau ou 429 n'est pas mise en cache.
   const unknown = games.filter((g) => g.store !== 'steam' && !fresh(g))
-  for (let i = 0; i < unknown.length; i += 4) {
+  for (let i = 0; i < unknown.length && !limited; i += SEARCH_PARALLEL) {
     await Promise.all(
-      unknown.slice(i, i + 4).map(async (g) => {
+      unknown.slice(i, i + SEARCH_PARALLEL).map(async (g) => {
+        if (limited) return
         try {
           const ids = await findSteamAppIds(g.name)
           cache[g.id] = found[g.id] = { appId: ids[0] ?? null, ...(ids.length > 1 ? { alts: ids.slice(1, 4) } : {}), m: MATCH_VERSION, at: now }
           changed = true
-        } catch {
-          /* hors ligne : on réessaiera au prochain scan */
+        } catch (e) {
+          if (e instanceof RateLimitError) limited = true
+          /* hors ligne ou 429 : on réessaiera au prochain scan */
         }
       })
     )
@@ -148,7 +173,7 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
     if (!appId || (f?.assetsFetched && f.logo !== undefined && f.tagIds !== undefined)) continue
     want.set(g.id, [appId, ...(g.store === 'steam' ? [] : (cache[g.id]?.alts ?? []))])
   }
-  if (want.size) {
+  if (want.size && !limited) {
     try {
       const assets = await fetchAssets([...new Set([...want.values()].flat())])
       for (const [id, cands] of want) {
@@ -159,13 +184,14 @@ export async function updateArtwork(games: Game[]): Promise<boolean> {
       }
       changed = true
     } catch (e) {
+      if (e instanceof RateLimitError) limited = true
       console.warn('[artwork]', e)
     }
   }
 
   if (changed) setKv('artwork', { ...getKv<ArtCache>('artwork', {}), ...found })
   // Les noms des tags : une liste commune à tous les jeux, gardée un mois
-  if (Object.values(cache).some((a) => a.tagIds?.length) && (await updateTagNames())) changed = true
+  if (!limited && Object.values(cache).some((a) => a.tagIds?.length) && (await updateTagNames())) changed = true
   return changed
 }
 
@@ -180,10 +206,18 @@ interface TagNames {
 
 /** Va chercher la liste des tags si elle manque ou date de plus d'un mois. Renvoie true si elle a changé. */
 async function updateTagNames(): Promise<boolean> {
+  if (Date.now() < rateLimitedUntil) return false
   const cur = getKv<TagNames | null>('steamTagNames', null)
   if (cur && Date.now() - cur.at < TAG_MAX_AGE) return false
   try {
-    const res = await fetch('https://api.steampowered.com/IStoreService/GetTagList/v1/?language=english', { signal: AbortSignal.timeout(20_000) })
+    const res = await net.fetch('https://api.steampowered.com/IStoreService/GetTagList/v1/?language=english', {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20_000)
+    })
+    if (res.status === 429) {
+      rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
+      return false
+    }
     if (!res.ok) throw new Error(`GetTagList ${res.status}`)
     const tags = ((await res.json()) as { response?: { tags?: { tagid: number; name: string }[] } }).response?.tags ?? []
     if (!tags.length) return false

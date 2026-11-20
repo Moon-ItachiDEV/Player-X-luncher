@@ -1,6 +1,6 @@
 import { net } from 'electron'
 import type { Game, GameNews, NewsPost } from '@shared/types'
-import { getKv, setKv } from '../db'
+import { getKv, setKv, type KvKey } from '../db'
 import { steamAppIds } from './artwork'
 import { entryFrom, fetchAll, needsRefresh, nextSeen, olderThanAll, patchFlags, postsStillFresh, type NewsIndex } from './newsFeed'
 import { cleanRawNews, frenchPost, frenchTexts, toNewsPost, type RawNews } from './newsFormat'
@@ -65,12 +65,12 @@ export function setFrenchSource(fn: FrenchSource | null): void {
 }
 
 /** Le simulateur a son propre relevé : les vrais ne sont jamais mélangés à des annonces inventées. */
-function indexKey(): string {
+function indexKey(): KvKey {
   return source ? 'newsSimIndex' : 'newsIndex'
 }
 
 /** Comme le reste du mode démo, ce qui a été vu dans les fiches de démo vit à part (et celles du simulateur aussi). */
-function seenKey(): string {
+function seenKey(): KvKey {
   if (source) return 'simNewsSeen'
   return getSettings().demoMode ? 'demoNewsSeen' : 'newsSeen'
 }

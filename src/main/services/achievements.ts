@@ -11,6 +11,7 @@ import {
   parseGlobal,
   parsePlayer,
   parseSchema,
+  selectScanGames,
   summarize,
   type GameSummary,
   type PlayerResult,
@@ -27,8 +28,8 @@ import { UserError } from '../errors'
 //  - IPlayerService/GetBadges : niveau Steam et badges.
 // Deux lectures :
 //  - la fiche d'un jeu : sa liste complète, à l'ouverture (gardée 10 min en mémoire) ;
-//  - la page Trophées : un résumé par jeu joué, relevé au plus toutes les 6 h. Seuls les jeux dont le temps de jeu
-//    Steam a bougé (ou relevés il y a plus de 7 jours) sont relus : le premier relevé est long, les suivants rapides.
+//  - les alertes de succès rares : relevé limité aux jeux joués récemment (ou dont le temps Steam a bougé),
+//    au plus toutes les 6 h, avec pause immédiate si Steam répond 429.
 
 const BASE = 'https://api.steampowered.com'
 const LANG = 'french'
@@ -40,18 +41,21 @@ const OVERVIEW_MAX_AGE = 6 * 3600_000
 const SUMMARY_MAX_AGE = 7 * 24 * 3600_000
 /** Après un relevé raté (hors ligne), pas de nouvel essai automatique avant 5 min. */
 const RETRY_MS = 5 * 60_000
-const PARALLEL = 4
-/** Pendant le premier relevé, la page se remplit au fur et à mesure : on enregistre tous les 24 jeux. */
-const SAVE_EVERY = 24
+/** Après un 429 de Steam, on laisse souffler l'API 30 min. */
+const RATE_LIMIT_BACKOFF_MS = 30 * 60_000
+const PARALLEL = 2
+/** Pendant un relevé, on enregistre par petits paquets. */
+const SAVE_EVERY = 12
 const FIRST_RUN_MS = 90_000
 const RUN_EVERY_MS = 3600_000
 
 const NETWORK_ERROR = 'Connexion à Steam impossible : vérifie ta connexion internet.'
 const SERVICE_ERROR = 'Steam ne répond pas pour le moment. Réessaie dans quelques minutes.'
+const RATE_LIMIT_ERROR = 'Steam limite les requêtes : réessaie dans quelques minutes.'
 
 interface Index {
   steamId: string
-  /** Dernier relevé complet (0 : jamais). */
+  /** Dernier relevé (0 : jamais). */
   at: number
   /** appid → résumé. */
   games: Record<string, GameSummary>
@@ -66,6 +70,7 @@ const gameCache = new Map<string, { at: number; data: GameAchievements }>()
 const metaCache = new Map<string, { at: number; schema: SchemaAch[]; global: Record<string, number> }>()
 let scan: { done: number; total: number } | null = null
 let lastTry = { at: 0, who: '' }
+let rateLimitedUntil = 0
 
 // Succès rares débloqués depuis le relevé précédent d'un jeu (jamais au premier relevé : tout serait « nouveau »).
 let rareListener: ((list: RareUnlock[]) => void) | null = null
@@ -102,6 +107,7 @@ async function getJson(url: string): Promise<{ status: number; body: unknown }> 
   } catch {
     throw new UserError(NETWORK_ERROR)
   }
+  if (res.status === 429) rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
   let body: unknown = null
   try {
     body = await res.json()
@@ -117,21 +123,18 @@ async function fetchPlayer(appId: string, key: string, id: string): Promise<Play
 }
 
 /** Schéma et rareté d'un jeu. Un échec donne une liste vide (les noms du joueur servent alors) et n'est pas gardé. */
-async function fetchMeta(appId: string, key: string): Promise<{ schema: SchemaAch[]; global: Record<string, number> }> {
+async function fetchMeta(appId: string, key: string): Promise<{ schema: SchemaAch[]; global: Record<string, number>; rateLimited: boolean }> {
   const cached = metaCache.get(appId)
-  if (cached && Date.now() - cached.at < META_MAX_AGE) return cached
-  const [schema, global] = await Promise.all([
-    getJson(`${BASE}/ISteamUserStats/GetSchemaForGame/v2/?key=${encodeURIComponent(key)}&appid=${appId}&l=${LANG}`).then(
-      (r) => parseSchema(r.body),
-      () => []
-    ),
-    getJson(`${BASE}/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/?gameid=${appId}`).then(
-      (r) => parseGlobal(r.body),
-      () => ({})
-    )
+  if (cached && Date.now() - cached.at < META_MAX_AGE) return { ...cached, rateLimited: false }
+  const [sRes, gRes] = await Promise.all([
+    getJson(`${BASE}/ISteamUserStats/GetSchemaForGame/v2/?key=${encodeURIComponent(key)}&appid=${appId}&l=${LANG}`).catch(() => null),
+    getJson(`${BASE}/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/?gameid=${appId}`).catch(() => null)
   ])
+  const rateLimited = sRes?.status === 429 || gRes?.status === 429
+  const schema = sRes ? parseSchema(sRes.body) : []
+  const global = gRes ? parseGlobal(gRes.body) : {}
   if (schema.length && Object.keys(global).length) metaCache.set(appId, { at: Date.now(), schema, global })
-  return { schema, global }
+  return { schema, global, rateLimited }
 }
 
 const empty = (state: GameAchievements['state']): GameAchievements => ({ state, list: [], unlocked: 0, total: 0 })
@@ -164,6 +167,10 @@ export async function getGameAchievements(game: Game, refresh = false): Promise<
   if (player.kind === 'private') return empty(ownedSteamList() ? 'none' : 'private')
   if (player.kind === 'key') return empty('key-refused')
   if (player.kind === 'none') return empty('none')
+  if (player.kind === 'rate-limit') {
+    if (cached) return cached.data
+    throw new UserError(RATE_LIMIT_ERROR)
+  }
   if (player.kind === 'error') {
     if (cached) return cached.data
     throw new UserError(SERVICE_ERROR)
@@ -172,7 +179,7 @@ export async function getGameAchievements(game: Game, refresh = false): Promise<
   const data: GameAchievements = { state: 'ready', list, unlocked: list.filter(isUnlocked).length, total: list.length }
   gameCache.set(cacheKey, { at: Date.now(), data })
 
-  // La page Trophées suit ce qu'on vient de lire (si le jeu y est déjà, ou s'il a été joué).
+  // L'index suit ce qu'on vient de lire (si le jeu y est déjà, ou s'il a été joué).
   const index = loadIndex(id)
   const minutes = ownedSteamList()?.find((g) => g.appId === appId)?.minutes ?? game.playtime ?? 0
   if (index.games[appId] || data.unlocked > 0) {
@@ -182,7 +189,7 @@ export async function getGameAchievements(game: Game, refresh = false): Promise<
   return data
 }
 
-// ---------- page Trophées ----------
+// ---------- relevé de fond (alertes de succès rares) ----------
 
 async function runScan(key: string, id: string): Promise<void> {
   // La liste des jeux du compte vient de GetOwnedGames (steamLibrary.ts), relue au besoin.
@@ -195,30 +202,34 @@ async function runScan(key: string, id: string): Promise<void> {
   }
 
   const start = loadIndex(id)
-  const played = owned.filter((g) => g.minutes > 0).sort((a, b) => b.last - a.last || b.minutes - a.minutes)
-  const keep = new Set(played.map((g) => g.appId))
+  const keep = new Set(owned.filter((g) => g.minutes > 0).map((g) => g.appId))
   // Un jeu qui n'est plus sur le compte (remboursé, partage familial arrêté) est oublié.
   const games: Record<string, GameSummary> = Object.fromEntries(Object.entries(start.games).filter(([appId]) => keep.has(appId)))
   const now = Date.now()
-  const todo = played.filter((g) => {
-    const s = games[g.appId]
-    return !s || s.minutes !== g.minutes || now - s.at > SUMMARY_MAX_AGE
-  })
+  // Seuls les jeux joués récemment (ou dont le temps Steam a bougé) peuvent avoir un nouveau succès rare.
+  const todo = selectScanGames(owned, games, now, SUMMARY_MAX_AGE)
 
   scan = { done: 0, total: todo.length }
   let stop: AchievementsOverviewState | null = null
+  let rateLimited = false
   let failed = 0
   let done = 0
   /** Jeux pour lesquels Steam a répondu « Profile is not public ». */
   let refused = 0
   let unsaved = 0
-  for (let i = 0; i < todo.length && !stop; i += PARALLEL) {
+  for (let i = 0; i < todo.length && !stop && !rateLimited; i += PARALLEL) {
     await Promise.all(
       todo.slice(i, i + PARALLEL).map(async (g) => {
+        if (stop || rateLimited) return
         try {
           const player = await fetchPlayer(g.appId, key, id)
           if (player.kind === 'key') {
             stop = 'key-refused'
+            return
+          }
+          if (player.kind === 'rate-limit') {
+            rateLimited = true
+            failed++
             return
           }
           // Un seul jeu refusé ne veut pas dire que le profil est privé (voir getGameAchievements) : on le passe,
@@ -235,8 +246,9 @@ async function runScan(key: string, id: string): Promise<void> {
             failed++
             return
           }
-          // Rien de débloqué : pas besoin des icônes ni de la rareté pour la page.
-          const meta = player.list.some((a) => a.achieved) ? await fetchMeta(g.appId, key) : { schema: [], global: {} }
+          // Rien de débloqué : pas besoin des icônes ni de la rareté.
+          const meta = player.list.some((a) => a.achieved) ? await fetchMeta(g.appId, key) : { schema: [], global: {}, rateLimited: false }
+          if (meta.rateLimited) rateLimited = true
           const merged = mergeAchievements(player.list, meta.schema, meta.global)
           reportRare(g.appId, g.name, merged, loadIndex(id).games[g.appId] ?? start.games[g.appId])
           games[g.appId] = summarize(merged, g.name, g.minutes, Date.now())
@@ -250,7 +262,7 @@ async function runScan(key: string, id: string): Promise<void> {
       })
     )
     // Tous les jeux lus jusqu'ici refusés : là, c'est bien le profil qui est privé.
-    if (!stop && refused === done && (done >= 8 || done === todo.length)) stop = 'private'
+    if (!stop && !rateLimited && refused === done && (done >= 8 || done === todo.length)) stop = 'private'
     if (unsaved >= SAVE_EVERY) {
       unsaved = 0
       saveIndex({ ...loadIndex(id), games: { ...games } })
@@ -258,23 +270,24 @@ async function runScan(key: string, id: string): Promise<void> {
   }
 
   let level = start.level
-  if (!stop) {
+  if (!stop && !rateLimited) {
     try {
       level = parseBadges((await getJson(`${BASE}/IPlayerService/GetBadges/v1/?key=${encodeURIComponent(key)}&steamid=${id}`)).body) ?? level
     } catch {
       /* le niveau attendra le prochain relevé */
     }
   }
-  // Tout a échoué (hors ligne) : le relevé n'est pas compté comme fait, il sera retenté.
+  // Tout a échoué (hors ligne ou 429) : le relevé n'est pas compté comme fait, il sera retenté après la pause.
   const offline = todo.length > 0 && failed === todo.length
-  saveIndex({ steamId: id, at: stop || offline ? start.at : Date.now(), games, ...(level ? { level } : {}) })
+  saveIndex({ steamId: id, at: stop || offline || rateLimited ? start.at : Date.now(), games, ...(level ? { level } : {}) })
 }
 
-/** Lance le relevé s'il a plus de 6 h (ou tout de suite avec `force`), sauf s'il vient d'échouer. */
+/** Lance le relevé s'il a plus de 6 h (ou tout de suite avec `force`), sauf s'il vient d'échouer ou si Steam limite les requêtes. */
 function ensureScan(force: boolean): void {
   const key = getSettings().steamApiKey
   const id = steamId()
   if (!key || !id || scan) return
+  if (!force && Date.now() < rateLimitedUntil) return
   const index = loadIndex(id)
   const who = `${id}:${key}`
   const stale = Date.now() - index.at > OVERVIEW_MAX_AGE
@@ -286,7 +299,7 @@ function ensureScan(force: boolean): void {
     .finally(() => (scan = null))
 }
 
-/** Premier relevé peu après le démarrage (pour que la page Trophées soit prête), puis vérifié toutes les heures. */
+/** Premier relevé peu après le démarrage, puis vérifié toutes les heures (jeux récents seulement). */
 export function startAchievementsWatcher(isDemo: () => boolean): void {
   const run = (): void => {
     if (!isDemo()) ensureScan(false)

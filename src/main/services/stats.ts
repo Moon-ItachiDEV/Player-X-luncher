@@ -2,6 +2,7 @@ import { net } from 'electron'
 import type { Bf6Account, Bf6Art, Bf6Match, Bf6Platform, Bf6Point, Bf6Row, Bf6Snapshot, Bf6Stats, Bf6Tracked } from '@shared/types'
 import { getKv, peekOtherKv, setKv } from '../db'
 import { fetchAssets } from './artwork'
+import { parseStatNum } from './bf6Diff'
 import { getSettings } from './settings'
 import { UserError } from '../errors'
 
@@ -19,11 +20,17 @@ const LOOKUP_PLATFORMS: Bf6Platform[] = ['ea', 'steam', 'psn', 'xbox']
 
 const NETWORK_ERROR = 'Connexion à gametools.network impossible : vérifie ta connexion internet.'
 const SERVICE_ERROR = 'Le service de statistiques ne répond pas pour le moment. Réessaie dans quelques minutes.'
+const RATE_LIMIT_ERROR = 'Le service de statistiques limite les requêtes : réessaie dans une minute.'
 const NOT_FOUND = 'Aucune statistique Battlefield 6 pour ce joueur (pseudo introuvable ou profil privé).'
+const RATE_LIMIT_COOLDOWN_MS = 30_000
+
+class RateLimitError extends UserError {}
+let rateLimitedUntil = 0
 
 // ---------- lecture de l'API ----------
 
 async function getJson(path: string, params: Record<string, string>): Promise<unknown> {
+  if (Date.now() < rateLimitedUntil) throw new RateLimitError(RATE_LIMIT_ERROR)
   const url = `${API}/${path}/?${new URLSearchParams(params).toString()}`
   let res: Response
   try {
@@ -33,6 +40,10 @@ async function getJson(path: string, params: Record<string, string>): Promise<un
   }
   // L'API répond 404 (ou 400) pour un joueur inconnu.
   if (res.status === 404 || res.status === 400) return null
+  if (res.status === 429) {
+    rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS
+    throw new RateLimitError(RATE_LIMIT_ERROR)
+  }
   if (!res.ok) throw new UserError(SERVICE_ERROR)
   try {
     return await res.json()
@@ -45,18 +56,8 @@ type Raw = Record<string, unknown>
 
 const isObj = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** Nombre lu tel quel ou depuis un texte formaté (« 52,3 % », « 1,234 »). */
-function num(v: unknown): number | undefined {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
-  if (typeof v !== 'string') return undefined
-  const n = parseFloat(
-    v
-      .replace(/[^0-9.,-]/g, '')
-      .replace(/,(?=\d{3}\b)/g, '')
-      .replace(',', '.')
-  )
-  return Number.isFinite(n) ? n : undefined
-}
+const num = (v: unknown): number | undefined => parseStatNum(v, false)
+const int = (v: unknown): number | undefined => parseStatNum(v, true)
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined)
 
@@ -76,24 +77,24 @@ function rows(list: unknown, nameKeys: string[]): Bf6Row[] {
     id: str(r.id) ?? String(i),
     name: nameKeys.map((k) => str(r[k])).find(Boolean) ?? 'Sans nom',
     image: str(r.image)?.startsWith('https://') ? str(r.image) : undefined,
-    kills: num(r.kills),
-    deaths: num(r.deaths),
+    kills: int(r.kills),
+    deaths: int(r.deaths),
     killDeath: num(r.killDeath),
     kpm: num(r.killsPerMinute ?? r.kpm),
     accuracy: num(r.accuracy),
     headshots: num(r.headshots),
-    matches: num(r.matches),
-    wins: num(r.wins),
+    matches: int(r.matches),
+    wins: int(r.wins),
     winPercent: num(r.winPercent),
-    secondsPlayed: num(r.secondsPlayed ?? r.timeEquipped ?? r.timeIn)
+    secondsPlayed: int(r.secondsPlayed ?? r.timeEquipped ?? r.timeIn)
   }))
 }
 
 function toStats(raw: Raw, account: Bf6Account): Bf6Stats {
-  const kills = num(raw.kills) ?? 0
-  const deaths = num(raw.deaths) ?? 0
-  const wins = num(raw.wins) ?? 0
-  const losses = num(raw.loses ?? raw.losses) ?? 0
+  const kills = int(raw.kills) ?? 0
+  const deaths = int(raw.deaths) ?? 0
+  const wins = int(raw.wins) ?? 0
+  const losses = int(raw.loses ?? raw.losses) ?? 0
   return {
     account: {
       ...account,
@@ -111,10 +112,10 @@ function toStats(raw: Raw, account: Bf6Account): Bf6Stats {
     winPercent: num(raw.winPercent) ?? (wins + losses ? (wins / (wins + losses)) * 100 : 0),
     accuracy: num(raw.accuracy) ?? 0,
     headshots: num(raw.headshots) ?? 0,
-    assists: num(raw.assists) ?? 0,
-    revives: num(raw.revives) ?? 0,
-    matches: num(raw.matchesPlayed) ?? wins + losses,
-    secondsPlayed: num(raw.secondsPlayed) ?? 0,
+    assists: int(raw.assists) ?? 0,
+    revives: int(raw.revives) ?? 0,
+    matches: int(raw.matchesPlayed) ?? wins + losses,
+    secondsPlayed: int(raw.secondsPlayed) ?? 0,
     bestClass: str(raw.bestClass),
     weapons: rows(raw.weapons, ['weaponName', 'name']),
     vehicles: rows(raw.vehicles, ['vehicleName', 'name']),
@@ -153,31 +154,49 @@ export async function searchBf6(input: unknown): Promise<Bf6Match[]> {
   const hits = results.filter((r) => (str(r.name) ?? str(r.displayName) ?? str(r.username) ?? '').toLowerCase() === lower)
 
   if (hits.length) {
-    return Promise.all(
-      hits.map(async (r) => {
-        const account: Bf6Account = {
-          name: str(r.name) ?? str(r.displayName) ?? str(r.username) ?? name,
-          platform: toPlatform(r.platform),
-          personaId: str(r.personaId),
-          nucleusId: str(r.nucleusId)
+    const out: Bf6Match[] = []
+    let rateLimited = false
+    for (const r of hits) {
+      const account: Bf6Account = {
+        name: str(r.name) ?? str(r.displayName) ?? str(r.username) ?? name,
+        platform: toPlatform(r.platform),
+        personaId: str(r.personaId),
+        nucleusId: str(r.nucleusId)
+      }
+      let stats: Bf6Stats | null = null
+      if (!rateLimited) {
+        try {
+          stats = await fetchStats(account)
+        } catch (e) {
+          if (e instanceof RateLimitError) rateLimited = true
         }
-        const stats = await fetchStats(account).catch(() => null)
-        if (stats) remember(stats)
-        return { ...(stats?.account ?? account), kills: stats?.kills ?? null }
-      })
-    )
+      }
+      if (stats) remember(stats)
+      out.push({ ...(stats?.account ?? account), kills: stats?.kills ?? null })
+    }
+    return out
   }
 
-  // Repli : lecture directe des stats sur chaque plateforme.
-  const byPlatform = await Promise.all(LOOKUP_PLATFORMS.map((platform) => fetchStats({ name, platform }).catch(() => null)))
+  // Repli : lecture directe des stats plateforme par plateforme (jamais en rafale simultanée, arrêt net sur 429).
   const seen = new Set<string>()
   const out: Bf6Match[] = []
-  for (const stats of byPlatform) {
+  let rateErr: RateLimitError | null = null
+  for (const platform of LOOKUP_PLATFORMS) {
+    let stats: Bf6Stats | null = null
+    try {
+      stats = await fetchStats({ name, platform })
+    } catch (e) {
+      if (e instanceof RateLimitError) {
+        rateErr = e
+        break
+      }
+    }
     if (!stats || seen.has(String(stats.account.personaId))) continue
     seen.add(String(stats.account.personaId))
     remember(stats)
     out.push({ ...stats.account, kills: stats.kills })
   }
+  if (!out.length && rateErr) throw rateErr
   return out
 }
 
@@ -234,7 +253,7 @@ function cleanAccount(v: unknown): Bf6Account | null {
 }
 
 /** En mode démo, les joueurs suivis vivent à part : la démo ne touche jamais aux vraies données. */
-function trackedKey(): string {
+function trackedKey(): 'demoBf6Tracked' | 'bf6Tracked' {
   return getSettings().demoMode ? 'demoBf6Tracked' : 'bf6Tracked'
 }
 
@@ -274,7 +293,7 @@ type History = Record<string, Bf6Point[]>
 const dayOf = (t: number): string => new Date(t).toDateString()
 
 /** Comme les joueurs suivis, les relevés du mode démo vivent à part. */
-function historyStore(): string {
+function historyStore(): 'demoBf6History' | 'bf6History' {
   return getSettings().demoMode ? 'demoBf6History' : 'bf6History'
 }
 

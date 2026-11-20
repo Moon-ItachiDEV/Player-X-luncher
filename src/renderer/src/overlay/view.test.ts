@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Cs2Live, Cs2OverlayConfig } from '@shared/types'
-import { buyAdvice, endSecondsLeft, lossBonusMin, pickView, previewView, sampleCs2Recap, sampleLive } from './view'
+import { buyAdvice, endSecondsLeft, halfLengthOf, lossBonusMin, pickView, previewView, sampleCs2Recap, sampleLive } from './view'
 
 const cfg = (c: Partial<Cs2OverlayConfig> = {}): Cs2OverlayConfig => ({ style: 'c', hidden: false, hotkey: 'Alt+X', ...c })
 const live = (l: Partial<Cs2Live> = {}): Cs2Live => ({ ...sampleLive('pill'), ...l })
@@ -75,3 +75,19 @@ test('bonus de défaite minimum : série en cours, mi-temps et prolongation sans
   // la série ne déborde pas sur l'autre mi-temps
   assert.equal(lossBonusMin([r(11, false), r(12, false), r(13, false, 'T')], 14), 1900)
 })
+
+test('Wingman (scrimcomp2v2) : mi-temps à 8 rounds pour le bonus de défaite', () => {
+  const r = (n: number, won: boolean, side: 'CT' | 'T' = 'CT') => ({ n, winner: won ? side : side === 'CT' ? 'T' : 'CT', end: 'elimination', side }) as const
+  assert.equal(halfLengthOf('scrimcomp2v2'), 8)
+  assert.equal(halfLengthOf('competitive'), 12)
+  assert.equal(halfLengthOf(undefined), 12)
+  // Fin de 1re mi-temps (round 8), fin de 2e mi-temps (round 16) et prolongation (round 17) : pas d'annonce.
+  assert.equal(lossBonusMin([], 8, 'scrimcomp2v2'), null)
+  assert.equal(lossBonusMin([], 16, 'scrimcomp2v2'), null)
+  assert.equal(lossBonusMin([], 17, 'scrimcomp2v2'), null)
+  // Round 12 est en plein milieu de la 2e mi-temps en Wingman (pas une fin de mi-temps).
+  assert.equal(lossBonusMin([r(9, false, 'T'), r(10, false, 'T'), r(11, false, 'T')], 12, 'scrimcomp2v2'), 2900)
+  // La série de la 1re mi-temps (rounds 7–8) ne déborde pas sur la 2e mi-temps (round 9).
+  assert.equal(lossBonusMin([r(7, false, 'CT'), r(8, false, 'CT')], 9, 'scrimcomp2v2'), 1400)
+})
+

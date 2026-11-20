@@ -72,7 +72,7 @@ const Pages = (() => {
   // Les données changent toutes seules : on repeint sans perdre le focus ni la position
   function refresh(v) {
     if (document.querySelector('#pn')) return
-    const a = document.activeElement, key = a?.dataset?.id || a?.dataset?.f, sc = $(`#sc-${v}`), y = sc?.scrollTop
+    const a = /** @type {HTMLElement | null} */ (document.activeElement), key = a?.dataset?.id || a?.dataset?.f, sc = $(`#sc-${v}`), y = sc?.scrollTop
     enter(v, true)
     if (sc) sc.scrollTop = y
     if (key && a !== document.activeElement) sc?.querySelector(`[data-id="${CSS.escape(key)}"],[data-f="${CSS.escape(key)}"]`)?.focus({ preventScroll: true })
@@ -244,7 +244,7 @@ const Pages = (() => {
       $$('.v', host).forEach((e) => { e.hidden = e.dataset.v !== back })
       enter(back); Bar.setNav(back); Bar.syncGame(); Fluid.rest()
       if (back === 'play') { Play.refresh(); const f = Play.focused(); Fluid.game(f) }
-    }, { done: () => { const t = back === 'lib' ? $(`.lb-t[data-id="${id}"]`, host) : back === 'play' ? $('.card.is-front', host) : null; (t || $(`.v[data-v=${back}]`, host))?.focus({ preventScroll: true }) } })
+    }, { done: () => { const t = back === 'lib' && id ? $(`.lb-t[data-id="${CSS.escape(id)}"]`, host) : back === 'play' ? $('.card.is-front', host) : null; (t || $(`.v[data-v=${back}]`, host))?.focus({ preventScroll: true }) } })
   }
   const TABS = {
     cs2: [['news', 'Actus'], ['overview', 'Aperçu'], ['matches', 'Matchs'], ['clips', 'Clips'], ['ach', 'Succès']],
@@ -331,13 +331,14 @@ const Pages = (() => {
     'key-refused': ['Steam refuse ta clé Web API', 'Vérifie-la dans tes comptes, puis réessaie.', 'Vérifier la clé'],
     private: ['Tes détails de jeux sont privés sur Steam', 'Rends-les publics dans ta confidentialité Steam pour lire tes succès.', 'Voir mes comptes']
   }
+  let achToken = 0
   async function achBody(g, b) {
-    const me = (achBody.token = (achBody.token || 0) + 1)
-    const sk = setTimeout(() => { if (me === achBody.token && b.isConnected) b.innerHTML = `<div class="gb-ach is-sk" aria-busy="true"><div class="gb-ring" style="--p:0"></div><span class="sr-only" role="status">Chargement des succès</span></div>` }, 100)
+    const me = ++achToken
+    const sk = setTimeout(() => { if (me === achToken && b.isConnected) b.innerHTML = `<div class="gb-ach is-sk" aria-busy="true"><div class="gb-ring" style="--p:0"></div><span class="sr-only" role="status">Chargement des succès</span></div>` }, 100)
     let a = null
     try { a = await API.getAchievements(g.rid) } catch (e) { console.error(e) }
     clearTimeout(sk)
-    if (me !== achBody.token || !b.isConnected || S.gameTab !== 'ach') return
+    if (me !== achToken || !b.isConnected || S.gameTab !== 'ach') return
     if (!a) { b.innerHTML = `<div class="empty"><h2>Succès indisponibles</h2><p>Steam ne répond pas pour le moment. Réessaie dans quelques minutes.</p><button class="btn sm" id="achR">${ic('refresh')}Réessayer</button></div>`; $('#achR', b).onclick = () => achBody(g, b); return }
     if (a.state !== 'ready') {
       const [t, s, act] = ACH_STATE[a.state] || ['Succès indisponibles', '', '']
@@ -365,7 +366,7 @@ const Pages = (() => {
   }
   async function gameBody(g) {
     const b = $('#gpBody'), t = S.gameTab
-    achBody.token = (achBody.token || 0) + 1
+    achToken++
     if (t === 'news') NewsView.render(g, b)
     else if (t === 'overview') overview(g, b)
     else if (t === 'matches') await Recap.listInto(b, g.id)
@@ -399,7 +400,7 @@ const Pages = (() => {
     const d = $('#sc-friends .am-ds, #sc-friends .am-c'); if (d?.dataset.gid) amStyle(d, G(d.dataset.gid))
   }
   GameStyle.onChange(amRestyle)
-  const amUrl = (u) => String(u).replace(/'/g, '%27')
+  const amUrl = (u) => String(u).replace(/[\u0000-\u001f\u007f]/g, '').replace(/[\\'"()]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'))
   // Le style du jeu (boutons caméléon) : tout de suite s'il est connu, sinon quand la jaquette est lue ; jamais bloquant, un rendu plus récent l'emporte
   function amStyle(el, g) {
     if (!el || !g) return
@@ -589,7 +590,7 @@ const Pages = (() => {
       const j = list.find((f) => f.join), dev = list.find((f) => f.device)
       const rooms = VOICE.filter((r) => r.people.some((p) => list.some((f) => f.id === p.id)))
       const act = j ? amGo('play', `Rejoindre <b class="am-nm">${esc(j.n)}</b>`, `data-join="${esc(j.id)}" title="Rejoindre ${esc(j.n)}"`) : g && g.installed ? amGo('play', `Lancer <b class="am-nm">${esc(g.short)}</b>`, `data-play="${esc(g.id)}"`) : dev ? `<span class="am-dev">Il joue sur ${esc(dev.device)}</span>` : ''
-      return `<section class="am-sq ${big ? 'big' : ''} ${g ? 'has-art' : ''}" aria-label="${esc(name)}" ${g ? `data-lane="${esc(g.id)}" style="--img:url('${amUrl(esc(A(g.hero || g.cover)))}')"` : ''}>${g ? '<div class="am-sq-art"></div>' : ''}
+      return `<section class="am-sq ${big ? 'big' : ''} ${g ? 'has-art' : ''}" aria-label="${esc(name)}" ${g ? `data-lane="${esc(g.id)}" style="--img:url('${esc(amUrl(A(g.hero || g.cover)))}')"` : ''}>${g ? '<div class="am-sq-art"></div>' : ''}
         <div class="am-sq-t"><h2 title="${esc(name)}">${esc(name)}</h2><p class="am-sq-n"><i></i>${amN(list.length, 'joueur', 'joueurs')}</p>${rooms.map((r) => `<button class="am-sq-v" data-voice="${esc(r.id)}" title="Ouvrir le salon dans Discord">${ic('mic')}<span>Salon ${esc(r.name)} · ${r.people.length} en vocal</span></button>`).join('')}</div>
         <div class="am-sq-p">${list.map((f) => plaque(f, big)).join('')}</div>
         <div class="am-sq-a">${act}</div></section>`
@@ -714,7 +715,7 @@ const Pages = (() => {
     box.dataset.f = f.id
     box.innerHTML = `<article class="am-ds" ${g ? `data-gid="${esc(g.id)}"` : ''}>
       <div class="am-ds-sc">
-        <div class="am-ds-art" ${fa.bg ? `style="background-image:url('${amUrl(esc(fa.bg))}')"` : ''}>${fa.bg ? '' : `<svg viewBox="10 1 100 118" aria-hidden="true"><path d="${HX_SHIELD}"/></svg>`}</div>
+        <div class="am-ds-art" ${fa.bg ? `style="background-image:url('${esc(amUrl(fa.bg))}')"` : ''}>${fa.bg ? '' : `<svg viewBox="10 1 100 118" aria-hidden="true"><path d="${HX_SHIELD}"/></svg>`}</div>
         <div class="am-ds-id">${amAva(f, p, fa)}
           <div class="am-ds-nm"><h2 title="${esc(f.n)}">${esc(f.n)}</h2>${fa.meta.length ? `<p class="am-ds-meta">${esc(fa.meta.join(' · '))}</p>` : ''}<p class="am-ds-st"><i style="background:${amDot(f)}"></i><span>${fa.line}</span></p></div></div>
         ${lv}

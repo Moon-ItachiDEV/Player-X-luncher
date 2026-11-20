@@ -71,17 +71,21 @@ func init() {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	var info payloadInfo
 	if err := json.Unmarshal(infoJSON, &info); err != nil || len(setupExe) < 1024 {
 		messageBox(0, app.Name, "Cet installeur est incomplet. Télécharge-le à nouveau.", false)
-		os.Exit(1)
+		return 1
 	}
 	info = info.withDefaults()
 	app = info
 	cleanupSetups()
 	args := os.Args[1:]
 	if len(args) == 2 && args[0] == "--selftest-install" {
-		os.Exit(selftestInstall(info, args[1]))
+		return selftestInstall(info, args[1])
 	}
 	selftest := len(args) >= 1 && args[0] == "--selftest"
 	shot := ""
@@ -89,7 +93,11 @@ func main() {
 		shot = args[1]
 	}
 
-	data := filepath.Join(os.TempDir(), tempName())
+	// Un dossier temporaire par ouverture : deux installeurs lancés en même temps ne partagent pas (ni ne suppriment) le même profil WebView2.
+	data, err := os.MkdirTemp("", tempName()+"-*")
+	if err != nil {
+		data = filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d", tempName(), os.Getpid()))
+	}
 	defer os.RemoveAll(data)
 	scale := dpiScale()
 	trace("démarrage %s, échelle %.2f, fenêtre %dx%d", info.Version, scale, uint(880*scale), uint(690*scale))
@@ -113,13 +121,13 @@ func main() {
 		trace("WebView2 indisponible : installeur classique")
 		// Pas de WebView2 : l'installeur classique, avec ses fenêtres Windows.
 		if selftest {
-			os.Exit(2)
+			return 2
 		}
 		if err := classic(info.Version); err != nil {
 			messageBox(0, app.Name, "L'installation n'a pas pu démarrer. Télécharge l'installeur à nouveau, puis réessaie. ("+err.Error()+")", false)
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
 	defer w.Destroy()
 	hwnd := uintptr(w.Window())
@@ -261,8 +269,9 @@ func main() {
 	}()
 	w.Run()
 	if selftest && code != 0 {
-		os.Exit(code)
+		return code
 	}
+	return 0
 }
 
 // selftestInstall : installation sans fenêtre, pour la vérification automatique (GitHub Actions).

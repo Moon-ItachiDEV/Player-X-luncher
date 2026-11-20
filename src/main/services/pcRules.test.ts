@@ -248,15 +248,28 @@ test('texte PowerShell : apostrophes doublées, y compris typographiques', () =>
   assert.equal(psQuote('C:\\Users\\O’Neil'), "'C:\\Users\\O’’Neil'")
 })
 
-test('script administrateur : signature revérifiée, point de restauration, installeur officiel', () => {
-  const s = installScript({ exe: "C:\\Users\\O'Neil\\AppData\\Roaming\\x\\pilotes\\581.57.exe", resultFile: 'C:\\r.json', version: '581.57', restorePoint: true })
+test('script administrateur : copie sécurisée (ProgramData), signature O+CN revérifiée, point de restauration, installeur officiel', () => {
+  const s = installScript({ exe: "C:\\Users\\O'Neil\\AppData\\Roaming\\x\\pilotes\\581.57.exe", resultFile: 'C:\\r.json', startFile: 'C:\\demarre.txt', version: '581.57', restorePoint: true })
+  assert.match(s, /\$src='C:\\Users\\O''Neil\\AppData/)
+  assert.match(s, /\$env:ProgramData/)
+  assert.match(s, /S-1-5-18/)
+  assert.match(s, /S-1-5-32-544/)
+  assert.match(s, /Copy-Item -LiteralPath \$src -Destination \$exe/)
   assert.match(s, /Get-AuthenticodeSignature -LiteralPath \$exe/)
-  assert.match(s, /\$exe='C:\\Users\\O''Neil\\AppData/)
+  assert.match(s, /O=NVIDIA Corporation/)
+  assert.match(s, /CN=NVIDIA Corporation/)
+  assert.match(s, /\$started='C:\\demarre\.txt'/)
   assert.match(s, /Checkpoint-Computer -Description 'Player X : avant le pilote NVIDIA 581\.57'/)
   assert.match(s, /-ArgumentList '-s','-noreboot','-noeula','-nofinish','-passive'/)
-  assert.ok(s.indexOf('Get-AuthenticodeSignature') < s.indexOf('Checkpoint-Computer') && s.indexOf('Checkpoint-Computer') < s.indexOf('Start-Process'), 'dans cet ordre')
+  assert.ok(
+    s.indexOf('Copy-Item') < s.indexOf('Get-AuthenticodeSignature') &&
+      s.indexOf('Get-AuthenticodeSignature') < s.indexOf('Checkpoint-Computer') &&
+      s.indexOf('Checkpoint-Computer') < s.indexOf('Start-Process'),
+    'dans cet ordre : copie verrouillée, signature, point de restauration, exécution'
+  )
   const sans = installScript({ exe: 'C:\\a.exe', resultFile: 'C:\\r.json', version: '581.57', restorePoint: false })
   assert.doesNotMatch(sans, /Checkpoint-Computer/)
+  assert.doesNotMatch(sans, /\$started=/)
   assert.match(sans, /\$r\.restore='skipped'/)
   // Passé en base64 UTF-16 : relu à l'identique
   assert.equal(Buffer.from(encodePs(s), 'base64').toString('utf16le'), s)

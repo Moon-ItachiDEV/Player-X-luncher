@@ -80,7 +80,7 @@ function stop(why: 'user' | 'game'): void {
 }
 
 function checkStop(): void {
-  if (stopWhy) throw new Stopped()
+  if (stopWhy || filmEngine.quitting()) throw new Stopped()
 }
 
 const same = <T>(values: readonly T[]): T | undefined => (values.length && values.every((v) => v === values[0]) ? values[0] : undefined)

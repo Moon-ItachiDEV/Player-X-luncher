@@ -358,15 +358,9 @@ wait:
 	time.Sleep(350 * time.Millisecond)
 	report(Progress{Percent: 88, Step: 2, Note: note})
 
-	// 3. Mises à jour signées : le fichier qui relie l'appli à ses mises à jour doit être en place.
-	//    Sans mises à jour automatiques (version d'essai) : vérification du cœur de l'appli.
-	if app.NoUpdates {
-		if !exists(filepath.Join(dir, "resources", "app.asar")) {
-			fail(2, "check", "Il manque un fichier de "+app.Name+". Réessaie, ou ouvre l'installeur classique.", "introuvable : "+filepath.Join(dir, "resources", "app.asar"))
-			return
-		}
-	} else if !exists(filepath.Join(dir, "resources", "app-update.yml")) {
-		fail(2, "check", "Le fichier des mises à jour automatiques manque. Ouvre l'installeur classique pour réparer.", "introuvable : resources\\app-update.yml")
+	// 3. Vérification du cœur de l'appli (les mises à jour sont signées Ed25519 dans l'appli : plus d'app-update.yml).
+	if !exists(filepath.Join(dir, "resources", "app.asar")) {
+		fail(2, "check", "Il manque un fichier de "+app.Name+". Réessaie, ou ouvre l'installeur classique.", "introuvable : "+filepath.Join(dir, "resources", "app.asar"))
 		return
 	}
 	if !update && !app.NoBoot {

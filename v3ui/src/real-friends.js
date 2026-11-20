@@ -31,10 +31,11 @@
     Real.applyGames()
     Real.emit('friends')
   }
+  let friendsBusy = false
   async function loadFriends() {
-    if (loadFriends.busy) return
-    loadFriends.busy = true
-    try { applyFriends(await API.getFriends()) } catch (e) { console.error(e) } finally { loadFriends.busy = false }
+    if (friendsBusy) return
+    friendsBusy = true
+    try { applyFriends(await API.getFriends()) } catch (e) { console.error(e) } finally { friendsBusy = false }
   }
   // La vraie appli relit toutes les minutes : les amis bougent, pas besoin de plus
   function startFriends() {

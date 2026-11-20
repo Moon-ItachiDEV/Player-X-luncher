@@ -1,12 +1,15 @@
 // Outils communs
 // L'appli remplit une vraie fenêtre Windows (shell.css)
 document.documentElement.dataset.shell = ''
+/** @param {string} s @param {ParentNode} [r] @returns {any} */
 const $ = (s, r = document) => r.querySelector(s)
+/** @param {string} s @param {ParentNode} [r] @returns {any[]} */
 const $$ = (s, r = document) => [...r.querySelectorAll(s)]
+/** @param {string} html @returns {any} */
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild }
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 const lerp = (a, b, t) => a + (b - a) * t
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 const fmtTime = (s) => { s = Math.max(0, s | 0); const m = s / 60 | 0; return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` }
 const fr = (n, d = 0) => n.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })
 // Le message d'une erreur venue du processus principal, sans la plomberie autour
@@ -115,6 +118,7 @@ function odo(el, value, d = 0, suffix = '') {
 }
 
 
+/** @param {string} html @param {{ tone?: string, ms?: number, action?: { label: string, fn: () => void } }} [opts] */
 function toast(html, { tone = '', ms = 3200, action } = {}) {
   const box = $('#toasts'); if (!box) return
   const t = h(`<div class="toast ${tone}" role="status">${html}${action ? `<button class="toast-a">${action.label}</button>` : ''}</div>`)
@@ -164,12 +168,12 @@ function menuAt(btn, items, opts = {}) {
 
 // Une infobulle attend 300 ms la première fois ; tant qu'on passe de l'une à l'autre, elles répondent tout de suite
 let tipT = 0
-document.addEventListener('pointerover', (e) => { if (e.target.closest?.('[data-tip]')) { clearTimeout(tipT); tipT = setTimeout(() => document.documentElement.classList.add('tip-fast'), 320) } })
-document.addEventListener('pointerout', (e) => { if (e.target.closest?.('[data-tip]')) { clearTimeout(tipT); tipT = setTimeout(() => document.documentElement.classList.remove('tip-fast'), 500) } })
+document.addEventListener('pointerover', (e) => { if (e.target instanceof Element && e.target.closest('[data-tip]')) { clearTimeout(tipT); tipT = setTimeout(() => document.documentElement.classList.add('tip-fast'), 320) } })
+document.addEventListener('pointerout', (e) => { if (e.target instanceof Element && e.target.closest('[data-tip]')) { clearTimeout(tipT); tipT = setTimeout(() => document.documentElement.classList.remove('tip-fast'), 500) } })
 
 // Rendre le focus une fois la fenêtre vraiment fermée (le reste de l'appli n'est plus inerte qu'à ce moment-là)
 const giveFocus = (e) => setTimeout(() => { if (e?.isConnected) e.focus({ preventScroll: true }) }, 0)
 
 // Le champ de recherche visible des pages de liste : il ouvre la recherche de partout
 const searchBtn = () => `<button class="srch" data-search>${ic('search')}<span>Rechercher</span><kbd class="kb">Ctrl K</kbd></button>`
-document.addEventListener('click', (e) => { if (e.target.closest?.('[data-search]')) Palette.open() })
+document.addEventListener('click', (e) => { if (e.target instanceof Element && e.target.closest('[data-search]')) Palette.open() })

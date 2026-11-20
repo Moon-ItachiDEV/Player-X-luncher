@@ -5,8 +5,8 @@ import { join } from 'node:path'
 
 /** Nom du fichier : CS2 lit tous les gamestate_integration_*.cfg de son dossier cfg. */
 export const GSI_FILE = 'gamestate_integration_playerxv3test.cfg'
-/** Port préféré, puis les suivants s'il est pris. */
-export const BASE_PORT = 47770
+/** Port préféré, puis les suivants s'il est pris (plage séparée de Player X en 47770–47779, comme GSI_FILE). */
+export const BASE_PORT = 47780
 export const PORT_TRIES = 10
 /** Bien au-delà d'un vrai envoi (quelques Ko sans les armes ni les autres joueurs). */
 export const MAX_BODY = 256 * 1024

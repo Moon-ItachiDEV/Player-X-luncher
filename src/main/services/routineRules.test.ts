@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-ignore TS5097
-import { appKey, batArgs, cleanRoutine, cleanStep, isRoutineLink, savedApps } from './routineRules.ts'
+import { appKey, batArgs, cleanRoutine, cleanStep, isAppPath, isRoutineLink, savedApps } from './routineRules.ts'
 
 const OK = new Set([appKey('C:\\Jeux\\Discord.exe'), appKey('D:/Outils/demarrer.bat')])
 
@@ -11,6 +11,8 @@ test('une appli doit venir du sélecteur (ou d’une routine déjà enregistrée
   assert.equal(cleanStep({ kind: 'app', value: 'c:/jeux/discord.EXE' }, OK)?.kind, 'app')
   assert.equal(cleanStep({ kind: 'app', value: 'C:\\Windows\\System32\\cmd.exe' }, OK), null)
   assert.equal(cleanStep({ kind: 'app', value: '\\\\pirate\\partage\\x.exe' }, OK), null)
+  assert.equal(isAppPath('\\\\serveur\\partage\\outil.exe'), false)
+  assert.equal(cleanStep({ kind: 'app', value: '\\\\serveur\\partage\\outil.exe' }, new Set([appKey('\\\\serveur\\partage\\outil.exe')])), null)
   assert.equal(cleanStep({ kind: 'app', value: 'relatif.exe' }, new Set([appKey('relatif.exe')])), null)
   assert.equal(cleanStep({ kind: 'app', value: 'C:\\a.txt' }, new Set([appKey('C:\\a.txt')])), null)
 })
@@ -18,6 +20,10 @@ test('une appli doit venir du sélecteur (ou d’une routine déjà enregistrée
 test('les autres étapes gardent leurs règles', () => {
   assert.equal(cleanStep({ kind: 'close', value: 'chrome.exe', force: true }, OK)?.force, true)
   assert.equal(cleanStep({ kind: 'close', value: '..\\x.exe' }, OK), null)
+  assert.equal(cleanStep({ kind: 'close', value: 'explorer.exe', force: true }, OK), null)
+  assert.equal(cleanStep({ kind: 'close', value: 'LSASS.EXE', force: true }, OK), null)
+  assert.equal(cleanStep({ kind: 'close', value: 'Player X.exe', force: true }, OK), null)
+  assert.equal(cleanStep({ kind: 'close', value: 'Player X V3 Test.exe', force: true }, OK), null)
   assert.equal(cleanStep({ kind: 'wait', value: '200' }, OK), null)
   assert.equal(cleanStep({ kind: 'wait', value: '4.6' }, OK)?.value, '5')
   assert.equal(cleanStep({ kind: 'nope' }, OK), null)

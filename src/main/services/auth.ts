@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:http'
-import { shell } from 'electron'
+import { net, shell } from 'electron'
 import type { Account } from '@shared/types'
 import { getSettings, saveAccount } from './settings'
 import { getSteamProfiles } from './friends'
@@ -21,35 +21,41 @@ export function cancelLogin(): void {
 function waitForCallback(path: string, accept: (url: URL) => boolean): Promise<URL> {
   cancelPending?.()
   return new Promise((resolve, reject) => {
-    const done = (): void => {
+    const done = (force = false): void => {
       clearTimeout(timer)
       server.close()
+      if (force) server.closeAllConnections?.()
+      else {
+        server.closeIdleConnections?.()
+        setTimeout(() => server.closeAllConnections?.(), 500).unref()
+      }
       cancelPending = null
     }
     cancelPending = () => {
-      done()
+      done(true)
       reject(new Error('Connexion annulée.'))
     }
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? '/', BASE)
       if (url.pathname !== path || !accept(url)) {
-        res.writeHead(404).end()
+        res.writeHead(404, { Connection: 'close' }).end()
         return
       }
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' })
+      res.once('finish', () => server.closeAllConnections?.())
       res.end(
         '<body style="background:#0c0a11;color:#f7f1f5;font-family:sans-serif;display:grid;place-items:center;height:100vh">' +
           '<h2>Connexion réussie, tu peux revenir sur Player X.</h2></body>'
       )
-      done()
+      done(false)
       resolve(url)
     })
     const timer = setTimeout(() => {
-      done()
+      done(true)
       reject(new Error('Connexion expirée, réessaie.'))
     }, 5 * 60_000)
     server.on('error', (e) => {
-      done()
+      done(true)
       reject(e)
     })
     server.listen(CALLBACK_PORT, '127.0.0.1')
@@ -88,7 +94,7 @@ export async function loginSteam(): Promise<Account> {
   const verify = new URLSearchParams()
   for (const [k, v] of cb.searchParams) if (k.startsWith('openid.')) verify.set(k, v)
   verify.set('openid.mode', 'check_authentication')
-  const check = await fetch(STEAM_OPENID, { method: 'POST', body: verify, signal: AbortSignal.timeout(15_000) })
+  const check = await net.fetch(STEAM_OPENID, { method: 'POST', body: verify, cache: 'no-store', signal: AbortSignal.timeout(15_000) })
   if (!/^is_valid:true$/m.test(await check.text())) throw new Error('Steam n’a pas validé la connexion.')
 
   const claimed = q('claimed_id')
@@ -127,7 +133,7 @@ export async function loginDiscord(): Promise<Account> {
   const code = cb.searchParams.get('code')
   if (!code) throw new Error(cb.searchParams.get('error_description') ?? 'Connexion Discord annulée.')
 
-  const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+  const tokenRes = await net.fetch('https://discord.com/api/oauth2/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -137,13 +143,18 @@ export async function loginDiscord(): Promise<Account> {
       code,
       redirect_uri: redirectUri
     }),
+    cache: 'no-store',
     // Discord peut ne jamais répondre : sans limite, la connexion restait bloquée et impossible à annuler
     signal: AbortSignal.timeout(15_000)
   })
   if (!tokenRes.ok) throw new Error(`Discord a refusé le code (${tokenRes.status}).`)
   const { access_token } = (await tokenRes.json()) as { access_token: string }
 
-  const meRes = await fetch('https://discord.com/api/users/@me', { headers: { Authorization: `Bearer ${access_token}` }, signal: AbortSignal.timeout(15_000) })
+  const meRes = await net.fetch('https://discord.com/api/users/@me', {
+    headers: { Authorization: `Bearer ${access_token}` },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15_000)
+  })
   const me = (await meRes.json()) as { id?: unknown; username?: unknown; global_name?: unknown; avatar?: unknown }
   const id = typeof me.id === 'string' && /^\d{15,22}$/.test(me.id) ? me.id : null
   const name = [me.global_name, me.username].find((n): n is string => typeof n === 'string' && !!n)

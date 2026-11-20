@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, desktopCapturer, screen, session, type IpcMainEvent, type Session, type WebContents } from 'electron'
-import { markOverlay } from '../windows'
+import { markAuxiliary } from '../windows'
 import { QUALITY, restartDelayMs } from './clipsPlan'
 import { errText, log } from './clipsLog'
 import { clipSettings } from './clipsSettings'
@@ -103,8 +103,8 @@ export function openWindow(c: Capture): void {
       devTools: !app.isPackaged
     }
   })
-  // Hors de la liste des fenêtres de l'appli (mainWindow, envois) ; et aucun canal clips:* ne lui répond (ipc.ts).
-  markOverlay(w)
+  // Fenêtre auxiliaire : hors de appWindows/broadcast et aucun canal handle() (y compris cs2:*) ne lui répond.
+  markAuxiliary(w)
   c.win = w
   c.ready = false
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))

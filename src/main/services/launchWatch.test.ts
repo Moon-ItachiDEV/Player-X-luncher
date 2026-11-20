@@ -42,9 +42,9 @@ class FakeChild extends EventEmitter {
   }
 }
 
-/** Relevé valable : assez de programmes, coût du script en ms et en octets. */
-const sample = (cpuMs: number, procs = MIN_PROCS + 5): string =>
-  'S' + Array.from({ length: procs }, (_, i) => `\t${100 + i}:svc${i}`).join('') + `\tC:${cpuMs}:50000000`
+/** Relevé valable : assez de programmes, coût du script en ms et en octets, numéro de requête optionnel. */
+const sample = (cpuMs: number, procs = MIN_PROCS + 5, id?: number): string =>
+  'S' + (id !== undefined ? `\tI:${id}` : '') + Array.from({ length: procs }, (_, i) => `\t${100 + i}:svc${i}`).join('') + `\tC:${cpuMs}:50000000`
 
 function harness() {
   let clock = 0
@@ -109,18 +109,18 @@ test('un seul powershell.exe, caché, piloté par l’entrée standard ; une lig
       opts: { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }
     }
   ])
-  assert.deepEqual(h.child().lines, ['{"w":["cs2"],"s":["730"]}'])
-  h.child().reply(sample(400))
+  assert.deepEqual(h.child().lines, ['{"i":1,"w":["cs2"],"s":["730"]}'])
+  h.child().reply(sample(400, MIN_PROCS + 5, 1))
   const s = await a
   assert.equal(s?.procs.length, MIN_PROCS + 5)
   assert.equal(h.watcher.alive(), true)
   assert.equal(h.watcher.last()?.at, h.now())
   const b = h.watcher.sample({})
   await flush()
-  h.child().reply(sample(420))
+  h.child().reply(sample(420, MIN_PROCS + 5, 2))
   assert.ok(await b)
   assert.equal(h.children.length, 1)
-  assert.deepEqual(h.child().lines.at(-1), '{}')
+  assert.deepEqual(h.child().lines.at(-1), '{"i":2}')
 })
 
 test('délai : 10 s pour le premier relevé (démarrage à froid), 3 s ensuite', async () => {
@@ -160,24 +160,24 @@ test('un relevé valable remet le compte à zéro ; un relevé tronqué compte c
     await h.advance(10_000)
     assert.equal(await p, null)
   }
-  /** PowerShell répond enfin aux deux relevés ratés (réponses jetées), puis au relevé en cours. */
-  const answer = (line: string): void => {
-    for (const late of [sample(50), sample(60)]) h.child().reply(late)
+  /** PowerShell répond enfin aux deux relevés ratés (réponses jetées par leur numéro), puis au relevé en cours. */
+  const answer = (lateIds: number[], line: string): void => {
+    for (const id of lateIds) h.child().reply(sample(50, MIN_PROCS + 5, id))
     h.child().reply(line)
   }
-  await fail()
-  await fail()
-  const ok = h.watcher.sample({})
+  await fail() // #1
+  await fail() // #2
+  const ok = h.watcher.sample({}) // #3
   await flush()
-  answer(sample(100))
+  answer([1, 2], sample(100, MIN_PROCS + 5, 3))
   assert.ok(await ok)
-  await fail()
-  await fail()
+  await fail() // #4
+  await fail() // #5
   assert.deepEqual(h.downs, [])
   // Trop peu de programmes : relevé tronqué, le troisième raté d'affilée.
-  const short = h.watcher.sample({})
+  const short = h.watcher.sample({}) // #6
   await flush()
-  answer(sample(120, MIN_PROCS))
+  answer([4, 5], sample(120, MIN_PROCS, 6))
   assert.equal(await short, null)
   assert.deepEqual(h.downs, ['relevé tronqué'])
   // Ligne illisible, relevé vide, trop peu de programmes : trois relevés tronqués.
@@ -191,19 +191,33 @@ test('un relevé valable remet le compte à zéro ; un relevé tronqué compte c
   assert.deepEqual(h2.downs, ['relevé tronqué'])
 })
 
-test('réponse en retard : jetée, la suivante répond au relevé en cours', async () => {
+test('réponse en retard : jetée par son numéro, la suivante répond au relevé en cours', async () => {
   const h = harness()
-  const a = h.watcher.sample({})
+  const a = h.watcher.sample({}) // #1
   await h.advance(10_000)
   assert.equal(await a, null)
-  const b = h.watcher.sample({})
+  const b = h.watcher.sample({}) // #2
   await flush()
   // Réponse au premier relevé, arrivée trop tard, puis celle du second.
-  h.child().reply(sample(100, MIN_PROCS + 1))
+  h.child().reply(sample(100, MIN_PROCS + 1, 1))
   await flush()
-  h.child().reply(sample(130, MIN_PROCS + 7))
+  h.child().reply(sample(130, MIN_PROCS + 7, 2))
   const s = await b
   assert.equal(s?.procs.length, MIN_PROCS + 7)
+})
+
+test('délai dépassé sans réponse tardive : le relevé suivant n’est jamais jeté (pas de cascade)', async () => {
+  const h = harness()
+  const a = h.watcher.sample({}) // #1 : PowerShell n'émet rien
+  await h.advance(10_000)
+  assert.equal(await a, null)
+  const b = h.watcher.sample({}) // #2 : PowerShell répond normalement à #2
+  await flush()
+  h.child().reply(sample(150, MIN_PROCS + 6, 2))
+  const s = await b
+  assert.equal(s?.id, 2)
+  assert.equal(s?.procs.length, MIN_PROCS + 6)
+  assert.deepEqual(h.downs, [])
 })
 
 test('arrêté sans qu’on le demande, ou introuvable → hors service', async () => {

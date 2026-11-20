@@ -218,7 +218,8 @@ export function step(prev: MatchState | null, snap: Snapshot, now: number): Step
     score: { ct: map.ct, t: map.t },
     rounds: [...base.rounds],
     sides: { ...base.sides },
-    roundWins: Object.keys(map.roundWins).length ? map.roundWins : base.roundWins,
+    // Fusionner plutôt qu'écraser : en prolongation, CS2 repart de zéro dans map.round_wins et effacerait les manches 1 à 24.
+    roundWins: Object.keys(map.roundWins).length ? { ...base.roundWins, ...map.roundWins } : base.roundWins,
     // Mort ou spectateur : ni tes points de vie ni ton argent (ceux du joueur regardé ne sont pas les tiens).
     health: snap.state?.health,
     money: snap.state?.money
@@ -230,10 +231,11 @@ export function step(prev: MatchState | null, snap: Snapshot, now: number): Step
     // Fin de l'échauffement : le match commence vraiment, les compteurs de l'échauffement sont remis à zéro par CS2.
     m.live = true
     m.startedAt = now
+    m.roundWins = { ...map.roundWins }
   }
   if (snap.team) m.side = snap.team
-  // Mort pendant la mi-temps : le camp change aussi pour toi (celui du coéquipier regardé).
-  else if (snap.viewTeam && m.sawOwn && (m.phase === 'intermission' || m.roundPhase === 'freezetime')) m.side = snap.viewTeam
+  // Mort pendant la mi-temps : le camp change aussi pour toi (celui du coéquipier regardé), sauf en Occasionnel où on peut observer l'équipe adverse.
+  else if (snap.viewTeam && m.sawOwn && modeHasRounds(m.mode) && m.mode !== 'casual' && (m.phase === 'intermission' || m.roundPhase === 'freezetime')) m.side = snap.viewTeam
   if (snap.stats && m.live) m.stats = snap.stats
 
   if (m.live) {

@@ -1,11 +1,12 @@
 import { app, safeStorage } from 'electron'
 import { spawn } from 'node:child_process'
 import { copyFileSync, existsSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { copyFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import initSqlJs, { type Database } from 'sql.js'
 import type { Game } from '@shared/types'
 import { logError } from './crashLog'
-import { asideName, readRetry, rescuePlan, salvageText, stuckLog, stuckText, toPrune, unreadText, withUnread, type FileState } from './dbRescue'
+import { asideName, lockedFiles, readRetry, rescuePlan, salvageText, stuckLog, stuckText, toPrune, unreadText, withUnread, type FileState } from './dbRescue'
 import { ensureSchema, salvage } from './dbSalvage'
 import { decryptChromium } from './services/chromiumCrypt'
 
@@ -30,17 +31,17 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 /**
  * État d'un fichier de base : ouvert, `PRAGMA quick_check` doit répondre « ok », et la table kv doit exister. Ne lève jamais.
- * Un fichier tenu par un autre programme (antivirus) est relu quelques fois avant d'être jugé illisible. Pour un fichier
- * illisible, les octets lus sont rendus (pour en reprendre ce qui se lit encore).
+ * Un fichier tenu par un autre programme (antivirus) est relu quelques fois avant d'être dit « verrouille » (jamais confondu
+ * avec « illisible », qui ne désigne qu'un fichier réellement lu mais abîmé). Pour un fichier abîmé, les octets lus sont rendus.
  */
 async function probe(SQL: SqlJs, file: string): Promise<{ state: FileState; db: Database | null; bytes: Uint8Array | null; readError: string | null }> {
   if (!existsSync(file)) return { state: 'absent', db: null, bytes: null, readError: null }
   let bytes: Buffer
   try {
-    bytes = await readRetry(() => readFileSync(file), sleep)
+    bytes = await readRetry(() => readFileSync(file), sleep, 8, 350)
   } catch (e) {
     const code = (e as { code?: unknown } | null)?.code
-    return { state: 'illisible', db: null, bytes: null, readError: typeof code === 'string' ? code : 'erreur' }
+    return { state: 'verrouille', db: null, bytes: null, readError: typeof code === 'string' ? code : 'erreur' }
   }
   let d: Database | null = null
   try {
@@ -69,7 +70,8 @@ export async function initDb(): Promise<void> {
   let SQL = await loadSql()
   const dir = app.getPath('userData')
   dbPath = join(dir, 'launcher.db')
-  // Sonde : principal, puis dernier fichier provisoire, puis copie de secours. On s'arrête au premier fichier sain.
+  // Sonde : principal, puis dernier fichier provisoire, puis copie de secours. On s'arrête au premier fichier sain, sauf si le
+  // principal lui-même est verrouillé (il est peut-être sain : on n'ira jamais le remplacer par la copie de secours).
   const facts: { main: FileState; tmp: FileState; bak: FileState } = { main: 'absent', tmp: 'absent', bak: 'absent' }
   const unread: { main?: Uint8Array; tmp?: Uint8Array; bak?: Uint8Array } = {}
   const unreadable: string[] = []
@@ -80,12 +82,24 @@ export async function initDb(): Promise<void> {
     facts[k] = r.state
     if (r.bytes) unread[k] = r.bytes
     if (r.readError) unreadable.push(unreadText(basename(files[k]), r.readError))
+    if (k === 'main' && r.state === 'verrouille') break
     if (r.db) {
       opened = r.db
       break
     }
     // Une instance de sql.js qui a lu un fichier abîmé n'est jamais gardée : celle de la base ne lit que du sain.
     if (r.state === 'illisible') SQL = await loadSql()
+  }
+  const locked = lockedFiles(facts)
+  if (locked.length) {
+    try {
+      opened?.close()
+    } catch {
+      /* rien à fermer */
+    }
+    const names = locked.map((w) => basename(files[w]))
+    logError('base', withUnread(stuckLog(names, []), unreadable))
+    throw new Error(stuckText(names))
   }
   const plan = rescuePlan(facts)
   // Aucun fichier sain : on reprend ce qui se lit encore du principal, sinon de la copie de secours, avant de repartir de zéro.
@@ -180,37 +194,108 @@ export async function initDb(): Promise<void> {
   report = notice ? { notice, kept: keptNames.length } : null
   ensureSchema(db)
   persist()
+  try {
+    unlinkSync(`${dbPath}.async.tmp`)
+  } catch {
+    /* aucun fichier temporaire asynchrone précédent */
+  }
 }
 
 /** Une copie de secours au plus toutes les 10 minutes. */
 const BACKUP_EVERY_MS = 10 * 60_000
 /**
- * Les écritures sont regroupées : le fichier est réécrit au plus une fois toutes les 1,5 s (avant : à chaque écriture,
- * jusqu'à plusieurs fois par seconde en partie). flushDb() écrit tout de suite (fermeture, mise en veille, fin de session).
+ * Les écritures sont regroupées : le fichier est réécrit en asynchrone au plus une fois toutes les 1,5 s (avant :
+ * écriture synchrone bloquante sur le fil principal). flushDb() écrit tout de suite en synchrone (fermeture, veille).
  */
 const PERSIST_DELAY_MS = 1_500
 let persistTimer: ReturnType<typeof setTimeout> | null = null
+let dirty = false
+let persistRunning = false
+/** Incrémenté à chaque écriture (asynchrone ou synchrone) : une écriture asynchrone dépassée n'écrase jamais flushDb(). */
+let persistSeq = 0
 
 function schedulePersist(): void {
-  persistTimer ??= setTimeout(() => {
+  dirty = true
+  if (persistTimer) return
+  persistTimer = setTimeout(() => {
     persistTimer = null
-    try {
-      persist()
-    } catch (e) {
-      logError('écriture de la base', e)
-    }
+    void persistAsync()
   }, PERSIST_DELAY_MS)
 }
 
 /** Écrit tout de suite ce qui attend (à appeler avant de quitter ou de se mettre en veille). */
 export function flushDb(): void {
-  if (!persistTimer) return
-  clearTimeout(persistTimer)
-  persistTimer = null
+  if (!persistTimer && !dirty && !persistRunning) return
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  persistSeq++
+  dirty = false
   try {
     persist()
   } catch (e) {
     logError('écriture de la base', e)
+  }
+}
+
+async function persistAsync(): Promise<void> {
+  if (!dirty || persistRunning) return
+  persistRunning = true
+  const seq = ++persistSeq
+  dirty = false
+  const asyncTmp = `${dbPath}.async.tmp`
+  try {
+    const bytes = Buffer.from(db.export())
+    await writeFile(asyncTmp, bytes)
+    if (seq !== persistSeq) {
+      await unlink(asyncTmp).catch(() => {})
+      return
+    }
+    try {
+      const bak = `${dbPath}.bak`
+      if (mainTrusted && existsSync(dbPath)) {
+        const bakStat = await stat(bak).catch(() => null)
+        if (!bakStat || Date.now() - bakStat.mtimeMs > BACKUP_EVERY_MS) {
+          await copyFile(dbPath, bak)
+        }
+      }
+    } catch {
+      /* la copie de secours est un plus, pas une condition */
+    }
+    if (seq !== persistSeq) {
+      await unlink(asyncTmp).catch(() => {})
+      return
+    }
+    // Le renommage final est un simple changement de métadonnée sur le fil principal : jamais en course avec flushDb().
+    let renamed = false
+    for (let i = 0; i < 3; i++) {
+      if (seq !== persistSeq) {
+        await unlink(asyncTmp).catch(() => {})
+        return
+      }
+      try {
+        renameSync(asyncTmp, dbPath)
+        mainTrusted = true
+        renamed = true
+        break
+      } catch {
+        if (i < 2) await sleep(100)
+      }
+    }
+    if (!renamed && seq === persistSeq) {
+      // Fichier verrouillé un instant (antivirus, indexation) : écriture directe.
+      mainTrusted = false
+      await writeFile(dbPath, bytes)
+      if (seq === persistSeq) mainTrusted = true
+      await unlink(asyncTmp).catch(() => {})
+    }
+  } catch (e) {
+    await unlink(asyncTmp).catch(() => {})
+    if (seq === persistSeq) logError('écriture de la base', e)
+  } finally {
+    persistRunning = false
+    if (dirty && !persistTimer) schedulePersist()
   }
 }
 
@@ -238,6 +323,60 @@ function persist(): void {
 
 // --- clé/valeur (paramètres, comptes). Les valeurs secrètes sont chiffrées par l'OS. ---
 
+/** Clés connues de la table `kv` : une faute de frappe dans un service ne compile plus. */
+export type KvKey =
+  | 'accounts'
+  | 'achievementsIndex'
+  | 'artwork'
+  | 'bf6Art'
+  | 'bf6Cache'
+  | 'bf6History'
+  | 'bf6Loadouts'
+  | 'bf6MyWeapons'
+  | 'bf6Recaps'
+  | 'bf6Session'
+  | 'bf6Tracked'
+  | 'clipsEngineGood'
+  | 'clipsIndex'
+  | 'clipsLastGame'
+  | 'clipsSettings'
+  | 'clipsShareEncoder'
+  | 'cs2Gsi'
+  | 'cs2Lifetime'
+  | 'cs2LifetimeHistory'
+  | 'cs2LifetimeRaw'
+  | 'cs2Match'
+  | 'cs2Recaps'
+  | 'demoBf6History'
+  | 'demoBf6Loadouts'
+  | 'demoBf6MyWeapons'
+  | 'demoBf6Tracked'
+  | 'demoDiscordMembers'
+  | 'demoEventReminders'
+  | 'demoNewsSeen'
+  | 'demoShelves'
+  | 'demoState'
+  | 'discordMembers'
+  | 'editEngineTest'
+  | 'editFilmEncoder'
+  | 'editLastFilm'
+  | 'editMusic'
+  | 'eventReminders'
+  | 'newsIndex'
+  | 'newsSeen'
+  | 'newsSimIndex'
+  | 'pcDriverJournal'
+  | 'profileAvatar'
+  | 'settings'
+  | 'shelves'
+  | 'simNewsSeen'
+  | 'steamOwned'
+  | 'steamPlaytime'
+  | 'steamSoftware'
+  | 'steamTagNames'
+  | 'trayHintShown'
+  | 'v3Routines'
+
 /**
  * Valeurs présentes mais illisibles (base copiée d'un autre compte Windows, chiffrement de Windows réinitialisé…).
  * L'appli continue avec les valeurs par défaut, mais l'original n'est jamais détruit : avant la première réécriture,
@@ -249,20 +388,20 @@ const unreadable = new Map<string, string>()
 const decrypted = new Map<string, string>()
 /** Numéro de version de chaque clé, pour les caches des services (réglages…). */
 const stamps = new Map<string, number>()
-export const kvStamp = (key: string): number => stamps.get(key) ?? 0
-function changed(key: string): void {
+export const kvStamp = (key: KvKey): number => stamps.get(key) ?? 0
+function changed(key: KvKey): void {
   decrypted.delete(key)
   stamps.set(key, kvStamp(key) + 1)
 }
 
-function keepUnreadable(key: string): void {
+function keepUnreadable(key: KvKey): void {
   const raw = unreadable.get(key)
   if (raw === undefined) return
   db.run('INSERT OR IGNORE INTO kv (key, value) VALUES (?, ?)', [`${key}.illisible`, raw])
   unreadable.delete(key)
 }
 
-export function getKv<T>(key: string, fallback: T): T {
+export function getKv<T>(key: KvKey, fallback: T): T {
   const stmt = db.prepare('SELECT value FROM kv WHERE key = ?')
   stmt.bind([key])
   const raw = stmt.step() ? (stmt.get()[0] as string) : null
@@ -288,7 +427,7 @@ export function getKv<T>(key: string, fallback: T): T {
 export const canEncrypt = (): boolean => safeStorage.isEncryptionAvailable()
 const plainNoted = new Set<string>()
 
-export function setKv(key: string, value: unknown, secret = false): void {
+export function setKv(key: KvKey, value: unknown, secret = false): void {
   let text = JSON.stringify(value)
   if (secret && canEncrypt()) text = 'enc:' + safeStorage.encryptString(text).toString('base64')
   else if (secret && !plainNoted.has(key)) {
@@ -303,7 +442,7 @@ export function setKv(key: string, value: unknown, secret = false): void {
   schedulePersist()
 }
 
-export function deleteKv(key: string): void {
+export function deleteKv(key: KvKey): void {
   keepUnreadable(key)
   db.run('DELETE FROM kv WHERE key = ?', [key])
   changed(key)
@@ -312,31 +451,46 @@ export function deleteKv(key: string): void {
 
 // --- jeux ---
 
+function parseLaunchArgs(raw: unknown): string[] | undefined {
+  if (typeof raw !== 'string' || !raw) return undefined
+  try {
+    const a = JSON.parse(raw)
+    return Array.isArray(a) && a.length > 0 && a.every((x) => typeof x === 'string') ? a : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Jeux détectés. `lastPlayed` : dernier lancement depuis Player X, repris de l'historique des lancements si la ligne du jeu
  * l'a perdu (jeu désinstallé puis réinstallé). Les autres dates (Steam, parties vues) s'ajoutent dans withPlaytime, jamais ici.
  */
 export function listGames(): Game[] {
-  // Une seule lecture groupée de `launches` (pas d'index sur game_id) pour le nombre et le dernier lancement.
+  // Une seule lecture groupée de `launches` (index sur game_id) pour le nombre et le dernier lancement.
   const res = db.exec(`
     SELECT g.id, g.store, g.store_id, g.name, g.install_dir, g.cover_url, g.hero_url,
-           MAX(COALESCE(g.last_played, 0), COALESCE(l.last, 0)), g.favorite, g.exe_path, l.n
+           MAX(COALESCE(g.last_played, 0), COALESCE(l.last, 0)), g.favorite, g.exe_path, l.n, g.launch_args, g.work_dir
     FROM games g
     LEFT JOIN (SELECT game_id, COUNT(*) AS n, MAX(at) AS last FROM launches GROUP BY game_id) l ON l.game_id = g.id`)
   if (!res.length) return []
-  return res[0].values.map((r) => ({
-    id: r[0] as string,
-    store: r[1] as Game['store'],
-    storeId: r[2] as string,
-    name: r[3] as string,
-    installDir: (r[4] as string) ?? undefined,
-    coverUrl: (r[5] as string) ?? undefined,
-    heroUrl: (r[6] as string) ?? undefined,
-    lastPlayed: (r[7] as number) || undefined,
-    favorite: r[8] === 1,
-    exePath: (r[9] as string) ?? undefined,
-    launches: (r[10] as number) ?? 0
-  }))
+  return res[0].values.map((r) => {
+    const launchArgs = parseLaunchArgs(r[11])
+    return {
+      id: r[0] as string,
+      store: r[1] as Game['store'],
+      storeId: r[2] as string,
+      name: r[3] as string,
+      installDir: (r[4] as string) ?? undefined,
+      coverUrl: (r[5] as string) ?? undefined,
+      heroUrl: (r[6] as string) ?? undefined,
+      lastPlayed: (r[7] as number) || undefined,
+      favorite: r[8] === 1,
+      exePath: (r[9] as string) ?? undefined,
+      launches: (r[10] as number) ?? 0,
+      ...(launchArgs ? { launchArgs } : {}),
+      workDir: (r[12] as string) ?? undefined
+    }
+  })
 }
 
 /** Remplace la liste des jeux détectés en gardant favoris et dernière session. */
@@ -348,7 +502,7 @@ export function replaceGames(games: Game[]): void {
     for (const g of games) {
       const old = keep.get(g.id)
       db.run(
-        'INSERT OR REPLACE INTO games (id, store, store_id, name, install_dir, cover_url, hero_url, last_played, favorite, exe_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO games (id, store, store_id, name, install_dir, cover_url, hero_url, last_played, favorite, exe_path, launch_args, work_dir) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           g.id,
           g.store,
@@ -359,7 +513,9 @@ export function replaceGames(games: Game[]): void {
           g.heroUrl ?? null,
           old?.lastPlayed ?? g.lastPlayed ?? null,
           (old ? old.favorite : g.favorite) ? 1 : 0,
-          g.exePath ?? null
+          g.exePath ?? null,
+          g.launchArgs?.length ? JSON.stringify(g.launchArgs) : null,
+          g.workDir ?? null
         ]
       )
     }
@@ -453,12 +609,12 @@ export function playtimeByGame(): Map<string, number> {
  * Rien n'est jamais écrit là-bas. Une valeur chiffrée (clé, jeton) n'est pas lisible ici et reste ignorée.
  */
 /** Valeur brute d'une clé dans la base d'une autre appli Player X du même PC (lecture seule). */
-const otherReads = new Map<string, { stamp: string; values: Map<string, string | null> }>()
+const otherReads = new Map<string, { stamp: string; values: Map<string, string> }>()
 
-export function peekOtherRaw(folder: string, key: string): string | null {
+export function peekOtherRaw(folder: string, key: KvKey): string | null {
   const file = join(app.getPath('appData'), folder, 'launcher.db')
   if (!SQLmod || !existsSync(file) || file === dbPath) return null
-  // Relu seulement si le fichier a changé : l'écran Comptes demande les mêmes valeurs plusieurs fois de suite.
+  // Une seule lecture de toute la table kv par version du fichier (au lieu de rouvrir toute la base à chaque clé).
   let stamp = ''
   try {
     const st = statSync(file)
@@ -467,24 +623,24 @@ export function peekOtherRaw(folder: string, key: string): string | null {
     return null
   }
   const memo = otherReads.get(folder)
-  if (memo?.stamp === stamp && memo.values.has(key)) return memo.values.get(key) ?? null
-  const raw = readOther(file, key)
-  const values = memo?.stamp === stamp ? memo.values : new Map<string, string | null>()
-  values.set(key, raw)
+  if (memo?.stamp === stamp) return memo.values.get(key) ?? null
+  const values = readAllOther(file)
+  if (!values) return null
   otherReads.set(folder, { stamp, values })
-  return raw
+  return values.get(key) ?? null
 }
 
-function readOther(file: string, key: string): string | null {
+function readAllOther(file: string): Map<string, string> | null {
   if (!SQLmod) return null
   let d: Database | null = null
   try {
     d = new SQLmod.Database(readFileSync(file))
-    const st = d.prepare('SELECT value FROM kv WHERE key = ?')
-    st.bind([key])
-    const raw = st.step() ? String(st.get()[0]) : null
-    st.free()
-    return raw
+    const res = d.exec('SELECT key, value FROM kv')
+    const out = new Map<string, string>()
+    for (const row of res[0]?.values ?? []) {
+      if (typeof row[0] === 'string' && row[1] !== null && row[1] !== undefined) out.set(row[0], String(row[1]))
+    }
+    return out
   } catch {
     return null
   } finally {
@@ -492,7 +648,7 @@ function readOther(file: string, key: string): string | null {
   }
 }
 
-export function peekOtherKv<T>(folder: string, key: string): T | null {
+export function peekOtherKv<T>(folder: string, key: KvKey): T | null {
   const raw = peekOtherRaw(folder, key)
   if (!raw || raw.startsWith('enc:')) return null
   try {
@@ -505,7 +661,7 @@ export function peekOtherKv<T>(folder: string, key: string): T | null {
 /** Déchiffre avec la protection de Windows (DPAPI) du compte Windows en cours, via PowerShell. La donnée passe par l'entrée standard, jamais dans la ligne de commande. */
 function dpapiUnprotect(data: Buffer): Promise<Buffer | null> {
   if (process.platform !== 'win32') return Promise.resolve(null)
-  const script = "Add-Type -AssemblyName System.Security; $b=[Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()); $o=[System.Security.Cryptography.ProtectedData]::Unprotect($b,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser); [Console]::Out.Write([Convert]::ToBase64String($o))"
+  const script = "$ProgressPreference='SilentlyContinue'; Add-Type -AssemblyName System.Security; $b=[Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()); $o=[System.Security.Cryptography.ProtectedData]::Unprotect($b,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser); [Console]::Out.Write([Convert]::ToBase64String($o))"
   return new Promise((resolve) => {
     let out = ''
     let done = false
@@ -514,6 +670,8 @@ function dpapiUnprotect(data: Buffer): Promise<Buffer | null> {
       const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true })
       const timer = setTimeout(() => { p.kill(); finish(null) }, 15000)
       p.stdout.on('data', (c: Buffer) => { out += c.toString('latin1') })
+      p.stderr?.resume()
+      p.stdin?.on('error', () => {})
       p.on('error', () => { clearTimeout(timer); finish(null) })
       p.on('close', (code) => {
         clearTimeout(timer)
@@ -554,7 +712,7 @@ export function forgetOtherKeys(): void {
 }
 
 /** Comme peekOtherKv, mais lit aussi les valeurs chiffrées (réglages, comptes) de l'autre appli. Rien n'y est modifié. */
-export async function peekOtherKvSecret<T>(folder: string, key: string): Promise<T | null> {
+export async function peekOtherKvSecret<T>(folder: string, key: KvKey): Promise<T | null> {
   const raw = peekOtherRaw(folder, key)
   if (!raw) return null
   let text: string | null = raw

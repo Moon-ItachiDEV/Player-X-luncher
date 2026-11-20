@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto'
-import { copyFile as copyOnDisk, mkdir, open, rename, stat, unlink } from 'node:fs/promises'
+import { copyFile as copyOnDisk, mkdir, open, stat, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app, shell } from 'electron'
 import { cleanPace, paceOf, type ClipPace } from '@shared/clipPace'
 import type { Clip } from '@shared/types'
 import { getKv, setKv } from '../db'
 import { broadcast } from '../windows'
-import { freeName, readMoov, writePlan } from './clipsFiles'
+import { freeName, readMoov, renameWithRetry, writePlan } from './clipsFiles'
 import { errText, log } from './clipsLog'
 import { CLIP_ID, clipBaseName, clipsToPurge, cleanTitle, safeFileName, trimEvents } from './clipsPlan'
 import { SCHEME } from './clipsProtocol'
@@ -160,20 +160,23 @@ export function trimClip(id: unknown, startS: unknown, endS: unknown): Promise<C
     const part = `${file}.part`
     try {
       await writePlan(plan, [c.file], part)
-      await rename(part, file)
+      await renameWithRetry(part, file)
     } catch (e) {
       await unlink(part).catch(() => {})
       throw e
     }
     // Les événements qui restent dans la partie gardée suivent, recalés sur la nouvelle première image.
     const events = trimEvents(c.events, firstFrameS(cut), plan.durationS)
+    const dropped = Array.isArray(c.events) && Array.isArray(events) && events.length < c.events.length
+    const kills = dropped ? events.reduce((n, e) => n + e.kills, 0) : c.kills
+    const headshots = dropped ? events.reduce((n, e) => n + e.headshots, 0) : c.headshots
     // Bêta 46 : la coupe a son propre rythme (celui de la partie gardée), jamais celui du clip entier.
     const { pace: wholePace, ...rest } = c
     const wantedFps = cleanPace(wholePace)?.wanted
     // 0.7.4 : un clip du moteur est à cadence fixe (images répétées comprises) : ses images ne disent plus le rythme, la coupe
     // garde celui du clip entier.
     const pace = wantedFps ? (constantRate(cut) ? cleanPace(wholePace) : paceOfTracks(cut, plan.durationS, wantedFps)) : undefined
-    const made: ClipMeta = { ...rest, id: newId, title, at: c.at + 1, durationS: plan.durationS, sizeBytes: plan.size, pinned: false, file, ...(events ? { events } : {}), ...(pace ? { pace } : {}) }
+    const made: ClipMeta = { ...rest, id: newId, title, kills, headshots, at: c.at + 1, durationS: plan.durationS, sizeBytes: plan.size, pinned: false, file, ...(events ? { events } : {}), ...(pace ? { pace } : {}) }
     await copyOnDisk(thumbPath(c.id), thumbPath(newId)).catch(() => {})
     index = [made, ...index]
     saveIndex()
@@ -195,7 +198,7 @@ export function renameClip(id: unknown, name: unknown): Promise<Clip> {
     if (join(dirname(c.file), `${base}.mp4`) !== c.file) {
       const target = freeName(dirname(c.file), base)
       // Fichier occupé : le titre change quand même, le nom du fichier reste.
-      await rename(c.file, target).then(
+      await renameWithRetry(c.file, target, { attempts: 4, delayMs: 150 }).then(
         () => {
           c.file = target
         },
@@ -299,15 +302,7 @@ export async function filmTarget(gameName: string, title: string, at: number): P
 export function addFilm(f: { part: string; file: string; thumb?: string; title: string; gameId: string; gameName: string; at: number; shots: number; durationS: number; width: number; height: number; map?: string; mode?: string; sessionId: string }): Promise<Clip> {
   return serial(async () => {
     // Sous Windows, un antivirus peut tenir un instant le fichier que le moteur vient de fermer.
-    for (let i = 0; ; i++) {
-      try {
-        await rename(f.part, f.file)
-        break
-      } catch (e) {
-        if (i === 9 || !['EPERM', 'EBUSY', 'EACCES'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e
-        await sleep(300)
-      }
-    }
+    await renameWithRetry(f.part, f.file)
     const { size } = await stat(f.file)
     const id = randomBytes(8).toString('hex')
     if (f.thumb) {

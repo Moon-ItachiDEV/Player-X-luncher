@@ -2,12 +2,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-ignore TS5097
-import { buildOverview, mergeAchievements, parseBadges, parseGlobal, parsePlayer, parseSchema, summarize, freshRare } from './achievementsFormat.ts'
+import { buildOverview, mergeAchievements, parseBadges, parseGlobal, parsePlayer, parseSchema, selectScanGames, summarize, freshRare } from './achievementsFormat.ts'
 
-test('GetPlayerAchievements : profil privé, jeu sans succès, clé refusée', () => {
+test('GetPlayerAchievements : profil privé, jeu sans succès, clé refusée, limite 429', () => {
   assert.deepEqual(parsePlayer(403, { playerstats: { error: 'Profile is not public', success: false } }), { kind: 'private' })
   assert.deepEqual(parsePlayer(400, { playerstats: { error: 'Requested app has no stats', success: false } }), { kind: 'none' })
   assert.deepEqual(parsePlayer(403, null), { kind: 'key' })
+  assert.deepEqual(parsePlayer(429, null), { kind: 'rate-limit' })
   assert.deepEqual(parsePlayer(500, null), { kind: 'error' })
   // Jeu avec des statistiques mais sans succès : pas de liste.
   assert.deepEqual(parsePlayer(200, { playerstats: { steamID: '1', gameName: 'X', success: true } }), { kind: 'none' })
@@ -127,4 +128,31 @@ test('succès rares : seulement ceux débloqués depuis le relevé précédent, 
     ['C', 'A']
   )
   assert.deepEqual(freshRare(list, 5_000), [])
+})
+
+test('selectScanGames : ne balaye que les jeux récents ou dont le temps a bougé, borné en nombre', () => {
+  const day = 24 * 3600_000
+  const now = 100 * day
+  const owned = [
+    { appId: '1', minutes: 100, last: now - 2 * day }, // récent, jamais lu → pris
+    { appId: '2', minutes: 200, last: now - 3 * day }, // récent, déjà lu récemment et minutes identiques → ignoré
+    { appId: '3', minutes: 50, last: now - 90 * day }, // ancien, jamais lu → ignoré (évite le balayage de tout l'historique)
+    { appId: '4', minutes: 65, last: now - 90 * day }, // ancien mais minutes ont bougé depuis le relevé → pris
+    { appId: '5', minutes: 0, last: now - 1 * day }, // 0 min → ignoré
+    { appId: '6', minutes: 10, last: now - 1 * day } // très récent → premier
+  ]
+  const existing = {
+    '2': { at: now - day, minutes: 200, name: 'G2', total: 10, unlocked: 5, picks: [] },
+    '4': { at: now - day, minutes: 60, name: 'G4', total: 10, unlocked: 5, picks: [] }
+  }
+  const picked = selectScanGames(owned, existing, now, 7 * day, 2)
+  assert.deepEqual(
+    picked.map((g) => g.appId),
+    ['6', '1']
+  )
+  const pickedAll = selectScanGames(owned, existing, now, 7 * day, 15)
+  assert.deepEqual(
+    pickedAll.map((g) => g.appId),
+    ['6', '1', '4']
+  )
 })

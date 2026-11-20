@@ -41,6 +41,17 @@ test('une valeur qui n’est pas une erreur (throw "texte") est une panne', () =
   assert.equal(unexpectedFailure({ message: 'faux' }), true)
 })
 
+test('une erreur technique externe sans code (DOMException, réseau, SQLite, HTTP 5xx) est une panne, mais un UserError reste un refus', () => {
+  assert.equal(unexpectedFailure(new DOMException('The operation was aborted.', 'AbortError')), true)
+  assert.equal(unexpectedFailure(new AggregateError([new Error('x')], 'All promises were rejected')), true)
+  assert.equal(unexpectedFailure(new Error('fetch failed')), true)
+  assert.equal(unexpectedFailure(new Error('net::ERR_CONNECTION_REFUSED')), true)
+  assert.equal(unexpectedFailure(new Error('SQLITE_CORRUPT: database disk image is malformed')), true)
+  assert.equal(unexpectedFailure(new Error('Request failed with status code 502')), true)
+  assert.equal(unexpectedFailure(new Error('Steam API HTTP 503')), true)
+  assert.equal(unexpectedFailure(new UserError('Steam répond HTTP 503 pour l’instant.')), false)
+})
+
 function bugOf(fn: () => unknown): unknown {
   try {
     fn()

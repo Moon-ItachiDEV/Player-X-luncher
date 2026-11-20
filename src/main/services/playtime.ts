@@ -1,16 +1,31 @@
 import { execFile } from 'node:child_process'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { powerMonitor } from 'electron'
+import { app, powerMonitor } from 'electron'
 import type { Game, Store } from '@shared/types'
 import { lastPlayedOf } from '@shared/played'
 import { logError } from '../crashLog'
 import { lastSeenByGame, listGames, openSession, playtimeByGame, touchSessions } from '../db'
 import { steamLastPlayed, steamMinutes } from './steamLibrary'
-import { coalesce, exeName, GENERIC_EXE, matchGames, memoAsync, parseProcLines, usableDir, watchNames, type Matchable, type RunningProcess } from './tracking'
+import {
+  coalesce,
+  exeName,
+  GENERIC_EXE,
+  hasCandidateProcess,
+  matchGames,
+  memoAsync,
+  parseProcLines,
+  parseTasklistCsv,
+  usableDir,
+  watchNames,
+  type Matchable,
+  type RunningProcess
+} from './tracking'
 
 // Temps de jeu : toutes les minutes, on regarde quels programmes tournent et on les rattache au dossier
 // d'installation d'un jeu. Ça marche aussi pour un jeu lancé hors de Player X, tant que Player X est ouvert.
+// Au repos, un relevé rapide (`tasklist`, léger et sans PowerShell) suffit ; PowerShell n'est lancé que lorsqu'un jeu
+// tourne déjà, qu'un exécutable candidat apparaît ou qu'un lancement demande une confirmation par chemin complet.
 // Pour les jeux Steam, le compteur de Steam (tout l'historique) prend le relais quand la clé Web API est là.
 
 const POLL_MS = 60_000
@@ -29,6 +44,8 @@ let snapshot: { at: number; procs: RunningProcess[] } | null = null
 let lastMatch = new Map<string, Set<string>>()
 /** Relevé raté, ou sessions arrêtées sans relevé, depuis le dernier réussi : un jeu absent ne s'est peut-être pas fermé. */
 let unsure = false
+/** Un appel explicite (`pollNow`, lancement, overlay) demande les chemins complets via PowerShell. */
+let wantFull = false
 
 function onChange(): void {
   for (const cb of listeners) {
@@ -50,9 +67,25 @@ function endAll(): boolean {
 
 // Sortie en UTF-8 (sinon PowerShell 5.1 écrit dans la page de code OEM et les chemins accentués ne correspondent plus).
 const PS_COMMAND =
-  '[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Process | ForEach-Object { $_.ProcessName + [char]9 + $_.Id + [char]9 + $_.Path }'
+  "$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Process | ForEach-Object { $_.ProcessName + [char]9 + $_.Id + [char]9 + $_.Path }"
 
-/** Programmes en cours (Windows uniquement). null si la liste n'a pas pu être lue (erreur, délai dépassé) : rien n'en est conclu. */
+/** Relevé léger (nom + PID seulement, via tasklist) : évite de lancer PowerShell chaque minute quand aucun jeu ne tourne. */
+function quickProcesses(): Promise<RunningProcess[] | null> {
+  if (process.platform !== 'win32') return Promise.resolve(null)
+  return new Promise((resolve) => {
+    execFile(
+      'tasklist.exe',
+      ['/FO', 'CSV', '/NH'],
+      { windowsHide: true, timeout: 10_000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' },
+      (err, stdout) => {
+        const procs = err ? [] : parseTasklistCsv(stdout)
+        resolve(procs.length ? procs : null)
+      }
+    )
+  })
+}
+
+/** Programmes en cours avec chemins complets (Windows uniquement). null si la liste n'a pas pu être lue : rien n'en est conclu. */
 function runningProcesses(): Promise<RunningProcess[] | null> {
   if (process.platform !== 'win32') return Promise.resolve(null)
   return new Promise((resolve) => {
@@ -108,10 +141,27 @@ async function gameExeNames(games: Matchable[]): Promise<Map<string, Set<string>
 
 /** Un relevé : true si la liste des programmes a pu être lue. */
 async function poll(): Promise<boolean> {
+  const full = wantFull
+  wantFull = false
   const now = Date.now()
   // Un trou de plus de trois relevés réussis (veille, PC figé, PowerShell en panne) : les sessions en cours s'arrêtent au dernier relevé.
   let changed = lastPoll > 0 && now - lastPoll > POLL_MS * 3 ? endAll() : false
-  const procs = await runningProcesses()
+  const games = listGames()
+  let procs: RunningProcess[] | null = null
+  let namesByGame: Map<string, Set<string>> | undefined
+  let fastIdle = false
+
+  if (!full && running.size === 0) {
+    const quick = await quickProcesses()
+    if (quick) {
+      namesByGame = await gameExeNames(games)
+      if (!hasCandidateProcess(quick, games, namesByGame)) {
+        procs = quick
+        fastIdle = true
+      }
+    }
+  }
+  if (!procs) procs = await runningProcesses()
   if (!procs) {
     // Liste illisible : aucune conclusion (avant, toutes les sessions s'arrêtaient d'un coup).
     unsure = true
@@ -125,8 +175,9 @@ async function poll(): Promise<boolean> {
   }
   lastPoll = now
   snapshot = { at: now, procs }
-  const games = listGames()
-  lastMatch = matchGames(procs, games, procs.some((p) => !p.path) ? await gameExeNames(games) : undefined)
+  lastMatch = fastIdle
+    ? new Map()
+    : matchGames(procs, games, procs.some((p) => !p.path) ? (namesByGame ?? (await gameExeNames(games))) : undefined)
   for (const id of [...running.keys()]) {
     if (lastMatch.has(id)) continue
     // Session terminée : sa fin reste la dernière fois où le jeu a été vu.
@@ -143,22 +194,36 @@ async function poll(): Promise<boolean> {
   return true
 }
 
-/**
- * Relevé tout de suite, regroupé avec celui en cours : la minute, le démarrage, les relevés rapprochés et la confirmation
- * d'un lancement passent tous par ici. Vrai si la liste des programmes a pu être lue.
- */
-export const pollNow = coalesce(() =>
+const pollCoalesced = coalesce(() =>
   poll().catch((e) => {
     logError('temps de jeu : relevé', e)
     return false
   })
 )
 
+/**
+ * Relevé tout de suite, regroupé avec celui en cours : les relevés rapprochés et la confirmation d'un lancement passent
+ * par ici (chemins complets). Vrai si la liste des programmes a pu être lue.
+ */
+export function pollNow(): Promise<boolean> {
+  wantFull = true
+  return pollCoalesced()
+}
+
 /** PID des programmes rattachés à un jeu au dernier relevé réussi (vide si le jeu n'y était pas). */
 export function gamePids(id: string): number[] {
   const names = lastMatch.get(id)
   if (!names || !snapshot) return []
   return snapshot.procs.filter((p) => names.has(p.name.toLowerCase())).map((p) => p.pid)
+}
+
+/**
+ * Une autre installation de Player X (« Player X.exe », hors cette appli) tourne sur ce PC.
+ * Permet à Player X V3 Test de taire son overlay CS2 quand le vrai Player X est ouvert en même temps.
+ */
+export function otherPlayerXRunning(): boolean {
+  if (!snapshot || app.getName().toLowerCase() === 'player x') return false
+  return snapshot.procs.some((p) => p.pid !== process.pid && p.name.toLowerCase() === 'player x')
 }
 
 /** Le programme tourne-t-il encore ? Test sans coût (aucun signal envoyé, pas de PowerShell). */
@@ -175,7 +240,7 @@ export function pidAlive(pid: number): boolean {
 export function startPlaytimeTracker(notify: () => void): void {
   listeners.add(notify)
   if (process.platform !== 'win32') return
-  const tick = (): void => void pollNow()
+  const tick = (): void => void pollCoalesced()
   setTimeout(tick, 5_000)
   setInterval(tick, POLL_MS)
   powerMonitor.on('suspend', () => endAll() && onChange())

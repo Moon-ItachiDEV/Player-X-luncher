@@ -91,7 +91,7 @@ async function boot() {
   Play.mount(views)
   Bar.mount(win)
   Pages.mount && Pages.mount(views)
-  Live.mount(win)
+  Live.mount()
   Story.mount(win)
   Settings.mount(win)
   NewsView.mount(win)

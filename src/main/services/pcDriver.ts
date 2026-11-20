@@ -10,7 +10,7 @@
 
 import { spawn } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, stat, statfs } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, statfs } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, net, shell } from 'electron'
 import type { DriverJournalEntry, DriverUpdateState, PcGpu } from '../../shared/types/pc'
@@ -18,6 +18,7 @@ import { getKv, setKv } from '../db'
 import { UserError } from '../errors'
 import { broadcast } from '../windows'
 import { gameRunning } from './clips'
+import { renameWithRetry } from './clipsFiles'
 import { filmState } from './editFilm'
 import { pcState } from './pc'
 import { cleanJournal, ELEVATE_SCRIPT, encodePs, installerName, installOutcome, installScript, JOURNAL_KEY, nvidiaDownloadUrl, nvidiaSigned, parseInstallResult } from './pcRules'
@@ -26,9 +27,12 @@ import { cleanJournal, ELEVATE_SCRIPT, encodePs, installerName, installOutcome, 
 const NEED_FREE = 2.5 * 1024 ** 3
 const MAX_SIZE = 3 * 1024 ** 3
 const DOWNLOAD_TIMEOUT_MS = 60 * 60 * 1000
+/** Aucun octet reçu pendant une minute : connexion figée, on coupe plutôt que d'attendre une heure. */
+const DOWNLOAD_STALL_MS = 60_000
 const VERIFY_TIMEOUT_MS = 60_000
 /** L'installeur NVIDIA prend 2 à 5 min ; au-delà de 30 min, on arrête d'attendre (il peut continuer seul). */
 const INSTALL_TIMEOUT_MS = 30 * 60 * 1000
+const START_POLL_MS = 500
 
 let state: DriverUpdateState = { status: 'idle' }
 let abort: AbortController | null = null
@@ -77,10 +81,12 @@ function ps(script: string, env: Record<string, string>, timeoutMs: number): Pro
     p.stdout?.on('data', (c: string) => {
       if (out.length < 64 * 1024) out += c
     })
+    // Vider stderr pour éviter qu'un flux plein (64 Ko) ne bloque PowerShell.
+    p.stderr?.resume()
     p.on('error', () => finish(null))
     p.on('close', () => finish(out))
     p.stdin?.on('error', () => {})
-    p.stdin?.end(script, 'utf8')
+    p.stdin?.end(`$ProgressPreference='SilentlyContinue'\n${script}`, 'utf8')
   })
 }
 
@@ -105,18 +111,48 @@ async function download(url: string, file: string, version: string, signal: Abor
     /* pas encore là */
   }
   const part = file + '.part'
-  const res = await net.fetch(url, { cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)]) })
+  const stallAc = new AbortController()
+  let stalled = false
+  let stallTimer = setTimeout(() => {
+    stalled = true
+    stallAc.abort()
+  }, DOWNLOAD_STALL_MS)
+  const resetStall = (): void => {
+    clearTimeout(stallTimer)
+    stallTimer = setTimeout(() => {
+      stalled = true
+      stallAc.abort()
+    }, DOWNLOAD_STALL_MS)
+  }
+  let res: Response
+  try {
+    res = await net.fetch(url, { cache: 'no-store', signal: AbortSignal.any([signal, stallAc.signal, AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)]) })
+  } catch (e) {
+    clearTimeout(stallTimer)
+    if (stalled && !signal.aborted) throw new UserError('Le téléchargement ne répond plus. Vérifie ta connexion et réessaie.')
+    throw e
+  }
   // Après les redirections, le fichier doit toujours venir de NVIDIA
-  if (!nvidiaDownloadUrl(res.url || url)) throw new UserError('Le téléchargement a été redirigé hors de NVIDIA : arrêté.')
-  if (!res.ok || !res.body) throw new UserError(`NVIDIA n’a pas donné le fichier (erreur ${res.status}). Réessaie plus tard.`)
+  if (!nvidiaDownloadUrl(res.url || url)) {
+    clearTimeout(stallTimer)
+    throw new UserError('Le téléchargement a été redirigé hors de NVIDIA : arrêté.')
+  }
+  if (!res.ok || !res.body) {
+    clearTimeout(stallTimer)
+    throw new UserError(`NVIDIA n’a pas donné le fichier (erreur ${res.status}). Réessaie plus tard.`)
+  }
   const total = Number(res.headers.get('content-length')) || 0
-  if (total > MAX_SIZE) throw new UserError('Le fichier annoncé par NVIDIA est anormalement gros : arrêté.')
+  if (total > MAX_SIZE) {
+    clearTimeout(stallTimer)
+    throw new UserError('Le fichier annoncé par NVIDIA est anormalement gros : arrêté.')
+  }
   const out = createWriteStream(part)
   let got = 0
   let last = 0
   try {
     const reader = res.body.getReader()
     for (;;) {
+      resetStall()
       const { done, value } = await reader.read()
       if (done) break
       got += value.byteLength
@@ -128,17 +164,20 @@ async function download(url: string, file: string, version: string, signal: Abor
         set({ status: 'download', version, pct: total ? Math.min(99, Math.floor((got / total) * 100)) : undefined, mb: Math.round(got / 1024 ** 2), totalMb: total ? Math.round(total / 1024 ** 2) : undefined })
       }
     }
+    clearTimeout(stallTimer)
     await new Promise<void>((resolve, reject) => out.end((e?: Error | null) => (e ? reject(e) : resolve())))
   } catch (e) {
+    clearTimeout(stallTimer)
     out.destroy()
     await rm(part, { force: true })
+    if (stalled && !signal.aborted) throw new UserError('Le téléchargement ne répond plus. Vérifie ta connexion et réessaie.')
     throw e
   }
   if (total && got !== total) {
     await rm(part, { force: true })
     throw new UserError('Le téléchargement s’est coupé avant la fin. Réessaie.')
   }
-  await rename(part, file)
+  await renameWithRetry(part, file)
 }
 
 /** Les anciens pilotes téléchargés partent : seul celui en cours reste. */
@@ -151,10 +190,31 @@ async function cleanFolder(keep: string | null): Promise<void> {
 }
 
 /** Le processus administrateur : point de restauration puis installation. Rend « refusé » ou son fichier de résultat. */
-async function elevatedInstall(exe: string, version: string, restorePoint: boolean): Promise<{ refused: boolean; result: ReturnType<typeof parseInstallResult>; error?: string }> {
+async function elevatedInstall(exe: string, version: string, restorePoint: boolean, onStart?: () => void): Promise<{ refused: boolean; result: ReturnType<typeof parseInstallResult>; error?: string }> {
   const resultFile = join(folder(), 'resultat.json')
+  const startFile = join(folder(), 'demarre.txt')
   await rm(resultFile, { force: true })
-  const out = await ps(ELEVATE_SCRIPT, { PX_ELEV: encodePs(installScript({ exe, resultFile, version, restorePoint })) }, INSTALL_TIMEOUT_MS)
+  await rm(startFile, { force: true })
+  let startedNotified = false
+  const poll = setInterval(() => {
+    if (startedNotified) return
+    void stat(startFile).then(
+      () => {
+        if (startedNotified) return
+        startedNotified = true
+        clearInterval(poll)
+        onStart?.()
+      },
+      () => {}
+    )
+  }, START_POLL_MS)
+  let out: string | null
+  try {
+    out = await ps(ELEVATE_SCRIPT, { PX_ELEV: encodePs(installScript({ exe, resultFile, startFile, version, restorePoint })) }, INSTALL_TIMEOUT_MS)
+  } finally {
+    clearInterval(poll)
+    await rm(startFile, { force: true }).catch(() => {})
+  }
   const line = out?.split(/\r?\n/).find((l) => l.startsWith('EXIT\t') || l.startsWith('REFUSED\t'))
   if (line?.startsWith('REFUSED\t')) return { refused: true, result: null, error: line.slice(8) }
   let text = ''
@@ -234,7 +294,7 @@ export async function updateDriver(opts: unknown): Promise<DriverUpdateState> {
 
     set({ status: 'consent', version })
     abort = null // plus d'annulation possible : la suite appartient à Windows et à l'installeur NVIDIA
-    const r = await elevatedInstall(file, version, restorePoint)
+    const r = await elevatedInstall(file, version, restorePoint, () => set({ status: 'install', version }))
     const outcome = installOutcome(r.refused, r.result)
     if (outcome === 'refused' || outcome === 'restore-failed' || outcome === 'signature') {
       journal(outcome, { restore: r.result?.restore })
@@ -242,7 +302,7 @@ export async function updateDriver(opts: unknown): Promise<DriverUpdateState> {
       return fail(outcome, outcome === 'restore-failed' ? `${MESSAGES[outcome]} ${r.result?.error ? `(${r.result.error})` : ''} Tu peux installer sans point de restauration.`.replace(/\s+/g, ' ').trim() : MESSAGES[outcome], { canSkipRestore: outcome === 'restore-failed' })
     }
 
-    set({ status: 'install', version })
+    if (state.status !== 'install') set({ status: 'install', version })
     // La preuve : la version que Windows lit maintenant
     const after = (await pcState(true)).gpus.find((g) => g.vendor === 'nvidia')?.version ?? null
     const changed = after === version

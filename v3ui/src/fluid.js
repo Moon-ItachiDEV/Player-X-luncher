@@ -86,19 +86,16 @@ const Fluid = (() => {
     tex.forEach((x) => { gl.bindTexture(gl.TEXTURE_2D, x); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([8, 6, 11, 255])); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v) })
     return true
   }
-  function init(canvas) {
-    cv = canvas
-    domLayers()
-    // Les jeux arrivent après le fond : le mur se (re)construit à chaque nouvelle liste
-    Real.on('games', buildWall)
-    mode = savedMode()
+  let glReady = false
+  function initGl() {
+    if (glReady || !cv) return !!gl
+    glReady = true
     const opts = { antialias: false, alpha: false, powerPreference: 'low-power', preserveDrawingBuffer: false }
     const softOk = /[?&]softgl/.test(location.search)
     try { gl = cv.getContext('webgl', { ...opts, failIfMajorPerformanceCaveat: !softOk }) } catch { gl = null }
     // Sans carte graphique : on dessine seulement quand quelque chose change, jamais en continu
     if (!gl) { soft = true; try { gl = cv.getContext('webgl', opts) } catch { gl = null } }
     if (gl && !setup()) gl = null
-    applyMode()
     if (soft) $('#win').classList.add('no-z')
     if (!gl) { $('#win').classList.add('no-gl', 'no-z'); return false }
     cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); stop() })
@@ -106,10 +103,32 @@ const Fluid = (() => {
     const ro = new ResizeObserver((en) => { const b = en[0].devicePixelContentBoxSize?.[0]; size(b && b.inlineSize, b && b.blockSize) })
     try { ro.observe(cv, { box: 'device-pixel-content-box' }) } catch { ro.observe(cv) }
     size()
+    return true
+  }
+  function init(canvas) {
+    cv = canvas
+    mode = savedMode()
+    domLayers()
+    // Les jeux arrivent après le fond : le mur se (re)construit seulement si le mode « mur » est actif
+    Real.on('games', buildWall)
+    // En mode Verre (calque CSS pur), WebGL n'est pas initialisé au démarrage : zéro contexte GPU ni shaders compilés pour rien
+    if (!PRESET[mode].dom) initGl()
+    applyMode()
     document.addEventListener('visibilitychange', () => document.hidden ? stop() : start())
     const w = $('#win')
-    w.addEventListener('pointermove', (e) => { if (reduced()) return; const b = cv.getBoundingClientRect(), kx = cv.width / (b.width || 1), ky = cv.height / (b.height || 1); mouse.tx = (e.clientX - b.left) * kx; mouse.ty = cv.height - (e.clientY - b.top) * ky; if (!mouse.kTo) { mouse.x = mouse.tx; mouse.y = mouse.ty } mouse.kTo = 1; mouse.at = performance.now(); parallax(e, b); wake() }, { passive: true })
-    w.addEventListener('pointerleave', () => { mouse.kTo = 0; wake() })
+    w.addEventListener('pointermove', (e) => {
+      if (reduced()) return
+      if (PRESET[mode].dom) {
+        if (!frozen) parallax(e, { left: 0, top: 0, width: w.clientWidth || innerWidth || 1, height: w.clientHeight || innerHeight || 1 })
+        return
+      }
+      if (!gl) return
+      const b = cv.getBoundingClientRect(), kx = cv.width / (b.width || 1), ky = cv.height / (b.height || 1)
+      mouse.tx = (e.clientX - b.left) * kx; mouse.ty = cv.height - (e.clientY - b.top) * ky
+      if (!mouse.kTo) { mouse.x = mouse.tx; mouse.y = mouse.ty }
+      mouse.kTo = 1; mouse.at = performance.now(); parallax(e, b); wake()
+    }, { passive: true })
+    w.addEventListener('pointerleave', () => { if (!PRESET[mode].dom) { mouse.kTo = 0; wake() } })
     start()
     return true
   }
@@ -173,7 +192,7 @@ const Fluid = (() => {
   function start() { off = false; wake() }
   function stop() { off = true; running = false; cancelAnimationFrame(raf) }
   // Quelque chose a changé (couleurs, image, souris, page, mode) : la boucle repart si elle s'était arrêtée
-  function wake() { if (!gl || running || off) return; running = true; last = performance.now(); raf = requestAnimationFrame(loop) }
+  function wake() { if (!gl || running || off || PRESET[mode].dom) return; running = true; last = performance.now(); raf = requestAnimationFrame(loop) }
 
   // Les sources de la trame : l'image du jeu recadrée, ou les couleurs du jeu quand il n'y a pas d'image
   const TW = 512, TH = 300, cache = new Map()
@@ -249,17 +268,17 @@ const Fluid = (() => {
     // Aucun jeu ni image : le logo Player X en grand, très atténué, dans une lueur rose
     bgxEl = h(`<div id="bgx" aria-hidden="true">${logo('bgx-l')}</div>`)
     w.prepend(bgxEl, wallEl, heroEl)
-    buildWall()
+    if (mode === 'mur') buildWall()
   }
-  // Le mur se construit avec tes vraies jaquettes, une fois les jeux lus, et suit la liste. Aucun jeu : pas de mur.
+  // Le mur se construit avec tes vraies jaquettes, seulement si le mode « mur » est actif. Aucun jeu : pas de mur.
   function buildWall() {
-    if (!wallEl) return
+    if (!wallEl || mode !== 'mur') return
     const covers = [...new Set(GAMES.filter((g) => !g.hidden).map(realCover).filter(Boolean))], n = covers.length, sig = covers.join('|')
     if (sig === wallSig) return
     wallSig = sig
     const col = (c) => Array.from({ length: 11 }, (_, r) => `<img src="${esc(covers[(c * 5 + (r % 4) * 3 + (c % 2) * 2) % n])}" alt="" decoding="async" draggable="false">`).join('')
     $('.bgw-g', wallEl).innerHTML = n ? Array.from({ length: 13 }, (_, c) => `<div class="bgw-c">${col(c)}</div>`).join('') : ''
-    if (mode === 'mur') $('#win').classList.toggle('bg-none', !n)
+    $('#win').classList.toggle('bg-none', !n)
   }
   const coveredByImage = () => PRESET[mode].dom === 'bgi'
   function measure(im) {
@@ -296,7 +315,7 @@ const Fluid = (() => {
     probe.src = url
     probe.decode().then(show, none)
   }
-  function wallShift(g) { if (wallEl) wallEl.style.setProperty('--wy', `${(GAMES.indexOf(g) % 6) * -22}px`) }
+  function wallShift(g) { if (wallEl && mode === 'mur') wallEl.style.setProperty('--wy', `${(GAMES.indexOf(g) % 6) * -22}px`) }
   function parallax(e, b) {
     if (frozen || (mode !== 'mur' && PRESET[mode].dom !== 'bgi')) return
     const x = (e.clientX - b.left) / b.width - .5, y = (e.clientY - b.top) / b.height - .5
@@ -315,8 +334,9 @@ const Fluid = (() => {
     const w = $('#win'); w.dataset.bg = mode
     bgVars()
     heroUrl = undefined; srcKey = ''; w.classList.remove('wall-soft', 'bg-none')
-    if (mode === 'mur') w.classList.toggle('bg-none', !wallSig)
-    if (gl) { size(bw, bh); applySource() }
+    if (!PRESET[mode].dom && !glReady) initGl()
+    if (mode === 'mur') { buildWall(); w.classList.toggle('bg-none', !wallSig) }
+    if (gl && !PRESET[mode].dom) { size(bw, bh); applySource() }
     showHero()
     wake()
   }

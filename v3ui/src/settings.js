@@ -103,13 +103,14 @@ const Settings = (() => {
     API.onEditEngineStep((st) => { engStep = st; const t = $('#eSt', el); if (t) t.textContent = stepText(st) })
   }
   function repaint() { const b = $('#shBody', el), y = b.scrollTop; paint(); b.scrollTop = y; paintNav() }
+  let paintPrev = null, openKeep = 0, homeFresh = false, homeSigLast = ''
   function open(p) {
     if (!el.hidden && !p) return
     if (el.hidden) { back = document.activeElement; cancelKey() }
     // La roue ouvre toujours Essentiel ; un raccourci (avatar, « Voir mes comptes »…) ne vaut que pour sa visite
-    if (!p && el.hidden) { sec = 'home'; paint.prev = null }
-    else if (el.hidden) paint.prev = null
-    const gr = GAMES[S.focus]?.routine; if (p === 'routine' && gr && !newFor && ROUTINES[gr] && !open.keep) routine = gr
+    if (!p && el.hidden) { sec = 'home'; paintPrev = null }
+    else if (el.hidden) paintPrev = null
+    const gr = GAMES[S.focus]?.routine; if (p === 'routine' && gr && !newFor && ROUTINES[gr] && !openKeep) routine = gr
     if (p) { sec = p === 'interface' ? 'general' : p; $('#shBody', el).scrollTop = 0 }
     tint(); el.hidden = false; void el.offsetWidth; el.classList.add('on'); clearSearch(); paintNav(); paint(); navBtn().focus({ preventScroll: true })
     if (!p) $('#shBody', el).scrollTop = 0
@@ -131,12 +132,12 @@ const Settings = (() => {
     if (rowId) {
       const r = document.getElementById(rowId); if (!r) return
       // Un réglage trouvé par la recherche peut être replié : on déplie d'abord, pour le mesurer et lui donner le focus
-      const d = r.closest('details[data-more]'); if (d && !d.open) d.open = true
+      const d = /** @type {HTMLDetailsElement | null} */ (r.closest('details[data-more]')); if (d && !d.open) d.open = true
       // Seule la page défile : scrollIntoView déplacerait aussi la fenêtre, même en overflow hidden
       const br = b.getBoundingClientRect(), rr = r.getBoundingClientRect()
       b.scrollTo({ top: b.scrollTop + rr.top - br.top - Math.max(80, (br.height - rr.height) / 2), behavior: reduced() ? 'auto' : 'smooth' })
       r.classList.add('flash'); setTimeout(() => r.classList.remove('flash'), 900)
-      const f = r.querySelector('button,input,select'); if (f) f.focus({ preventScroll: true })
+      const f = $('button,input,select', r); if (f) f.focus({ preventScroll: true })
     }
   }
   const navBtn = () => $(`.sh-t[data-s="${sec}"]`, el)
@@ -171,7 +172,7 @@ const Settings = (() => {
   /* Recherche */
   // Le nom d'abord : « micro » met « Micro » avant les réglages qui ne le citent qu'en synonyme
   const results = () => (q ? IDX.filter(([, , t, k]) => norm(t + ' ' + k).includes(q)).sort(([, , a], [, , b]) => (norm(b).includes(q) ? 1 : 0) - (norm(a).includes(q) ? 1 : 0)).slice(0, 8) : [])
-  function pick([p, id]) { clearSearch(); show(p, id) }
+  function pick(item) { const [p, id] = item; clearSearch(); show(p, id) }
   function clearSearch() { const i = $('#shQ', el); i.value = ''; q = ''; paintRes() }
   function paintRes() {
     const box = $('#shRes', el), i = $('#shQ', el), r = results()
@@ -203,8 +204,8 @@ const Settings = (() => {
     })
   }
   // Un champ enregistré quand on le quitte : l'erreur n'apparaît qu'après, et part dès qu'on y retourne
-  const field = (id, label, value, { secret, placeholder = '', help = '', auto = 'off' } = {}) => `<div class="at-f sf ${secret ? 'sf-s' : ''}"><div class="sf-l"><label for="${id}">${label}</label>${secret && value ? `<button type="button" class="sr-lnk" data-clear="${id}">Effacer</button>` : ''}</div><div class="sf-w"><input class="at-i" id="${id}" type="${secret ? 'password' : 'text'}" value="${secret ? '' : esc(value || '')}" placeholder="${esc(secret && value ? `Enregistré, se termine par ${String(value).replace(/^•+/, '') || '••••'}` : placeholder)}" autocomplete="${auto}" spellcheck="false">${secret ? `<button type="button" class="sf-eye" data-eye="${id}" aria-label="Afficher ${esc(label)}" aria-pressed="false" data-tip="Afficher" data-tip-r>${ic('eye')}</button>` : ''}</div><p class="at-err" id="${id}-e" role="alert" hidden></p>${help ? `<p class="sf-h">${help}</p>` : ''}</div>`
-  function bindField(b, id, { validate, onSave }) {
+  const field = (id, label, value, { secret = false, placeholder = '', help = '', auto = 'off' } = {}) => `<div class="at-f sf ${secret ? 'sf-s' : ''}"><div class="sf-l"><label for="${id}">${label}</label>${secret && value ? `<button type="button" class="sr-lnk" data-clear="${id}">Effacer</button>` : ''}</div><div class="sf-w"><input class="at-i" id="${id}" type="${secret ? 'password' : 'text'}" value="${secret ? '' : esc(value || '')}" placeholder="${esc(secret && value ? `Enregistré, se termine par ${String(value).replace(/^•+/, '') || '••••'}` : placeholder)}" autocomplete="${auto}" spellcheck="false">${secret ? `<button type="button" class="sf-eye" data-eye="${id}" aria-label="Afficher ${esc(label)}" aria-pressed="false" data-tip="Afficher" data-tip-r>${ic('eye')}</button>` : ''}</div><p class="at-err" id="${id}-e" role="alert" hidden></p>${help ? `<p class="sf-h">${help}</p>` : ''}</div>`
+  function bindField(b, id, { validate = null, onSave }) {
     const i = $('#' + id, b), err = $(`#${id}-e`, b); if (!i) return
     let last = i.value
     const show1 = (m) => { err.textContent = m || ''; err.hidden = !m; if (m) { i.setAttribute('aria-invalid', 'true'); i.setAttribute('aria-describedby', err.id) } else { i.removeAttribute('aria-invalid'); i.removeAttribute('aria-describedby') } }
@@ -228,9 +229,9 @@ const Settings = (() => {
     const bd = $('#shBadge', el), icn = NAV.flat().find((x) => x[0] === sec)?.[2] || 'gear'
     if (bd.dataset.i !== icn) { bd.dataset.i = icn; bd.innerHTML = ic(icn); bd.classList.remove('pop'); void bd.offsetWidth; bd.classList.add('pop') }
     // Les cartes d'Essentiel arrivent en fondu une seule fois, à l'entrée dans la page
-    if (paint.prev !== sec) pHome.fresh = true
+    if (paintPrev !== sec) homeFresh = true
     b.classList.remove('hm-in')
-    paint.prev = sec
+    paintPrev = sec
     ;({ home: pHome, rec: pRec, edit: pEdit, routine: pRoutine, overlay: pOverlay, accounts: pAccounts, library: pLibrary, general: pGeneral, keys: pKeys, pc: pPc, about: pAbout })[sec](b, d ? `<p class="sh-d">${d}</p>` : '')
   }
 
@@ -249,11 +250,11 @@ const Settings = (() => {
   const homeSig = () => [Real.clipsCfg?.enabled, Real.clipsLive?.status, Real.clipsLive?.error, Real.clipsLive?.game, todoSig()].join('|')
   // Repeindre Essentiel sans perdre le focus : il revient sur la commande qu'on utilisait
   function homeRepaint() {
-    const b = $('#shBody', el), a = document.activeElement
+    const b = $('#shBody', el), a = /** @type {HTMLElement | null} */ (document.activeElement)
     const k = a && b.contains(a) ? (a.id ? `#${a.id}` : a.dataset.key ? `.kc[data-key="${a.dataset.key}"]` : a.dataset.v && a.closest('[id]') ? `#${a.closest('[id]').id} [data-v="${a.dataset.v}"]` : a.dataset.go ? `${a.classList.contains('hm-more') ? '.hm-more' : a.classList.contains('hm-rd') ? '.hm-rd' : '.btn'}[data-go="${a.dataset.go}"]` : '') : ''
     repaint(); if (k) $(k, el)?.focus({ preventScroll: true })
   }
-  function homeSync() { if (waiting || homeSig() === pHome.sig) return; homeRepaint() }
+  function homeSync() { if (waiting || homeSig() === homeSigLast) return; homeRepaint() }
   function pHome(b, d) {
     const c = Real.clipsCfg, ov = s().cs2Overlay, ovOn = ov !== 'off', cur = ovOn ? (OVSTYLE[ov] === 'Actuel' ? 'c' : ov) : ovLast()
     const g = GAMES[S.focus], game = g && g.id !== '__all' ? g : null, rt = game ? ROUTINES[game.routine] : null
@@ -274,7 +275,7 @@ const Settings = (() => {
       ${group(head('overlay', 'overlay', 'Overlay'), `<div class="sr" id="h-ov"><div class="sr-t"><b>Counter-Strike 2</b>${ovSub ? `<span>${ovSub}</span>` : ''}</div><div class="sr-c">${sw('hOv', ovOn, 'Overlay de Counter-Strike 2')}</div></div>
         <div class="hm-ovs ${ovOn ? '' : 'off'}" id="h-ovst" role="radiogroup" aria-label="Style de l’overlay">${OVSTYLES.filter(([k]) => k !== 'c').map(([k, l], i) => `<button class="hm-ov" role="radio" data-v="${k}" aria-checked="${k === cur}" tabindex="${k === cur || (cur === 'c' && !i) ? 0 : -1}"><span class="hm-ov-i"><img src="${esc(A('ov_' + k))}" alt=""></span><b>${l}</b></button>`).join('')}</div>`)}
       ${game && (rt || game.installed) ? group(head('routine', 'queue', 'Routines'), `<div class="sr hm-rt" id="h-rt"><span class="hm-cov" aria-hidden="true">${game.cover ? `<img src="${esc(A(game.cover))}" alt="">` : esc(game.name.slice(0, 1))}</span><div class="sr-t"><b>${esc(game.name)}</b>${rt ? `<span class="hm-steps" role="img" aria-label="${esc(steps.map(stepT).join(', puis '))}">${steps.map((x) => `<i class="hm-st ${x.fixed ? 'go' : ''}" data-tip="${esc(stepT(x))}">${ic(x.ic || 'play')}</i>`).join('<i class="hm-ln"></i>')}</span>` : '<span>Aucune routine avant ce jeu</span>'}</div><div class="sr-c"><button class="btn sm" data-go="routine">${rt ? 'Modifier' : 'Créer'}</button></div></div>`) : ''}`
-    b.classList.toggle('hm-in', !!pHome.fresh); pHome.fresh = false; pHome.sig = homeSig()
+    b.classList.toggle('hm-in', homeFresh); homeFresh = false; homeSigLast = homeSig()
     ON('hMaster', (v) => saveClips({ enabled: v }).then(() => { repaint(); $('#hMaster', el)?.focus() }))
     ON('hOv', (x) => save({ cs2Overlay: x ? ovLast() : 'off' }).then(() => { repaint(); $('#hOv', el)?.focus() }))
     const q = $('#h-qual .seg', b); if (q) bindSeg(q, (v) => saveClips({ quality: v }).then(() => { repaint(); $('#h-qual [aria-checked=true]', el)?.focus() }))
@@ -556,7 +557,7 @@ const Settings = (() => {
       routine = Object.keys(ROUTINES)[0] || NEW_RT
       Real.saveRoutines(); pRoutine(b); Bar.syncGame(); saved()
     } })
-    r.steps.forEach((x) => { if (!x.fixed) ON('st' + x.id, (v) => { x.on = v; $(`.rt-s[data-id="${x.id}"]`, b).classList.toggle('off', !v); Real.saveRoutines(); Bar.syncGame(); saved() }) })
+    r.steps.forEach((x) => { if (!x.fixed) ON('st' + x.id, (v) => { x.on = v; $(`.rt-s[data-id="${CSS.escape(x.id)}"]`, b).classList.toggle('off', !v); Real.saveRoutines(); Bar.syncGame(); saved() }) })
     $$('[data-del]', b).forEach((x) => x.onclick = () => { r.steps.splice(r.steps.findIndex((y) => y.id === x.dataset.del), 1); Real.saveRoutines(); pRoutine(b); Bar.syncGame(); saved(); $('#rtAdd', b).focus({ preventScroll: true }) })
     $('#rtAdd', b).onclick = () => { addKind = addKind === null ? '' : null; pRoutine(b); $('#rtAdd', b).focus({ preventScroll: true }) }
     // L'étape arrive juste avant le lancement du jeu : c'est là qu'on la veut presque toujours
@@ -633,6 +634,7 @@ const Settings = (() => {
   const OVMOM = [['buy', 'Achat'], ['pill', 'En round'], ['half', 'Mi-temps'], ['end', 'Bilan']]
   const OVZ = { s: 0.72 / 0.84, n: 1, l: 1 / 0.84 }
   const OVK = [0.5, 1.6]
+  /** @type {import('../../src/shared/types').Cs2OverlayMoment} */
   let ovMom = 'buy'
   // Réglage en plein écran ouvert depuis ici : à sa fin, Paramètres relit les places.
   let ovEditing = false
@@ -922,7 +924,7 @@ const Settings = (() => {
     if (e.key === 'Escape') { helpOf(btn); stop(); return }
     const got = Shared.hotkey.hotkeyFromPress(e)
     if (!got) return
-    if (got.problem) { helpOf(btn, got.problem); return }
+    if ('problem' in got) { helpOf(btn, got.problem); return }
     const other = key === 'clip' ? s().overlayHotkey : Real.clipsCfg?.hotkey
     if (other === got.accel) { helpOf(btn, `Déjà pris par « ${KEYNAME[key === 'clip' ? 'overlay' : 'clip']} ». Essaie une autre touche.`); return }
     const busy = await API.cs2OverlayHotkeyCheck(got.accel).catch(() => null)
@@ -1054,7 +1056,7 @@ const Settings = (() => {
   return {
     mount, open, close, syncBar, errText,
     // Depuis la fiche d'un jeu : sa routine, ou une nouvelle pour lui
-    routineFor(id) { const r = G(id)?.routine; if (r && ROUTINES[r]) { routine = r; newFor = null; open.keep = 1; open('routine'); open.keep = 0 } else { routine = NEW_RT; newFor = id; open('routine') } },
+    routineFor(id) { const r = G(id)?.routine; if (r && ROUTINES[r]) { routine = r; newFor = null; openKeep = 1; open('routine'); openKeep = 0 } else { routine = NEW_RT; newFor = id; open('routine') } },
     // Ctrl F de partout : les paramètres s'ouvrent sur leur recherche
     find() { if (el.hidden) open(); const i = $('#shQ', el); setTimeout(() => { i.focus({ preventScroll: true }); i.select() }, 0) },
     index: () => IDX, titleOf: (p) => META[p][0], go: (p, id) => { open(p); show(p, id) },

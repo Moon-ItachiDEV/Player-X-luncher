@@ -96,6 +96,11 @@ test('tout récepteur passe par handle() : c’est lui qui vérifie d’où vien
   assert.deepEqual(names(rawListens).filter((c) => !c.startsWith('clips-rec:')), [])
 })
 
+test('tous les récepteurs handle() vivent dans src/main/channels/', () => {
+  const outside = handled.filter((u) => !u.path.startsWith('src/main/channels/')).map((u) => `${u.channel} (${u.path})`)
+  assert.deepEqual(outside, [])
+})
+
 test('la page de capture : chacun de ses envois est écouté par le moteur, et l’inverse', () => {
   assert.deepEqual(missing(pageSends, rawListens), [])
   assert.deepEqual(missing(rawListens, pageSends), [])

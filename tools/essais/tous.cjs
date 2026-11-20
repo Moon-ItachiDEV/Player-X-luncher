@@ -4,11 +4,11 @@
 //
 //   npm run build                                   les scénarios lancent out/, pas les sources
 //   node tools/essais/tous.cjs                      tout : une demi-heure
-//   node tools/essais/tous.cjs a8 t1                seulement a8 et t1-basics (« a » ou « t » : toute une famille)
+//   node tools/essais/tous.cjs a8 t1                seulement a8 et t1-basics (« a », « t » ou « nommes » : toute une famille)
 //   node tools/essais/tous.cjs a11                  a9 puis a11 : a11 lance la routine qu'a9 enregistre
 //   A16_BIN=<binaire> node tools/essais/tous.cjs    avec a16, qui demande l'appli empaquetée (sauté sinon, et c'est dit)
 //
-// Les scénarios se trouvent tout seuls : tools/essais/a<n>.cjs et tools/essais-clips/t<n>-<nom>.cjs (ou .mts). Un scénario
+// Les scénarios se trouvent tout seuls : tools/essais/*.cjs (a<n> et scénarios nommés) et tools/essais-clips/t<n>-<nom>.cjs (ou .mts). Un scénario
 // ajouté tourne sans rien inscrire ici. Les sorties complètes sont gardées dans tools/essais/sorties/<passage>/.
 // Sous Linux seulement (Xvfb, ffmpeg et ffprobe installés), comme les scénarios eux-mêmes.
 const { spawn, spawnSync } = require('child_process')
@@ -24,10 +24,18 @@ const EXTRA = {
   a17: () => ({ args: [path.join(ROOT, 'tools/essais-clips/xkey.py')] })
 }
 
+// Scripts utilitaires ou aperçus visuels manuels de tools/essais/ (pas des scénarios autonomes).
+const NON_SCENARIOS = new Set(['tous.cjs', 'h.cjs', 'stats-etats-pre.cjs', 'cdp.cjs', 'sp.cjs', 'sp2.cjs', 'sp3.cjs', 'sp4.cjs'])
+
 function scenarios() {
   const pick = (dir, re) => fs.readdirSync(path.join(ROOT, dir)).map((f) => ({ f, m: re.exec(f) })).filter((x) => x.m)
     .sort((a, b) => +a.m[1] - +b.m[1]).map(({ f, m }) => ({ name: f.replace(/\.(cjs|mts)$/, ''), file: path.join(dir, f), ts: f.endsWith('.mts'), n: +m[1] }))
-  return [...pick('tools/essais', /^a(\d+)\.cjs$/), ...pick('tools/essais-clips', /^t(\d+)-.+\.(cjs|mts)$/)]
+  const a = pick('tools/essais', /^a(\d+)\.cjs$/)
+  const named = fs.readdirSync(path.join(ROOT, 'tools/essais'))
+    .filter((f) => f.endsWith('.cjs') && !/^a\d+\.cjs$/.test(f) && !NON_SCENARIOS.has(f))
+    .sort()
+    .map((f) => ({ name: f.replace(/\.cjs$/, ''), file: path.join('tools/essais', f), ts: false, named: true }))
+  return [...a, ...named, ...pick('tools/essais-clips', /^t(\d+)-.+\.(cjs|mts)$/)]
 }
 
 // Un écran neuf : Xvfb choisit lui-même un numéro libre et l'écrit quand il est prêt (-displayfd).
@@ -59,8 +67,8 @@ function why(text, r) {
   const lines = text.split('\n')
   const stop = lines.find((l) => /^(ECHEC|ÉCHEC)/.test(l))
   if (stop) return stop.slice(0, 150)
-  const no = lines.filter((l) => /^NON /.test(l))
-  if (no.length) return `${no.length} contrôle${no.length > 1 ? 's' : ''} raté${no.length > 1 ? 's' : ''} : ${no[0].slice(4, 110)}`
+  const no = lines.filter((l) => /^(NON|DEFAUT) /.test(l))
+  if (no.length) return `${no.length} contrôle${no.length > 1 ? 's' : ''} raté${no.length > 1 ? 's' : ''} : ${no[0].replace(/^(NON|DEFAUT) /, '').slice(0, 110)}`
   const errs = lines.find((l) => /^ERREURS [1-9]/.test(l))
   if (errs) return `${errs.slice(8)} erreur(s) dans la page`
   return r.signal ? `arrêté par ${r.signal}` : `code de sortie ${r.code}`
@@ -73,9 +81,14 @@ const tally = (text) => (text.split('\n').reverse().find((l) => /^\d+ (OK|réuss
   if (!fs.existsSync(path.join(ROOT, 'node_modules/electron/dist/electron'))) { console.error('Electron manque : lance « node node_modules/electron/install.js ».'); process.exit(2) }
   try { require.resolve('playwright') } catch { console.error('Playwright manque : il s’installe à part, pas dans package.json (voir NOTES.md).'); process.exit(2) }
   const only = process.argv.slice(2)
-  // « a8 » : ce scénario ; « t1 » : t1-basics, pas t11 ; « a » ou « t » : toute la famille
-  const wanted = (name, w) => name === w || name.startsWith(w + '-') || (/^[a-z]$/.test(w) && name.startsWith(w))
-  const all = scenarios(), list = only.length ? all.filter((s) => only.some((w) => wanted(s.name, w))) : all
+  // « a8 » : ce scénario ; « t1 » : t1-basics, pas t11 ; « a », « t » ou « nommes » : toute une famille
+  const wanted = (s, w) => {
+    if (w === 'a') return /^a\d+$/.test(s.name)
+    if (w === 't') return /^t\d+-/.test(s.name)
+    if (w === 'nommes') return Boolean(s.named)
+    return s.name === w || s.name.startsWith(w + '-')
+  }
+  const all = scenarios(), list = only.length ? all.filter((s) => only.some((w) => wanted(s, w))) : all
   if (!list.length) { console.error(`Aucun scénario ne s’appelle « ${only.join(' » ni « ')} » (${all.length} scénarios : ${all.map((s) => s.name).join(', ')}).`); process.exit(2) }
   // Un scénario qui continue le travail d'un autre l'emmène avec lui : « a11 » seul fait aussi passer a9, juste avant
   for (const s of [...list]) {
@@ -87,9 +100,13 @@ const tally = (text) => (text.split('\n').reverse().find((l) => /^\d+ (OK|réuss
   const suf = process.env.SUF || '-' + stamp
   const outDir = path.join(__dirname, 'sorties', stamp)
   for (const d of [outDir, path.join(__dirname, 'shots'), path.join(ROOT, 'tools/essais-clips/shots')]) fs.mkdirSync(d, { recursive: true })
-  // t12 et t14 demandent un vrai ffmpeg : celui de la machine, s'ils n'en ont pas reçu un autre
+  // ed, t12 et t14 demandent un vrai ffmpeg : celui de la machine, s'ils n'en ont pas reçu un autre
   const ffmpeg = ['/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg'].find((f) => fs.existsSync(f))
-  const base = { ...process.env, SUF: suf, ...(ffmpeg ? { PX_T12_FFMPEG: process.env.PX_T12_FFMPEG || ffmpeg, PX_T14_FFMPEG: process.env.PX_T14_FFMPEG || ffmpeg } : {}) }
+  const base = {
+    ...process.env,
+    SUF: suf,
+    ...(ffmpeg ? { PX_FFMPEG: process.env.PX_FFMPEG || ffmpeg, PX_T12_FFMPEG: process.env.PX_T12_FFMPEG || ffmpeg, PX_T14_FFMPEG: process.env.PX_T14_FFMPEG || ffmpeg } : {})
+  }
   console.log(`${list.length} scénario${list.length > 1 ? 's' : ''}${only.length ? ` sur ${all.length}` : ''}, sorties dans ${path.relative(ROOT, outDir)}`)
 
   const done = [], t00 = Date.now()

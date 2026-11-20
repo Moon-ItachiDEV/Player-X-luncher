@@ -47,9 +47,9 @@ export function createWatcher(deps: WatchDeps): Watcher {
   /** Aucune réponse encore de ce processus : délai long. */
   let first = true
   let buf = ''
-  /** Réponses tardives à jeter (leur relevé a déjà été compté comme raté). */
-  let late = 0
-  let waiting: { resolve: (s: Sample | null) => void; timer: unknown } | null = null
+  /** Numéro de requête croissant : chaque réponse est rapprochée de la requête en attente (aucun décalage après un délai dépassé). */
+  let nextId = 0
+  let waiting: { id: number; resolve: (s: Sample | null) => void; timer: unknown } | null = null
   let failures = 0
   let last: { at: number; sample: Sample } | null = null
   let costs: number[] = []
@@ -83,13 +83,11 @@ export function createWatcher(deps: WatchDeps): Watcher {
   }
 
   function onLine(line: string): void {
-    if (late > 0) {
-      late--
-      return
-    }
     if (!waiting) return
     first = false
     const s = parseSample(line)
+    // Réponse d'une requête précédente arrivée en retard : on la jette sans consommer la requête en cours.
+    if (s && s.id != null && s.id !== waiting.id) return
     if (!s || !isValid(s)) {
       answer(null)
       fail('relevé tronqué')
@@ -119,7 +117,6 @@ export function createWatcher(deps: WatchDeps): Watcher {
     }
     first = true
     buf = ''
-    late = 0
     prevCpu = null
     costs = []
     c.stdout?.setEncoding('utf8')
@@ -149,21 +146,21 @@ export function createWatcher(deps: WatchDeps): Watcher {
       if (!child) child = start()
       const c = child
       if (!c) return Promise.resolve(null)
+      const id = ++nextId
       return new Promise((resolve) => {
         const timer = timers.setTimeout(
           () => {
             if (waiting?.timer !== timer) return
             waiting = null
             first = false
-            late++
             resolve(null)
             fail('pas de réponse')
           },
           first ? FIRST_TIMEOUT_MS : TIMEOUT_MS
         )
-        waiting = { resolve, timer }
+        waiting = { id, resolve, timer }
         try {
-          c.stdin?.write(tickLine(query) + '\n')
+          c.stdin?.write(tickLine({ ...query, id }) + '\n')
         } catch {
           /* processus déjà arrêté : le délai ou l'événement exit concluent */
         }

@@ -106,6 +106,16 @@ export function findSetup(distDir, version) {
   return join(distDir, found[0])
 }
 
+/** L'installeur sur mesure (Go/WebView2) de cette version dans `distDir`, s'il existe : Player-X-…-Installer-<version>.exe. */
+export function findInstaller(distDir, version) {
+  if (!existsSync(distDir)) return null
+  const re = new RegExp(`^Player-X-(?:.+-)?Installer-${version.replace(/[.+-]/g, '\\$&')}\\.exe$`)
+  const found = readdirSync(distDir).filter((f) => re.test(f))
+  if (!found.length) return null
+  if (found.length > 1) fail(`Plusieurs installeurs pour la ${version} dans ${distDir} : ${found.join(', ')}.`)
+  return join(distDir, found[0])
+}
+
 export function buildManifest({ version, setup, notes, date = new Date().toISOString().slice(0, 10) }) {
   if (!SEMVER.test(version)) fail(`Version « ${version} » invalide dans package.json.`)
   const mine = notes.find((e) => e.version === version)
@@ -220,14 +230,24 @@ export function releaseBody(entry) {
   return entry.items.map((i) => `- **${lab[i.kind]}** · ${i.title} : ${i.text}`).join('\n')
 }
 
+/** Vrai pour une préversion semver (ex. 0.8.0-beta.1, 0.8.0-rc.1) : jamais publiée comme « latest » pour tout le monde. */
+export const isPrerelease = (version) => Boolean(SEMVER.exec(version)?.[4])
+
+function currentBranch() {
+  const r = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true })
+  const b = (r.status === 0 ? r.stdout : '').trim()
+  return b && b !== 'HEAD' ? b : 'main'
+}
+
 /**
- * Ordre des fichiers : le Setup, la signature, maj.json EN DERNIER (dans une Release déjà publiée, l'appli ne voit rien avant lui).
+ * Ordre des fichiers : le Setup (et l'installeur sur mesure s'il est là), la signature, maj.json EN DERNIER (dans une Release déjà publiée, l'appli ne voit rien avant lui).
  * Crée la Release en brouillon (ou reprend un brouillon de la même étiquette), envoie les fichiers, puis publie EN DERNIER :
- * les Player X installés ne voient rien tant que les trois fichiers ne sont pas tous là. `http` : fetch (remplacé dans les tests).
+ * les Player X installés ne voient rien tant que tous les fichiers ne sont pas là. `http` : fetch (remplacé dans les tests).
  */
-export async function githubRelease({ token, version, files, body, http = fetch, repo = REPO }) {
+export async function githubRelease({ token, version, files, body, http = fetch, repo = REPO, targetCommitish = 'main' }) {
   const api = `https://api.github.com/repos/${repo}`
   const h = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'player-x-publier' }
+  const pre = isPrerelease(version)
   const call = async (method, url, json, okCodes = [200, 201]) => {
     const res = await http(url, { method, headers: json ? { ...h, 'Content-Type': 'application/json' } : h, body: json ? JSON.stringify(json) : undefined })
     if (!okCodes.includes(res.status)) {
@@ -248,7 +268,7 @@ export async function githubRelease({ token, version, files, body, http = fetch,
     rel = found
     for (const a of has) await call('DELETE', `${api}/releases/assets/${a.id}`, null, [204])
   } else {
-    rel = await call('POST', `${api}/releases`, { tag_name: tag, target_commitish: 'main', name: `Player X ${version}`, body, draft: true, prerelease: false })
+    rel = await call('POST', `${api}/releases`, { tag_name: tag, target_commitish: targetCommitish, name: `Player X ${version}`, body, draft: true, prerelease: pre })
   }
   for (const f of files) {
     const data = readFileSync(f)
@@ -258,7 +278,7 @@ export async function githubRelease({ token, version, files, body, http = fetch,
     if (res.status !== 201) fail(`L’envoi de ${name} a échoué (${res.status}). La Release reste en brouillon : relance Publier.bat.`)
   }
   if (!rel.draft && rel.html_url) return rel.html_url
-  const done = await call('PATCH', `${api}/releases/${rel.id}`, { draft: false, make_latest: 'true' })
+  const done = await call('PATCH', `${api}/releases/${rel.id}`, { draft: false, prerelease: pre, make_latest: pre ? 'false' : 'true' })
   return done.html_url
 }
 
@@ -324,6 +344,7 @@ async function publish() {
   if (!fromVault && !existsSync(keyFile)) fail(`Clé privée introuvable : ${keyFile}\nLance « npm run maj:cle » pour la créer.`)
   const notes = readNotes(join(root, 'notes-de-version.json'))
   const setup = findSetup(distDir, version)
+  const installer = findInstaller(distDir, version)
   const { manifest, bytes } = buildManifest({ version, setup, notes })
   let sig
   if (fromVault) {
@@ -343,20 +364,29 @@ async function publish() {
   writeFileSync(join(out, 'maj.json'), bytes)
   writeFileSync(join(out, 'maj.json.sig'), sig.toString('base64') + '\n')
   const mo = (manifest.size / 1024 / 1024).toFixed(1)
-  console.log(`\nPrêt : version ${version}, ${manifest.file} (${mo} Mo), notes de ${manifest.notes.length} version(s).`)
+  console.log(`\nPrêt : version ${version}, ${manifest.file} (${mo} Mo)${installer ? `, ${basename(installer)}` : ''}, notes de ${manifest.notes.length} version(s).`)
   console.log(`Fichiers écrits dans ${out} :\n  maj.json\n  maj.json.sig\n`)
+  const uploadFiles = [setup, ...(installer ? [installer] : []), join(out, 'maj.json.sig'), join(out, 'maj.json')]
+  const pre = isPrerelease(version)
   if (existsSync(VAULT_TOKEN)) {
     console.log('Envoi sur GitHub :')
-    const url = await githubRelease({ token: vaultRead(VAULT_TOKEN).toString('utf8').trim(), version, files: [setup, join(out, 'maj.json.sig'), join(out, 'maj.json')], body: releaseBody(notes.find((e) => e.version === version)) })
-    console.log(`\nPublié : ${url}\nLes Player X installés la proposeront d'eux-mêmes.`)
+    const url = await githubRelease({
+      token: vaultRead(VAULT_TOKEN).toString('utf8').trim(),
+      version,
+      files: uploadFiles,
+      body: releaseBody(notes.find((e) => e.version === version)),
+      targetCommitish: currentBranch()
+    })
+    console.log(`\nPublié : ${url}\n${pre ? 'Publiée en préversion (non proposée aux Player X stables).' : "Les Player X installés la proposeront d'eux-mêmes."}`)
     return
   }
   process.exitCode = MANUAL_EXIT
+  const list = [manifest.file, ...(installer ? [basename(installer)] : []), 'maj.json', 'maj.json.sig'].join(', ')
   console.log(`À faire sur GitHub (Moon-ItachiDEV/player-x-luncher), dans cet ordre :
   1. Releases › « Draft a new release » (un BROUILLON), étiquette  v${version}  (crée-la sur la bonne branche).
-  2. Glisse dans la Release : ${manifest.file}, maj.json et maj.json.sig (les trois, noms inchangés).
+  2. Glisse dans la Release : ${list} (noms inchangés).
   3. Relis, puis « Publish release » EN DERNIER : c'est à ce moment seulement que les Player X la voient.
-  Les Player X installés ne prennent que la Release « latest » : ne coche pas « pre-release ».`)
+  ${pre ? 'Cette version est une préversion : coche « pre-release » et ne la marque pas « latest ».' : 'Les Player X installés ne prennent que la Release « latest » : ne coche pas « pre-release ».'}`)
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

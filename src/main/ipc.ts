@@ -1,14 +1,17 @@
+import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { logError } from './crashLog'
 import { unexpectedFailure } from './ipcRules'
 import { trustedUrl } from './trust'
-import { isOverlay } from './windows'
+import { isAuxiliary, isOverlay } from './windows'
+
+const RENDERER_ROOT = join(__dirname, '../renderer')
 
 /** Seule la page de Player X, dans le cadre principal d'une de ses fenêtres, peut appeler le processus principal. */
 export function isTrustedSender(e: IpcMainInvokeEvent): boolean {
   const frame = e.senderFrame
   if (!frame || frame.parent !== null || !BrowserWindow.fromWebContents(e.sender)) return false
-  return trustedUrl(frame.url, !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined)
+  return trustedUrl(frame.url, !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined, RENDERER_ROOT)
 }
 
 /** Un appel refusé n'arrive jamais dans une appli saine : il est noté (une page étrangère, ou une adresse de page que `trustedUrl` ne reconnaît plus). */
@@ -24,8 +27,10 @@ function refuse(channel: string, e: IpcMainInvokeEvent, why: string): never {
 export function handle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown): void {
   ipcMain.handle(channel, async (event, ...args: unknown[]) => {
     if (!isTrustedSender(event)) refuse(channel, event, 'page non reconnue')
-    // L'overlay CS2 n'a besoin que de ses envois : rien d'autre (réglages, lancement, liens) depuis sa fenêtre.
     const from = BrowserWindow.fromWebContents(event.sender)
+    // Fenêtres auxiliaires (capture cachée, pastille) : aucun canal handle() autorisé.
+    if (from && isAuxiliary(from)) refuse(channel, event, 'canal fermé aux fenêtres auxiliaires')
+    // L'overlay CS2 n'a besoin que de ses envois : rien d'autre (réglages, lancement, liens) depuis sa fenêtre.
     if (from && isOverlay(from) && !channel.startsWith('cs2:')) refuse(channel, event, 'canal fermé à l’overlay')
     try {
       return await listener(event, ...args)

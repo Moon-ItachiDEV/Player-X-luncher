@@ -62,7 +62,7 @@ const NewsView = (() => {
     $$('[data-rem]', host).forEach((b) => b.onclick = async () => {
       const on = b.getAttribute('aria-pressed') !== 'true', id = b.dataset.rem
       st.reminders = await API.setEventReminder(game.rid, id, on)
-      paint(); $(`[data-rem="${id}"]`, host)?.focus({ preventScroll: true })
+      paint(); $(`[data-rem="${CSS.escape(id)}"]`, host)?.focus({ preventScroll: true })
       if (on) toast(`${ic('check')} Player X te préviendra quand l’événement commence`, { ms: 2400 })
     })
     // Une image qui ne se charge pas laisse la place à celle du jeu

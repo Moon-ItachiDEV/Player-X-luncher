@@ -80,7 +80,7 @@ const StatsPage = (() => {
     const recaps = real.length ? real : sampleOnly ? all : []
     const now = Date.now()
     if (!snap) { K.data.bf6 = { fail: msg || 'Le service de stats ne répond pas. Réessaie dans quelques minutes.', me, recapState: rec, recaps, sampleOnly, now }; return }
-    const agg = C.bf6Agg(snap.stats, hist || [], recaps, { now })
+    const agg = /** @type {any} */ (C.bf6Agg(snap.stats, hist || [], recaps, { now }))
     // Ce que le service n'a pas vérifié : un chiffre qui ne tient pas la route reste hors de la page
     const st = snap.stats
     agg.hsOk = isNum(st.headshots) && st.headshots > 0 && st.headshots <= st.kills
@@ -765,6 +765,7 @@ const StatsPage = (() => {
   V.rival = (key) => {
     const R = boardRows(); if (!R || !R.me) return noBoard('Classement')
     const pl2 = Board.player(key), me = Board.player(R.me); if (!pl2 || pl2.me || !me) return null
+    /** @type {Array<[string, string, number, string]>} */
     const M = [['K/D', 'kd', 2, ''], ['Élim. par minute', 'kpm', 2, ''], ['Victoires', 'win', 0, ' %'], ['Éliminations', 'kills', 0, '']]
     const ok = !pl2.error && M.every(([, k]) => isNum(pl2[k]) && isNum(me[k]))
     const acts = vActs(`<button class="k-b is-key" data-open="board">Tout le classement</button>`, `<button class="k-b" data-act="unfollow" data-v="${esc(key)}">Ne plus suivre</button>`)
@@ -854,7 +855,7 @@ const StatsPage = (() => {
     sp.after?.(body)
     if (K.anim || hadFocus) v.focus({ preventScroll: true })
     if (K.flash) {
-      const box = $(`.lc-box[data-id="${K.flash}"]`, v)
+      const box = $(`.lc-box[data-id="${CSS.escape(K.flash)}"]`, v)
       if (box) { box.classList.add('is-new'); box.scrollIntoView({ block: 'nearest' }); setTimeout(() => box.classList.remove('is-new'), 1400); $('[data-a=edit]', box)?.focus({ preventScroll: true }) }
       K.flash = null
     }
@@ -896,7 +897,7 @@ const StatsPage = (() => {
   const setPeriod = (p) => {
     if (!PERIOD[p] || K.period === p) return
     K.period = p
-    const had = document.activeElement?.dataset?.period
+    const had = /** @type {HTMLElement | null} */ (document.activeElement)?.dataset?.period
     paintHead(); paintBody(); if (K.sheet.length && !['follow', 'atelier'].includes(K.sheet.at(-1))) paintSheets()
     if (had) $(`#ckHR [data-period="${p}"]`)?.focus({ preventScroll: true })
   }

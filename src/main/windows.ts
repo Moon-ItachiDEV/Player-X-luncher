@@ -5,8 +5,10 @@ import { BrowserWindow } from 'electron'
 // jour, alertes) vise la principale : jamais l'overlay.
 
 const overlays = new WeakSet<BrowserWindow>()
+/** Fenêtres auxiliaires internes (capture cachée, pastille de clip) : aucun canal IPC `handle()`, aucun broadcast. */
+const auxiliaries = new WeakSet<BrowserWindow>()
 
-/** À appeler dès la création de la fenêtre de l'overlay. */
+/** À appeler dès la création de la fenêtre de l'overlay CS2. */
 export function markOverlay(w: BrowserWindow): void {
   overlays.add(w)
 }
@@ -15,9 +17,18 @@ export function isOverlay(w: BrowserWindow): boolean {
   return overlays.has(w)
 }
 
-/** Fenêtres de l'appli (sans l'overlay), encore ouvertes. */
+/** À appeler dès la création d'une fenêtre auxiliaire (enregistreur caché, pastille) : pas de droits overlay ni IPC. */
+export function markAuxiliary(w: BrowserWindow): void {
+  auxiliaries.add(w)
+}
+
+export function isAuxiliary(w: BrowserWindow): boolean {
+  return auxiliaries.has(w)
+}
+
+/** Fenêtres de l'appli (sans l'overlay ni les fenêtres auxiliaires), encore ouvertes. */
 export function appWindows(): BrowserWindow[] {
-  return BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !overlays.has(w))
+  return BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !overlays.has(w) && !auxiliaries.has(w))
 }
 
 /** La fenêtre principale, si elle existe. */
@@ -35,9 +46,10 @@ export function sendTo(w: BrowserWindow | undefined, channel: string, payload?: 
   }
 }
 
-/** Envoie un message à toutes les fenêtres de l'appli ; l'overlay et ses fenêtres sœurs seulement si `overlay` est vrai. */
+/** Envoie un message à toutes les fenêtres de l'appli ; l'overlay CS2 seulement si `overlay` est vrai (jamais aux fenêtres auxiliaires). */
 export function broadcast(channel: string, payload?: unknown, opts: { overlay?: boolean } = {}): void {
-  for (const w of opts.overlay ? BrowserWindow.getAllWindows() : appWindows()) sendTo(w, channel, payload)
+  const targets = opts.overlay ? BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !auxiliaries.has(w)) : appWindows()
+  for (const w of targets) sendTo(w, channel, payload)
 }
 
 /** La fenêtre de l'appli que la personne regarde en ce moment (au premier plan, visible, pas réduite). */

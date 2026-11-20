@@ -131,3 +131,18 @@ test('filmPieces (déplacé dans editShots) : mêmes morceaux, frameStep 3 à 60
   assert.ok(p.every((x) => x.frames % 3 === 0))
   assert.equal(p[1].speed, 0.5)
 })
+
+test('clip court sur tempo lent : garde un pas si le clip le permet, zéro seulement si le clip est plus court qu’un pas', () => {
+  // 40 BPM -> pas de 1,5 s ; clip de 2 s avec kill à 1 s (ni 1,5 s avant ni 1,5 s après).
+  const u = unitOf(40)
+  near(u, 1.5)
+  const kept = fitShot(spec({ anchorS: 1, lead: 2, tail: 2, slow: false }), 2, u)
+  near(shotLength(kept, u), u)
+  const parts = shotParts(kept, u)
+  assert.equal(parts.length, 1)
+  assert.ok(parts[0].fromS >= 0 && parts[0].toS <= 2)
+  // Clip de 0,8 s : impossible d'y loger un pas de 1,5 s -> durée 0 (filtré ensuite par le planificateur).
+  const impossible = fitShot(spec({ anchorS: 0.4, lead: 1, tail: 1, slow: false }), 0.8, u)
+  assert.equal(shotLength(impossible, u), 0)
+})
+

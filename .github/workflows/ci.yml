@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Types, tests, build & installeur Go
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: installer/go.mod
+          cache: false
+
+      - name: Dépendances npm
+        run: npm ci
+
+      - name: Vérification des types
+        run: npm run typecheck
+
+      - name: Tests unitaires
+        run: npm test
+
+      - name: Construction V3 + electron-vite
+        run: npm run build
+
+      - name: Compilation croisée de l'installeur Go (Windows x64)
+        run: |
+          set -e
+          TMP=$(mktemp -d)
+          trap 'rm -rf "$TMP"' EXIT
+          cp -a installer "$TMP/installer"
+          mkdir -p "$TMP/installer/payload"
+          node scripts/build-installer-v3test.mjs --page "$TMP/installer/ui/page.html"
+          dd if=/dev/zero of="$TMP/installer/payload/setup.exe" bs=1024 count=2 status=none
+          cp resources/icon.png "$TMP/installer/payload/icon.png"
+          printf '{"version":"0.0.0","size":1024}' > "$TMP/installer/payload/info.json"
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C "$TMP/installer" vet -mod=vendor -unsafeptr=false .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C "$TMP/installer" build -mod=vendor -trimpath -ldflags "-H windowsgui -s -w" -o "$TMP/installer.exe" .

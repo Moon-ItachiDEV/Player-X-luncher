@@ -58,9 +58,16 @@
     const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video, audio })
-      return stream.getAudioTracks().length ? { stream } : { stream, audioError: 'Son du système indisponible : vidéo seule.' }
+      if (stream.getAudioTracks().length) return { stream }
+      // En mode moteur (son seulement), une capture d'écran sans piste son est inutile et fuirait la capture WGC.
+      if (cmd.audioOnly) {
+        stopTracks(stream)
+        return { stream: null, audioError: 'Son du système indisponible.' }
+      }
+      return { stream, audioError: 'Son du système indisponible : vidéo seule.' }
     } catch (e) {
-      api.log(`Son du système refusé (${errName(e)}), essai sans le son.`)
+      api.log(`Son du système refusé (${errName(e)})${cmd.audioOnly ? '.' : ', essai sans le son.'}`)
+      if (cmd.audioOnly) return { stream: null, audioError: 'Son du système indisponible.' }
       return { stream: await navigator.mediaDevices.getDisplayMedia({ video, audio: false }), audioError: 'Son du système indisponible : vidéo seule.' }
     }
   }
@@ -149,62 +156,70 @@
   async function acquire(cmd) {
     const closers = []
     let control = null
-    let base
+    let base = null
     let audioError
-    if (cmd.test) {
-      const t = testStream(cmd)
-      base = t.stream
-      closers.push(t.close)
-      control = t.control
-    } else {
-      const s = await screenStream(cmd)
-      base = s.stream
-      audioError = s.audioError
-    }
-    closers.push(() => stopTracks(base))
-    const videoTrack = base.getVideoTracks()[0]
-    if (!videoTrack) throw new Error('aucune piste vidéo')
-    // Bêta 36 : c'est du jeu, pas un écran de texte. Sans cette indication, Chrome traite une capture d'écran comme du
-    // texte et garde la netteté en sacrifiant les images quand ça bouge (mesuré sur un clip : 33 images/s au lieu de 60,
-    // 22 pendant l'action).
-    try { videoTrack.contentHint = 'motion' } catch { /* navigateur qui ne connaît pas l'indication */ }
-    const gameTrack = base.getAudioTracks()[0] || null
-    let micTrack = null
-    if (cmd.mic) {
-      try {
-        const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-        micTrack = mic.getAudioTracks()[0] || null
-        closers.push(() => stopTracks(mic))
-      } catch (e) {
-        api.log(`Micro indisponible : ${errName(e)}`)
-        audioError = [audioError, 'Micro indisponible.'].filter(Boolean).join(' ')
+    try {
+      if (cmd.test) {
+        const t = testStream(cmd)
+        base = t.stream
+        closers.push(t.close)
+        control = t.control
+      } else if (!cmd.audioOnly || cmd.gameAudio) {
+        // En mode moteur avec micro seul (sans son du jeu), inutile d'ouvrir une capture d'écran WGC.
+        const s = await screenStream(cmd)
+        base = s.stream
+        audioError = s.audioError
       }
-    }
-    let audioTrack = gameTrack || micTrack
-    if (gameTrack && micTrack) {
-      const ac = new AudioContext({ sampleRate: 48000, latencyHint: 'playback' })
-      const dst = ac.createMediaStreamDestination()
-      ac.createMediaStreamSource(new MediaStream([gameTrack])).connect(dst)
-      ac.createMediaStreamSource(new MediaStream([micTrack])).connect(dst)
-      void ac.resume()
-      audioTrack = dst.stream.getAudioTracks()[0]
-      closers.push(() => void ac.close())
-    }
-    if (cmd.audioOnly && !audioTrack) throw new Error('aucun son à enregistrer')
-    const tracks = cmd.audioOnly ? [audioTrack] : audioTrack ? [videoTrack, audioTrack] : [videoTrack]
-    let closed = false
-    return {
-      stream: new MediaStream(tracks),
-      videoTrack,
-      audioTrack,
-      audio: gameTrack && micTrack ? 'game+mic' : gameTrack ? 'game' : micTrack ? 'mic' : 'none',
-      audioError,
-      control,
-      close: () => {
-        if (closed) return
-        closed = true
-        closers.reverse().forEach((f) => f())
+      if (base) closers.push(() => stopTracks(base))
+      const videoTrack = base ? base.getVideoTracks()[0] || null : null
+      if (!cmd.audioOnly && !videoTrack) throw new Error('aucune piste vidéo')
+      // Bêta 36 : c'est du jeu, pas un écran de texte. Sans cette indication, Chrome traite une capture d'écran comme du
+      // texte et garde la netteté en sacrifiant les images quand ça bouge (mesuré sur un clip : 33 images/s au lieu de 60,
+      // 22 pendant l'action).
+      if (videoTrack) {
+        try { videoTrack.contentHint = 'motion' } catch { /* navigateur qui ne connaît pas l'indication */ }
       }
+      const gameTrack = base ? base.getAudioTracks()[0] || null : null
+      let micTrack = null
+      if (cmd.mic) {
+        try {
+          const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+          micTrack = mic.getAudioTracks()[0] || null
+          closers.push(() => stopTracks(mic))
+        } catch (e) {
+          api.log(`Micro indisponible : ${errName(e)}`)
+          audioError = [audioError, 'Micro indisponible.'].filter(Boolean).join(' ')
+        }
+      }
+      let audioTrack = gameTrack || micTrack
+      if (gameTrack && micTrack) {
+        const ac = new AudioContext({ sampleRate: 48000, latencyHint: 'playback' })
+        closers.push(() => void ac.close())
+        const dst = ac.createMediaStreamDestination()
+        ac.createMediaStreamSource(new MediaStream([gameTrack])).connect(dst)
+        ac.createMediaStreamSource(new MediaStream([micTrack])).connect(dst)
+        void ac.resume()
+        audioTrack = dst.stream.getAudioTracks()[0]
+      }
+      if (cmd.audioOnly && !audioTrack) throw new Error('aucun son à enregistrer')
+      const tracks = cmd.audioOnly ? [audioTrack] : audioTrack ? [videoTrack, audioTrack] : [videoTrack]
+      let closed = false
+      return {
+        stream: new MediaStream(tracks),
+        videoTrack,
+        audioTrack,
+        audio: gameTrack && micTrack ? 'game+mic' : gameTrack ? 'game' : micTrack ? 'mic' : 'none',
+        audioError,
+        control,
+        close: () => {
+          if (closed) return
+          closed = true
+          closers.reverse().forEach((f) => { try { f() } catch {} })
+        }
+      }
+    } catch (e) {
+      closers.reverse().forEach((f) => { try { f() } catch {} })
+      throw e
     }
   }
 
@@ -418,10 +433,10 @@
   function watch(s) {
     if (!s.cmd.test && !s.cmd.audioOnly) frameStats(s)
     const { videoTrack, audioTrack } = s.source
-    if (videoTrack.readyState === 'ended') return endWith(s, 'piste vidéo terminée')
+    if (videoTrack && videoTrack.readyState === 'ended') return endWith(s, 'piste vidéo terminée')
     if (audioTrack && audioTrack.readyState === 'ended') return endWith(s, 'piste son terminée')
     // Son seulement : la petite image ne sert pas, sa taille ne compte pas.
-    if (s.cmd.audioOnly) return
+    if (s.cmd.audioOnly || !videoTrack) return
     const now = videoTrack.getSettings()
     if (now.width && s.settings && s.settings.width && (now.width !== s.settings.width || now.height !== s.settings.height)) {
       api.log(`Résolution changée : ${s.settings.width}×${s.settings.height} → ${now.width}×${now.height}.`)
@@ -455,7 +470,14 @@
     warmThumb()
     if (cur) {
       cur.closing = true
+      const oldRec = cur.rec
       cur.rec = null
+      if (oldRec) {
+        oldRec.ondataavailable = null
+        oldRec.onerror = null
+        oldRec.onstop = null
+        try { if (oldRec.state !== 'inactive') oldRec.stop() } catch { /* déjà arrêté */ }
+      }
       teardown(cur)
     }
     const s = { cmd, closing: false, aborted: false, source: null, rec: null, pcm: null, reason: '', badSince: 0, watch: null, settings: null, gotData: false, chain: Promise.resolve() }
@@ -466,11 +488,11 @@
       if (cur === s) cur = null
       return api.failed(cmd.recId, `Capture refusée : ${errName(e)}`)
     }
-    // Arrêt demandé pendant que la capture s'ouvrait.
-    if (cur !== s || s.closing) {
+    // Arrêt ou abandon demandé pendant que la capture s'ouvrait.
+    if (cur !== s || s.closing || s.aborted) {
       s.source.close()
       if (cur === s) cur = null
-      return api.stopped(cmd.recId, { reason: 'demandé' })
+      return api.stopped(cmd.recId, { reason: s.closing ? 'demandé' : s.reason || 'arrêté' })
     }
     if (cmd.audioOnly) {
       if (!startPcm(s)) {
@@ -525,7 +547,7 @@
 
   async function thumb(id) {
     const s = cur
-    if (!s || !s.source) return
+    if (!s || !s.source || !s.source.videoTrack) return
     try {
       const t0 = performance.now()
       const frame = await currentFrame(s.source.videoTrack)

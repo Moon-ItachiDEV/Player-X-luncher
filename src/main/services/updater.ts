@@ -5,10 +5,10 @@ import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, net, shell } from 'electron'
 import type { MajNoteEntry, MajNotes, MajState, MajStatus } from '@shared/types'
-import { getKv } from '../db'
+import { flushDb, getKv } from '../db'
 import { logError } from '../crashLog'
 import { broadcast } from '../windows'
-import { gameRunning } from './clips'
+import { clipsBusy, gameRunning } from './clips'
 import { filmState } from './editFilm'
 import { engineBusy } from './editFfmpeg'
 import { driverState } from './pcDriver'
@@ -47,6 +47,8 @@ let state: MajState = { status: 'idle', current, configured: UPDATE_KEYS.length 
 let manifest: Manifest | null = null
 let feed: { json: Buffer; sig: Buffer } | null = null
 let busy = false
+/** Incrémenté à chaque changement de cible/téléchargement : empêche un restore() démarré avant de purger un .part neuf. */
+let gen = 0
 let download: AbortController | null = null
 let userCancel = false
 let simulated = false
@@ -96,11 +98,11 @@ export function majState(): MajState {
   return state
 }
 
-/** Un jeu tourne, un clip est filmé, un film se fabrique ou un pilote s'installe : rien ne redémarre. */
+/** Un jeu tourne, un clip est filmé ou s'écrit, un film se fabrique ou un pilote s'installe : rien ne redémarre. */
 function isBlocked(): boolean {
   if (simulated && state.blocked) return true
   try {
-    return gameRunning() || engineBusy() || filmState().status === 'running' || ['download', 'verify', 'consent', 'install'].includes(driverState().status)
+    return gameRunning() || clipsBusy() || engineBusy() || filmState().status === 'running' || ['download', 'verify', 'consent', 'install'].includes(driverState().status)
   } catch {
     return false
   }
@@ -280,7 +282,18 @@ async function check(manual: boolean): Promise<void> {
     if (!f) return back('Aucune version publiée pour l’instant.')
     state = { ...was, checkedAt: Date.now() }
     const m = f.manifest
-    if (!isNewer(m.version, current) || getSettings().updateSkipped === m.version || (!manual && gaveUpVersion() === m.version)) {
+    if (!isNewer(m.version, current)) {
+      // Une Release retirée de GitHub ne doit plus rester prête à s'installer.
+      if (manifest || st === 'available' || st === 'ready') {
+        gen++
+        purge()
+        manifest = null
+        feed = null
+      }
+      put('uptodate', { quiet: false })
+      return
+    }
+    if (getSettings().updateSkipped === m.version || (!manual && gaveUpVersion() === m.version)) {
       if (st === 'available' || st === 'ready') return back()
       put('uptodate', { quiet: false })
       return
@@ -291,6 +304,7 @@ async function check(manual: boolean): Promise<void> {
       return
     }
     // Une version plus récente que celle déjà gardée : l'ancien Setup n'a plus d'intérêt.
+    gen++
     if (manifest) purge()
     manifest = m
     feed = { json: f.json, sig: f.sig }
@@ -396,6 +410,7 @@ async function startDownload(quiet: boolean): Promise<void> {
   const m = manifest
   if (!m || busy) return
   busy = true
+  gen++
   userCancel = false
   put('downloading', { quiet, received: 0, total: m.size, bytesPerSec: 0 })
   try {
@@ -438,6 +453,7 @@ export async function majSkip(): Promise<MajState> {
   // En simulation (développement), pas de maj.json : la version vient de l'état simulé.
   const v = manifest?.version ?? (simulated ? state.version : undefined)
   if (!v || (state.status !== 'available' && state.status !== 'error')) return state
+  gen++
   saveSettings({ updateSkipped: v })
   purge()
   manifest = null
@@ -470,15 +486,23 @@ function installFacts(): InstallFacts {
 function spawnSetup(m: Manifest, args: string[]): ChildProcess | null {
   if (installerSpawned) return null
   installerSpawned = true
+  const d = ensureDir()
+  const revertAttempt = (): void => {
+    try {
+      rmSync(join(d, MARKER_FILE), { force: true })
+      writeFileSync(join(d, ATTEMPT_FILE), JSON.stringify({ version: m.version, attempts, launched: false }))
+    } catch {
+      /* meilleur effort */
+    }
+  }
   try {
-    const d = ensureDir()
     writeFileSync(join(d, ATTEMPT_FILE), JSON.stringify({ version: m.version, attempts, launched: true }))
     writeFileSync(join(d, MARKER_FILE), JSON.stringify({ version: m.version, at: Date.now() }))
     const child = spawn(setupPath(m), args, { detached: true, stdio: 'ignore', windowsHide: true })
     child.on('error', (e) => {
-      // Windows a refusé de lancer le Setup : rien n'est parti, Player X reste ouvert.
+      // Windows a refusé de lancer le Setup (SmartScreen, antivirus) : rien n'est parti, pas un échec d'installation de plus.
       installerSpawned = false
-      rmSync(join(dir(), MARKER_FILE), { force: true })
+      revertAttempt()
       logError('mise à jour : lancement du Setup', e)
       put('error', { reason: `Windows n’a pas pu lancer l’installation · ta ${current} n’a pas bougé`, quiet: false })
     })
@@ -487,6 +511,7 @@ function spawnSetup(m: Manifest, args: string[]): ChildProcess | null {
     return child
   } catch (e) {
     installerSpawned = false
+    revertAttempt()
     logError('mise à jour : lancement du Setup', e)
     return null
   }
@@ -537,6 +562,8 @@ async function finishInstall(): Promise<void> {
       put('ready', { quiet: false })
       return
     }
+    // Vider la base sur le disque avant que le Setup détaché ne puisse fermer Player X.
+    flushDb()
     const child = spawnSetup(m, ['/S', '--force-run'])
     if (!child) {
       put('error', { reason: `Windows n’a pas pu lancer l’installation · ta ${current} n’a pas bougé`, quiet: false })
@@ -577,6 +604,7 @@ function installAtQuit(): void {
       purge()
       return
     }
+    flushDb()
     spawnSetup(m, ['/S'])
   } catch (e) {
     logError('mise à jour : installation à la fermeture', e)
@@ -675,16 +703,20 @@ function restore(): void {
     purge()
     return
   }
+  const g = gen
   void hashFile(setupPath(keep)).then(
     (disk) => {
+      // Une vérification ou un nouveau téléchargement a démarré entre-temps : ne rien purger ni écraser.
+      if (g !== gen || busy || manifest || installerSpawned) return
       if (disk.sha !== keep.sha256 || disk.size !== keep.size) return purge()
-      if (manifest || installerSpawned) return
       manifest = keep
       feed = { json, sig }
       // Prête, mais discrète : elle s'installe à la fermeture, ou à la demande depuis Paramètres.
       put('ready', { quiet: true })
     },
-    () => purge()
+    () => {
+      if (g === gen && !busy && !manifest && !installerSpawned) purge()
+    }
   )
 }
 

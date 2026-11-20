@@ -14,8 +14,30 @@ const text = (v: unknown, max: number): string => (typeof v === 'string' ? v.tri
 /** Clé de comparaison d'un chemin Windows (insensible à la casse et au sens des barres). */
 export const appKey = (p: string): string => p.replace(/\//g, '\\').toLowerCase()
 
-/** Chemin absolu Windows (C:\… ou \\serveur\…), d'une appli que Player X sait ouvrir. */
-export const isAppPath = (p: string): boolean => /^(?:[a-z]:[\\/]|\\\\[^\\/]+[\\/])/i.test(p) && /\.(exe|lnk|bat|cmd)$/i.test(p) && !/["<>|?*\0]/.test(p)
+/** Chemin absolu Windows local (C:\…), d'une appli que Player X sait ouvrir (jamais de chemin réseau UNC \\serveur\…). */
+export const isAppPath = (p: string): boolean => /^[a-z]:[\\/]/i.test(p) && /\.(exe|lnk|bat|cmd)$/i.test(p) && !/["<>|?*\0]/.test(p)
+
+/** Processus système Windows critiques et Player X lui-même : jamais fermés par une routine. */
+export const BLOCKED_CLOSE: ReadonlySet<string> = new Set([
+  'explorer.exe',
+  'csrss.exe',
+  'lsass.exe',
+  'winlogon.exe',
+  'wininit.exe',
+  'svchost.exe',
+  'dwm.exe',
+  'services.exe',
+  'smss.exe',
+  'taskmgr.exe',
+  'conhost.exe',
+  'spoolsv.exe',
+  'searchindexer.exe',
+  'sihost.exe',
+  'ctfmon.exe',
+  'player x.exe',
+  'player x v3 test.exe',
+  'test-v3-player-x.exe'
+])
 
 /** Lien qu'une routine peut ouvrir : https, un salon ou une page Discord, une action Steam sans arguments de lancement. */
 export function isRoutineLink(v: string): boolean {
@@ -36,7 +58,7 @@ export function cleanStep(v: unknown, approved: ReadonlySet<string>): RoutineSte
     if (!isAppPath(value) || !approved.has(appKey(value))) return null
     step.value = value
   } else if (kind === 'close') {
-    if (!/^[\w .()-]{1,120}\.exe$/i.test(value)) return null
+    if (!/^[\w .()-]{1,120}\.exe$/i.test(value) || BLOCKED_CLOSE.has(value.toLowerCase())) return null
     step.value = value
     step.force = o.force === true
   } else if (kind === 'link') {

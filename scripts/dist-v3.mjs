@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Fabrication complète de Player X V3 Test, dans l'ordre, et arrêt à la première erreur :
 //   0. le moteur vidéo (scripts/fetch-ffmpeg.mjs : FFmpeg, téléchargé une fois et vérifié par son empreinte)
-//   1. l'interface V3 (python3 v3ui/build.py)   2. les types (main, preload, overlay, scripts)   3. les tests
+//   1. l'interface V3 (node v3ui/build.mjs)   2. les types (main, preload, overlay, scripts)   3. les tests
 //   4. electron-vite   5. electron-builder (NSIS)   6. l'installeur sur mesure (Go)
 //   node scripts/dist-v3.mjs [dossier de sortie]      (par défaut dist/ ; sous Linux, Wine et Go sont nécessaires)
 import { execFileSync } from 'node:child_process'
@@ -31,7 +31,7 @@ const run = (title, cmd, args) => {
 
 // Le moteur vidéo d'abord : sans lui (ou avec une autre empreinte que celle de src/shared/ffmpegPin.json), rien n'est fabriqué.
 run('Moteur vidéo', process.execPath, [join(root, 'scripts/fetch-ffmpeg.mjs')])
-run('Interface V3', process.platform === 'win32' ? 'python' : 'python3', ['v3ui/build.py'])
+run('Interface V3', process.execPath, [join(root, 'v3ui/build.mjs')])
 run('Types', npm, ['run', 'typecheck'])
 run('Tests', npm, ['test'])
 run('electron-vite', npx, ['electron-vite', 'build'])

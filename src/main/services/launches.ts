@@ -282,7 +282,7 @@ function failOf(e: unknown): { reason: LaunchFail; detail?: string } {
 }
 
 const routeOf = (game: Game, target: LaunchTarget | null): LaunchRoute => (target?.kind === 'exe' ? 'exe' : (target?.route ?? game.store))
-const routeOfId = (id: string): LaunchRoute => (/^(steam|epic|ea):/.exec(id)?.[1] as LaunchRoute | undefined) ?? 'exe'
+const routeOfId = (id: string): LaunchRoute => (/^(steam|epic|ea|gog):/.exec(id)?.[1] as LaunchRoute | undefined) ?? 'exe'
 
 // ---------- orchestrateur ----------
 

@@ -29,16 +29,20 @@ test('ajouter et retirer un jeu ; jamais deux fois', () => {
   s = withGameIn(s, 'c0001', 'ea:Origin.OFR.50.0005577', true)
   assert.deepEqual(s.collections[0].games, ['ea:Origin.OFR.50.0005577'])
   s = withGameIn(s, 'c0001', 'ea:Origin.OFR.50.0005577', false)
-  assert.deepEqual(s.collections[0].games, [])
+  s = withGameIn(s, 'c0001', 'gog:1207664663', true)
+  s = withGameIn(s, 'c0001', 'ea:battlefield 2042', true)
+  assert.deepEqual(s.collections[0].games, ['gog:1207664663', 'ea:battlefield 2042'])
   assert.throws(() => withGameIn(s, 'c0001', 'file:C:\\x.exe', true), /Jeu inconnu/)
+  assert.throws(() => withGameIn(s, 'c0001', 'ea:C:\\Jeux\\x.exe', true), /Jeu inconnu/)
   assert.throws(() => withGameIn(s, 'c9999', 'steam:730', true), /introuvable/)
 })
 
 test('masquer et réafficher', () => {
   let s = withHidden(empty, 'steam:570', true)
   s = withHidden(s, 'steam:570', true)
-  assert.deepEqual(s.hidden, ['steam:570'])
-  assert.deepEqual(withHidden(s, 'steam:570', false).hidden, [])
+  s = withHidden(s, 'gog:1495134320', true)
+  assert.deepEqual(s.hidden, ['steam:570', 'gog:1495134320'])
+  assert.deepEqual(withHidden(withHidden(s, 'steam:570', false), 'gog:1495134320', false).hidden, [])
 })
 
 test('relu depuis la base : seulement ce qui est bien formé', () => {

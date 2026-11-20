@@ -63,14 +63,15 @@ const Bar = (() => {
     setNav('play')
     syncGame()
   }
+  let lw = 0, lh = 0
   function liquid() {
     if (!('chrome' in window) && !navigator.userAgentData) return
     if (reduced() || !CSS.supports('backdrop-filter', 'blur(1px)')) return
     const zoomed = !!$('#win').style.zoom
     const W = el.offsetWidth, H = el.offsetHeight
     if (zoomed || W < 300) { el.style.backdropFilter = ''; return }
-    if (liquid.w === W && liquid.h === H) return
-    liquid.w = W; liquid.h = H
+    if (lw === W && lh === H) return
+    lw = W; lh = H
     const R = 24, B = 15, c = document.createElement('canvas'); c.width = W; c.height = H
     const x = c.getContext('2d'), im = x.createImageData(W, H), d = im.data
     for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {

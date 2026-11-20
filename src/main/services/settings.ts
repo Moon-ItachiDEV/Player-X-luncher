@@ -87,7 +87,7 @@ export function removeAccount(platform: FriendPlatform): Account[] {
 // Membres du serveur Discord masqués : hors des réglages (jamais envoyés à l'interface avec publicSettings).
 // Le mode démo a les siens, pour ne jamais toucher aux vrais.
 
-function memberKv(demo: boolean): string {
+function memberKv(demo: boolean): 'demoDiscordMembers' | 'discordMembers' {
   return demo ? 'demoDiscordMembers' : 'discordMembers'
 }
 

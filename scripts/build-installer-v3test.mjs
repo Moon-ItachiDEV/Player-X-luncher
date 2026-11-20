@@ -25,14 +25,15 @@ const b = pkg.build || {}
 const nsis = b.nsis || {}
 
 // Identité de l'appli installée, telle que NSIS l'écrit (electron-builder, installation par utilisateur).
+const productName = b.productName || pkg.productName
 const product = {
-  name: b.productName || pkg.productName,
-  exe: `${b.productName || pkg.productName}.exe`,
+  name: productName,
+  exe: `${productName}.exe`,
   dirName: pkg.name,
-  dataDir: b.productName || pkg.productName,
-  shortcut: nsis.shortcutName || b.productName,
-  display: nsis.uninstallDisplayName || b.productName,
-  slug: (b.productName || pkg.productName).replace(/\s+/g, '-'),
+  dataDir: productName,
+  shortcut: nsis.shortcutName || productName,
+  display: nsis.uninstallDisplayName || productName,
+  slug: productName.replace(/\s+/g, '-'),
   fixedDir: true,
   noUpdates: b.publish === null || b.publish === undefined,
   noBoot: true

@@ -6,6 +6,37 @@ import type { Bf6Recap, Bf6RecapPlace, Bf6Row, Bf6Stats } from '@shared/types'
 /** Ce que donne la comparaison ; les dates et le compte viennent de la session. */
 export type SessionNumbers = Omit<Bf6Recap, 'id' | 'account' | 'startedAt' | 'endedAt' | 'partial' | 'seen' | 'sample'>
 
+/**
+ * Nombre lu tel quel ou depuis un texte formaté par gametools.network (« 52,3 % », « 1 234,56 », « 12.345,67 », « 1,234 »).
+ * `integer` : vrai pour les compteurs entiers (éliminations, morts, manches…), où « 1,234 » ou « 1.234 » est un millier (1234) ;
+ * faux pour les décimaux (K/D, KPM, précision, % victoires), où « 1,234 » en français vaut 1,234 (jamais 1 234).
+ */
+export function parseStatNum(v: unknown, integer = false): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+  if (typeof v !== 'string') return undefined
+  const s = v.replace(/[^0-9.,-]/g, '')
+  if (!s) return undefined
+  const commas = (s.match(/,/g) ?? []).length
+  const dots = (s.match(/\./g) ?? []).length
+  let norm: string
+  if (commas > 0 && dots > 0) {
+    // Les deux séparateurs présents : le dernier est la virgule décimale, l'autre sépare les milliers.
+    norm = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '')
+  } else if (commas > 1) {
+    norm = s.replace(/,/g, '')
+  } else if (dots > 1) {
+    norm = s.replace(/\./g, '')
+  } else if (commas === 1) {
+    norm = integer && /^-?\d{1,3},\d{3}$/.test(s) ? s.replace(',', '') : s.replace(',', '.')
+  } else if (dots === 1) {
+    norm = integer && /^-?\d{1,3}\.\d{3}$/.test(s) ? s.replace('.', '') : s
+  } else {
+    norm = s
+  }
+  const n = parseFloat(norm)
+  return Number.isFinite(n) ? n : undefined
+}
+
 /** Ligne « All » des cartes, modes et classes : c'est le total, pas une entrée. */
 const isTotal = (name: string): boolean => /^(all|tous|toutes|total)$/i.test(name.trim())
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import type { Bf6Row, Bf6Stats } from '@shared/types'
 // Node exige l'extension ; TypeScript ne la permet que via allowImportingTsExtensions, absent du tsconfig de l'appli.
 // @ts-ignore TS5097
-import { recapLine, sessionNumbers } from './bf6Diff.ts'
+import { parseStatNum, recapLine, sessionNumbers } from './bf6Diff.ts'
 
 function stats(over: Partial<Bf6Stats> = {}): Bf6Stats {
   return {
@@ -166,3 +166,21 @@ test('texte de la notification : pluriels à la française, chiffres formatés',
   assert.equal(recapLine({ kills: 0, killDeath: 0, matches: 0, wins: 0, secondsPlayed: 754 }), '0 élimination · K/D 0,00 · 13 min en partie')
   assert.equal(recapLine({ kills: 4, killDeath: 4, matches: 0, wins: 0, secondsPlayed: 20 }), '4 éliminations · K/D 4,00')
 })
+
+test('parseStatNum : décimales et séparateurs de milliers français et anglais', () => {
+  // Compteurs décimaux (integer = false) : « 1,234 » vaut 1,234, pas 1234.
+  assert.equal(parseStatNum('1,234'), 1.234)
+  assert.equal(parseStatNum('52,3 %'), 52.3)
+  assert.equal(parseStatNum('1 234,56 %'), 1234.56)
+  assert.equal(parseStatNum('12.345,67'), 12345.67)
+  assert.equal(parseStatNum('12,345.67'), 12345.67)
+  // Compteurs entiers (integer = true) : « 1,234 » ou « 1.234 » vaut 1234.
+  assert.equal(parseStatNum('1,234', true), 1234)
+  assert.equal(parseStatNum('1.234', true), 1234)
+  assert.equal(parseStatNum('1,234,567', true), 1234567)
+  assert.equal(parseStatNum('1.234.567', true), 1234567)
+  assert.equal(parseStatNum(42), 42)
+  assert.equal(parseStatNum(Number.NaN), undefined)
+  assert.equal(parseStatNum('—'), undefined)
+})
+

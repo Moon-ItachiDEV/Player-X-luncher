@@ -12,12 +12,16 @@ export function ensureSchema(db: Database): void {
     );
     CREATE TABLE IF NOT EXISTS launches (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL, at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL, started INTEGER NOT NULL, ended INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_launches_game ON launches(game_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_game ON sessions(game_id);
   `)
-  // Migration : colonne ajoutée après la première version.
-  try {
-    db.run('ALTER TABLE games ADD COLUMN exe_path TEXT')
-  } catch {
-    /* déjà présente */
+  // Migrations : colonnes ajoutées après la première version.
+  for (const col of ['exe_path TEXT', 'launch_args TEXT', 'work_dir TEXT']) {
+    try {
+      db.run(`ALTER TABLE games ADD COLUMN ${col}`)
+    } catch {
+      /* déjà présente */
+    }
   }
 }
 
@@ -42,7 +46,9 @@ const SHAPE: Record<keyof SalvageCounts, Record<string, { kind: Kind; nullable: 
     hero_url: { kind: 'text', nullable: true },
     last_played: { kind: 'int', nullable: true },
     favorite: { kind: 'int', nullable: true },
-    exe_path: { kind: 'text', nullable: true }
+    exe_path: { kind: 'text', nullable: true },
+    launch_args: { kind: 'text', nullable: true },
+    work_dir: { kind: 'text', nullable: true }
   },
   launches: { id: { kind: 'int', nullable: false }, game_id: { kind: 'text', nullable: false }, at: { kind: 'int', nullable: false } },
   sessions: {

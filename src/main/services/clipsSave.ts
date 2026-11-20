@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { paceLog, paceOfCounts } from '@shared/clipPace'
@@ -20,7 +20,7 @@ import {
   type ClipMoment,
   type PendingClip
 } from './clipsPlan'
-import { freeName, writePlan } from './clipsFiles'
+import { freeName, renameWithRetry, writePlan } from './clipsFiles'
 import { addClip, applyRetention, emitChanged, paceOfTracks, thumbPath, type ClipMeta } from './clipsIndex'
 import { errText, log } from './clipsLog'
 import { serial } from './clipsQueue'
@@ -197,7 +197,7 @@ async function writeClip(p: PendingClip): Promise<void> {
     // Image du moteur : le son de la page y est ajouté (writeEngineClip).
     if (rec.engine) size = await writeEngineClip(p, plan, sources, firstWall, part)
     else await writePlan(plan, sources, part)
-    await rename(part, file)
+    await renameWithRetry(part, file)
   } catch (e) {
     await unlink(part).catch(() => {})
     throw e

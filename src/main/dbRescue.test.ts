@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-ignore TS5097
-import { asideName, readRetry, rescuePlan, salvageText, stuckLog, stuckText, toPrune, unreadText, withUnread, type FileState } from './dbRescue.ts'
+import { asideName, lockedFiles, readRetry, rescuePlan, salvageText, stuckLog, stuckText, toPrune, unreadText, withUnread, type FileState } from './dbRescue.ts'
 
 const plan = (main: FileState, tmp: FileState, bak: FileState) => rescuePlan({ main, tmp, bak })
 
@@ -221,3 +221,22 @@ test('withUnread : les phrases vont après la première phrase de chacune des li
 test('withUnread : rien à ajouter, la ligne reste telle quelle', () => {
   for (const line of [plan('illisible', 'absent', 'ok').log ?? '', stuckLog(['launcher.db'], ['x']), 'Une phrase.']) assert.equal(withUnread(line, []), line)
 })
+
+test('verrouille : un principal verrouillé bloque le démarrage sans être mis de côté ni remplacé', () => {
+  assert.deepEqual(lockedFiles({ main: 'verrouille', tmp: 'absent', bak: 'ok' }), ['main'])
+  assert.deepEqual(lockedFiles({ main: 'verrouille', tmp: 'ok', bak: 'verrouille' }), ['main', 'bak'])
+  const p = plan('verrouille', 'absent', 'ok')
+  assert.deepEqual(p.aside, [])
+  assert.deepEqual(p.salvage, [])
+  assert.deepEqual(plan('verrouille', 'absent', 'absent').aside, [])
+  assert.equal(plan('verrouille', 'absent', 'absent').notice, null)
+})
+
+test('verrouille : secours verrouillé ne bloque que si ni le principal ni le provisoire ne sont sains', () => {
+  assert.deepEqual(lockedFiles({ main: 'ok', tmp: 'absent', bak: 'verrouille' }), [])
+  assert.deepEqual(lockedFiles({ main: 'illisible', tmp: 'ok', bak: 'verrouille' }), [])
+  assert.deepEqual(plan('illisible', 'ok', 'verrouille').aside, ['main'])
+  assert.deepEqual(lockedFiles({ main: 'absent', tmp: 'absent', bak: 'verrouille' }), ['bak'])
+  assert.deepEqual(lockedFiles({ main: 'illisible', tmp: 'absent', bak: 'verrouille' }), ['bak'])
+})
+

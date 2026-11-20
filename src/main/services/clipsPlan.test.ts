@@ -11,6 +11,7 @@ import {
   clipsToPurge,
   clipTitle,
   DEFAULT_CLIP_SETTINGS,
+  IN_USE_LEAD_MS,
   keepFrom,
   MAX_CLIP_S,
   mergePending,
@@ -21,6 +22,7 @@ import {
   safeFileName,
   selectFragments,
   trimEvents,
+  updateAnchor,
   withNeighbours,
   type BufferedFragment,
   type ClipMoment
@@ -168,10 +170,12 @@ test('deux enregistreurs dans la fenêtre : jamais mélangés, celui du dernier 
   assert.equal(pickRecorder(list, 100_000, 120_000, 110_000), null)
 })
 
-test('tampon : garde before + after + marge, et tout ce qu’un clip en cours utilise', () => {
+test('tampon : garde before + after + marge, et les fragments avant un clip en cours (image clé + voisin)', () => {
   assert.equal(keepFrom(T, W, []), T - 35_000)
-  assert.equal(keepFrom(T, W, [T - 90_000, T - 50_000]), T - 90_000)
+  assert.equal(keepFrom(T, W, [T - 90_000, T - 50_000]), T - 90_000 - IN_USE_LEAD_MS)
   assert.equal(keepFrom(T, W, [T - 1_000]), T - 35_000)
+  // Un clip long (début à T - 32 s) garde bien son image clé 2 s plus tôt et son fragment voisin.
+  assert.equal(keepFrom(T, W, [T - 32_000]), T - 32_000 - IN_USE_LEAD_MS)
 })
 
 test('rétention : les plus vieux d’abord, jamais un épinglé ni le clip qui vient d’arriver', () => {
@@ -275,3 +279,21 @@ test('rétention : un film ne compte pas dans la limite et ne part jamais tout s
   assert.deepEqual(clipsToPurge(clips, 150), ['a'])
   assert.deepEqual(clipsToPurge(clips, 0), ['a', 'b'])
 })
+
+test('horloge du flux (updateAnchor) : démarrage lent de FFmpeg (> 3 s) recalé au 1er fragment, sans dérive ensuite', () => {
+  const start = 100_000
+  const initialAnchor = start + 3_000
+  // FFmpeg met 8 s à livrer le 1er fragment (endS = 2 s) : l'ancre passe à 106 000 au lieu de rester figée à 103 000.
+  const a0 = updateAnchor(initialAnchor, start + 8_000, 2, true)
+  assert.equal(a0, 106_000)
+  // Le 2e fragment (endS = 4 s) arrive 1,5 s plus tard (retard d'encodage sur le 1er) : l'ancre recule de 500 ms.
+  const a1 = updateAnchor(a0, start + 9_500, 4, false)
+  assert.equal(a1, 105_500)
+  // Le 3e fragment (endS = 6 s) arrive un peu en retard (sursaut CPU) : l'ancre ne glisse jamais vers l'avant.
+  const a2 = updateAnchor(a1, start + 12_200, 6, false)
+  assert.equal(a2, 105_500)
+  // Côté Chrome (isFirstEngine = false) : même règle (recule si lag < 0, stable sinon).
+  assert.equal(updateAnchor(start, start + 1_800, 2, false), start - 200)
+  assert.equal(updateAnchor(start, start + 2_500, 2, false), start)
+})
+

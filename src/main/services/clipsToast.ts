@@ -1,5 +1,5 @@
 import { BrowserWindow, screen } from 'electron'
-import { markOverlay } from '../windows'
+import { markAuxiliary } from '../windows'
 
 // Pastille « Clip gardé » : le raccourci se presse en plein jeu, Player X est derrière. Fenêtre sans clic, jamais filmée.
 
@@ -48,7 +48,7 @@ export function showClipToast(text: string, ok: boolean, displayId: number, opts
     title: 'Player X · clip',
     webPreferences: { sandbox: true, contextIsolation: true, devTools: false }
   })
-  markOverlay(w)
+  markAuxiliary(w)
   w.setAlwaysOnTop(true, 'screen-saver')
   w.setIgnoreMouseEvents(true)
   w.setContentProtection(true)

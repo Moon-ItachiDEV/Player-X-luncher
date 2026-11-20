@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { open, type FileHandle } from 'node:fs/promises'
+import { open, rename, type FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseFlat, readBoxes, type ClipTrack, type FlatPlan } from './fmp4'
 import type { ShareSource } from './sharePlan'
@@ -8,6 +8,34 @@ import type { ShareSource } from './sharePlan'
 // un nom de fichier libre. Les calculs (boîtes MP4, plans, coupes) sont dans fmp4.ts ; ici, seulement les lectures et les
 // écritures. Sans Electron et sans état : chaque fonction reçoit tout ce dont elle a besoin, et se teste sur de vrais
 // fichiers dans le dossier temporaire (`npm test -- clipsFiles`).
+
+const RENAME_LOCKED = new Set(['EPERM', 'EBUSY', 'EACCES'])
+const waitMs = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Renomme un fichier (ex. `.mp4.part` → `.mp4`) en réessayant quand Windows/un antivirus le tient un instant juste après
+ * fermeture par FFmpeg ou Node (EPERM, EBUSY, EACCES).
+ */
+export async function renameWithRetry(
+  from: string,
+  to: string,
+  opts: { attempts?: number; delayMs?: number; wait?: (ms: number) => Promise<void>; doRename?: (a: string, b: string) => Promise<void> } = {}
+): Promise<void> {
+  const attempts = opts.attempts ?? 10
+  const delayMs = opts.delayMs ?? 300
+  const wait = opts.wait ?? waitMs
+  const doRename = opts.doRename ?? rename
+  for (let i = 1; ; i++) {
+    try {
+      await doRename(from, to)
+      return
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException | null)?.code ?? ''
+      if (i >= attempts || !RENAME_LOCKED.has(code)) throw e
+      await wait(delayMs)
+    }
+  }
+}
 
 // ---------- écrire ----------
 

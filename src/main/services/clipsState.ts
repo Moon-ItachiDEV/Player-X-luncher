@@ -49,6 +49,8 @@ export interface Recorder {
   ended: boolean
   /** Arrêt demandé pour repartir tout de suite avec d'autres réglages. */
   restartNow: boolean
+  /** Arrêt causé par un problème disque (tampon lent ou écriture refusée) : recul progressif sans blâmer l'encodeur. */
+  diskError?: string
   onEnded?: () => void
   /** Bêta 42 : la page n'enregistre que le son (l'image vient du moteur). */
   audioOnly?: boolean
@@ -170,7 +172,7 @@ export function stateNow(): ClipsState {
   const c = capture
   const rec = c.rec
   // Bêta 42 : l'image peut venir du moteur (c.eng), le son de la page (c.rec).
-  const video = c.eng ?? rec
+  const video = c.eng ?? (rec && !rec.audioOnly ? rec : null)
   const problems = [c.failure, rec?.audioError, hotkeyError, lastProblem].filter(Boolean)
   return {
     status: c.stopping || video || (!c.failure && !c.restartTimer) ? 'recording' : 'error',

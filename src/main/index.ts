@@ -43,6 +43,8 @@ import { startSteamUpdates } from './services/steamUpdates'
 import { applyInstallOptions, startTray } from './services/tray'
 import type { ChannelDeps } from './channels/deps'
 import { registerAccountChannels } from './channels/account'
+import { registerClipsChannels } from './channels/clips'
+import { registerCs2OverlayChannels } from './channels/cs2Overlay'
 import { registerEditChannels } from './channels/edit'
 import { registerFriendChannels } from './channels/friends'
 import { registerLibraryChannels } from './channels/library'
@@ -95,6 +97,8 @@ function registerIpc(): void {
   registerFriendChannels(d)
   registerAccountChannels(d)
   registerPlayChannels(d)
+  registerClipsChannels()
+  registerCs2OverlayChannels()
   registerEditChannels()
   registerPcChannels()
   registerMajChannels()

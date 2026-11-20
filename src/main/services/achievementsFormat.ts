@@ -30,6 +30,8 @@ export type PlayerResult =
   | { kind: 'none' }
   /** Clé Web API refusée. */
   | { kind: 'key' }
+  /** Steam limite temporairement les requêtes (HTTP 429). */
+  | { kind: 'rate-limit' }
   | { kind: 'error' }
 
 const str = (v: unknown, max = 300): string => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '')
@@ -43,6 +45,7 @@ const httpsUrl = (v: unknown): string | undefined => {
  * 400 « Requested app has no stats » pour un jeu sans succès, et 403 sans JSON pour une clé refusée.
  */
 export function parsePlayer(status: number, body: unknown): PlayerResult {
+  if (status === 429) return { kind: 'rate-limit' }
   const ps = (body as { playerstats?: { success?: unknown; error?: unknown; achievements?: unknown } } | null)?.playerstats
   const error = str(ps?.error)
   if (/not public/i.test(error)) return { kind: 'private' }
@@ -220,3 +223,30 @@ export function buildOverview(
     average: started.length ? Math.round((started.reduce((n, g) => n + g.unlocked / g.total, 0) / started.length) * 100) : 0
   }
 }
+
+/**
+ * Jeux à relire pour les alertes de succès rares : seulement ceux joués récemment (ou dont le temps de jeu Steam a
+ * bougé depuis le relevé précédent), triés du plus récent au plus ancien et bornés. Évite de balayer tout l'historique
+ * du compte Steam toutes les heures.
+ */
+export function selectScanGames<T extends { appId: string; minutes: number; last: number }>(
+  owned: T[],
+  existing: Record<string, GameSummary>,
+  now: number,
+  summaryMaxAgeMs: number,
+  maxGames = 15,
+  recentMs = 30 * 24 * 3600_000
+): T[] {
+  return owned
+    .filter((g) => {
+      if (g.minutes <= 0) return false
+      const s = existing[g.appId]
+      const recent = g.last > 0 && now - g.last <= recentMs
+      const moved = !!s && s.minutes !== g.minutes
+      if (!recent && !moved) return false
+      return !s || s.minutes !== g.minutes || now - s.at > summaryMaxAgeMs
+    })
+    .sort((a, b) => b.last - a.last || b.minutes - a.minutes)
+    .slice(0, maxGames)
+}
+

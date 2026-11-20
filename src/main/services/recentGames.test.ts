@@ -17,6 +17,7 @@ test('argument --launch : seulement un identifiant de jeu bien formé', () => {
   assert.equal(launchArgOf(['Player X.exe', '--launch=steam:730']), 'steam:730')
   assert.equal(launchArgOf(['x', '--launch=ea:Origin.OFR.50.0005577']), 'ea:Origin.OFR.50.0005577')
   assert.equal(launchArgOf(['x', '--launch=epic:Fortnite']), 'epic:Fortnite')
+  assert.equal(launchArgOf(['x', '--launch=gog:1495134320']), 'gog:1495134320')
   assert.equal(launchArgOf(['x', '--hidden']), null)
   assert.equal(launchArgOf(['x', '--launch=']), null)
   assert.equal(launchArgOf(['x', '--launch=steam:730 --evil']), null)
@@ -25,10 +26,10 @@ test('argument --launch : seulement un identifiant de jeu bien formé', () => {
 })
 
 test('jeux récents : installés et déjà joués, du plus récent au plus ancien, 5 au plus', () => {
-  const list = [g('steam:1', 10), g('steam:2', 50), g('steam:3'), g('steam:4', 30, true), g('epic:A', 40), g('steam:5', 20), g('steam:6', 5), g('steam:7', 60)]
+  const list = [g('steam:1', 10), g('gog:1495134320', 55), g('steam:2', 50), g('steam:3'), g('steam:4', 30, true), g('epic:A', 40), g('steam:5', 20), g('steam:6', 5), g('steam:7', 60)]
   assert.deepEqual(
     recentGames(list).map((x) => x.id),
-    ['steam:7', 'steam:2', 'epic:A', 'steam:5', 'steam:1']
+    ['steam:7', 'gog:1495134320', 'steam:2', 'epic:A', 'steam:5']
   )
   assert.deepEqual(recentGames([]), [])
 })

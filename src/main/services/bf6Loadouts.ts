@@ -3,12 +3,12 @@
 import { randomBytes } from 'node:crypto'
 import { cleanLoadouts, withLoadout, withoutLoadout, type Bf6Loadout } from '@shared/bf6Loadouts'
 import { cleanMyWeapons, learnWeapon, type MyWeapon } from '@shared/bf6Workshop'
-import { getKv, setKv } from '../db'
+import { getKv, setKv, type KvKey } from '../db'
 import { getSettings } from './settings'
 
 const demo = (): boolean => getSettings().demoMode
-const key = (): string => (demo() ? 'demoBf6Loadouts' : 'bf6Loadouts')
-const weaponsKey = (): string => (demo() ? 'demoBf6MyWeapons' : 'bf6MyWeapons')
+const key = (): KvKey => (demo() ? 'demoBf6Loadouts' : 'bf6Loadouts')
+const weaponsKey = (): KvKey => (demo() ? 'demoBf6MyWeapons' : 'bf6MyWeapons')
 
 export function getBf6Loadouts(): Bf6Loadout[] {
   return cleanLoadouts(getKv<unknown>(key(), []))

@@ -54,6 +54,8 @@ test('reprise : une base saine est reprise en entier', async () => {
   assert.deepEqual(r.counts, N)
   assert.ok(checkOk(r.db))
   assert.equal(count(r.db, 'games'), N.games)
+  const idx = (r.db.exec("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%' ORDER BY name")[0]?.values ?? []).map((x) => x[0])
+  assert.deepEqual(idx, ['idx_launches_game', 'idx_sessions_game'])
   r.db.close()
 })
 
@@ -100,8 +102,27 @@ test('reprise : un ancien schéma sans exe_path', async () => {
   old.close()
   assert.ok(r)
   assert.deepEqual(r.counts, { kv: 1, games: 1, launches: 0, sessions: 0 })
-  assert.equal(r.db.exec("SELECT exe_path FROM games WHERE id = 'steam:1'")[0].values[0][0], null)
+  assert.equal(r.db.exec("SELECT exe_path, launch_args, work_dir FROM games WHERE id = 'steam:1'")[0].values[0][0], null)
   assert.ok(checkOk(r.db))
+  r.db.close()
+})
+
+test('reprise : les arguments et le dossier de travail des jeux GOG sont gardés', async () => {
+  const SQL = await load()
+  const d = new SQL.Database()
+  ensureSchema(d)
+  d.run(
+    'INSERT INTO games (id, store, store_id, name, install_dir, exe_path, launch_args, work_dir) VALUES (?,?,?,?,?,?,?,?)',
+    ['gog:1495134320', 'gog', '1495134320', 'The Witcher 3', 'C:\\GOG\\Witcher 3', 'C:\\GOG\\Witcher 3\\bin\\x64\\witcher3.exe', JSON.stringify(['-dx12']), 'C:\\GOG\\Witcher 3\\bin\\x64']
+  )
+  const r = salvage(await load(), SQL, d.export())
+  d.close()
+  assert.ok(r)
+  assert.deepEqual(r.db.exec("SELECT exe_path, launch_args, work_dir FROM games WHERE id = 'gog:1495134320'")[0].values[0], [
+    'C:\\GOG\\Witcher 3\\bin\\x64\\witcher3.exe',
+    '["-dx12"]',
+    'C:\\GOG\\Witcher 3\\bin\\x64'
+  ])
   r.db.close()
 })
 

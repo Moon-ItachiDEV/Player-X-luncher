@@ -6,8 +6,8 @@ import type { Game } from '@shared/types'
 export const LAUNCH_ARG = '--launch='
 export const RECENT_MAX = 5
 
-/** Identifiant de jeu de Player X : `steam:730`, `epic:Fortnite`, `ea:Origin.OFR.50.0005577`. Jamais d'espace ni de guillemet. */
-const GAME_ID = /^(steam|epic|ea):[\w.:-]{1,200}$/
+/** Identifiant de jeu de Player X : `steam:730`, `epic:Fortnite`, `ea:Origin.OFR.50.0005577`, `gog:1207664663`. Jamais d'espace ni de guillemet. */
+const GAME_ID = /^(steam|epic|ea|gog):[\w.:-]{1,200}$/
 
 /** Jeu demandé par `--launch=<id>`, ou null (argument absent ou mal formé). */
 export function launchArgOf(argv: readonly string[]): string | null {

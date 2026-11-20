@@ -1,7 +1,7 @@
 // Règles de secours de la base (sans Electron ni fichiers, testées par dbRescue.test.ts) : que faire de launcher.db,
 // launcher.db.tmp et launcher.db.bak selon leur état. db.ts mesure les états et applique le plan.
 
-export type FileState = 'absent' | 'vide' | 'illisible' | 'ok'
+export type FileState = 'absent' | 'vide' | 'illisible' | 'verrouille' | 'ok'
 export interface RescueFacts {
   main: FileState
   tmp: FileState
@@ -27,6 +27,17 @@ export interface RescuePlan {
 
 const BAD = (s: FileState): boolean => s === 'vide' || s === 'illisible'
 
+/**
+ * Fichiers tenus par un autre programme (antivirus, sauvegarde) qu'il est interdit d'écraser ou d'ignorer :
+ * - le principal dès qu'il est verrouillé (il est peut-être parfaitement sain : ni mis de côté, ni remplacé par .bak ou du vide) ;
+ * - la copie de secours quand ni le principal ni le provisoire ne sont sains (elle contient peut-être toutes les données).
+ */
+export function lockedFiles(f: RescueFacts): ('main' | 'bak')[] {
+  if (f.main === 'verrouille') return f.bak === 'verrouille' ? ['main', 'bak'] : ['main']
+  if (f.main !== 'ok' && f.tmp !== 'ok' && f.bak === 'verrouille') return ['bak']
+  return []
+}
+
 export function rescuePlan(f: RescueFacts): RescuePlan {
   const source: RescuePlan['source'] = f.main === 'ok' ? 'main' : f.tmp === 'ok' ? 'tmp' : f.bak === 'ok' ? 'bak' : 'new'
   const aside: RescuePlan['aside'] = []
@@ -39,7 +50,7 @@ export function rescuePlan(f: RescueFacts): RescuePlan {
     if (f.bak === 'illisible') salvage.push('bak')
   }
   const notice: RescuePlan['notice'] = source === 'bak' ? 'secours' : source === 'new' && (BAD(f.main) || BAD(f.bak)) ? 'zero' : null
-  const main = f.main === 'absent' ? 'absente' : f.main
+  const main = f.main === 'absent' ? 'absente' : f.main === 'verrouille' ? 'verrouillée' : f.main
   let log: string | null = null
   if (source === 'tmp') log = `Base principale ${main} : reprise depuis le dernier fichier provisoire (launcher.db.tmp).`
   else if (source === 'bak') log = `Base principale ${main} : reprise depuis la copie de secours. Les changements récents peuvent manquer.`

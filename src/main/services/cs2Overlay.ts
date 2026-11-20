@@ -2,11 +2,11 @@ import { join } from 'node:path'
 import { app, BrowserWindow, globalShortcut, screen, type IpcMainInvokeEvent } from 'electron'
 import { CS2_GAME_ID } from '@shared/cs2'
 import type { Cs2OverlayConfig, Cs2OverlayMoment, Cs2OverlayPlace, Cs2OverlayThree } from '@shared/types'
+import { UserError } from '../errors'
 import { hotkeyRefusal } from '../hotkeys'
-import { handle } from '../ipc'
-import { appWindows, isOverlay, mainWindow, markOverlay, sendTo } from '../windows'
+import { appWindows, isAuxiliary, isOverlay, mainWindow, markOverlay, sendTo } from '../windows'
 import { cs2IsRunning, onCs2Running } from './cs2Live'
-import { gamePids, pidAlive, pollNow } from './playtime'
+import { gamePids, onPlaytimeChange, otherPlayerXRunning, pidAlive, pollNow } from './playtime'
 import { getSettings, saveSettings } from './settings'
 import { OVERLAY_POS_KEY } from './settingsRules'
 
@@ -51,8 +51,6 @@ const THREE: readonly string[] = ['etendard', 'viseur', 'regie']
 const MOMENTS: readonly string[] = ['buy', 'pill', 'half', 'end']
 let editing: { style: Cs2OverlayThree; moment: Cs2OverlayMoment } | undefined
 let editTimer: ReturnType<typeof setTimeout> | undefined
-/** Échap pris pendant l'aperçu et le réglage seulement : il les ferme tout de suite. */
-let escTaken = false
 
 /** Un réglage enregistré avant la 0.6.1 peut encore dire 'a' ou 'b' (Apple, Verre) : il devient le style Player X. */
 function overlayStyle(s: string): Cs2OverlayConfig['style'] {
@@ -78,7 +76,8 @@ function send(): void {
 }
 
 function wanted(): boolean {
-  return !!editing || (config().style !== 'off' && (cs2IsRunning() || previewAt !== undefined))
+  if (editing || previewAt !== undefined) return editing ? true : config().style !== 'off'
+  return config().style !== 'off' && cs2IsRunning() && !otherPlayerXRunning()
 }
 
 /** Pendant le réglage, la fenêtre prend la souris et le clavier ; sinon les clics traversent jusqu'au jeu. */
@@ -91,25 +90,6 @@ function syncEditWin(): void {
   } else {
     win.setIgnoreMouseEvents(true)
     win.setFocusable(false)
-  }
-}
-
-/** Échap ferme l'aperçu ou le réglage : pris seulement pendant ces moments-là, rendu ensuite aux autres applis. */
-function syncEsc(): void {
-  const want = previewAt !== undefined || !!editing
-  if (want === escTaken) return
-  if (want) {
-    try {
-      escTaken = globalShortcut.register('Escape', () => {
-        if (editing) endEdit()
-        else endPreview()
-      })
-    } catch {
-      escTaken = false
-    }
-  } else {
-    globalShortcut.unregister('Escape')
-    escTaken = false
   }
 }
 
@@ -225,7 +205,6 @@ export function syncCs2Overlay(): void {
   syncEditWin()
   syncHotkey()
   syncExitWatch()
-  syncEsc()
 }
 
 function endPreview(): void {
@@ -245,7 +224,7 @@ function preview(): void {
 }
 
 function startEdit(style: unknown, moment: unknown): void {
-  if (typeof style !== 'string' || !THREE.includes(style) || typeof moment !== 'string' || !MOMENTS.includes(moment)) throw new Error('Réglage inconnu.')
+  if (typeof style !== 'string' || !THREE.includes(style) || typeof moment !== 'string' || !MOMENTS.includes(moment)) throw new UserError('Réglage inconnu.')
   clearTimeout(previewTimer)
   previewAt = undefined
   hidden = false
@@ -272,55 +251,80 @@ function fromEditor(e: IpcMainInvokeEvent): boolean {
 }
 
 function place(key: unknown, value: unknown): void {
-  if (typeof key !== 'string' || !OVERLAY_POS_KEY.test(key)) throw new Error('Bloc inconnu.')
+  if (typeof key !== 'string' || !OVERLAY_POS_KEY.test(key)) throw new UserError('Bloc inconnu.')
   const pos = { ...(getSettings().overlayPos ?? {}) }
   if (value === null) delete pos[key]
   else if (Array.isArray(value)) pos[key] = value as Cs2OverlayPlace
-  else throw new Error('Place illisible.')
+  else throw new UserError('Place illisible.')
   // saveSettings la nettoie (bornes, arrondis) ; la page reçoit la place gardée.
   saveSettings({ overlayPos: pos })
   send()
 }
 
 function editStyle(style: unknown): void {
-  if (!editing || typeof style !== 'string' || !THREE.includes(style)) throw new Error('Style inconnu.')
+  if (!editing || typeof style !== 'string' || !THREE.includes(style)) throw new UserError('Style inconnu.')
   editing = { ...editing, style: style as Cs2OverlayThree }
   // Overlay allumé : le style essayé devient le sien. Coupé : il reste coupé (Paramètres garde le choix pour plus tard).
   if (getSettings().cs2Overlay !== 'off') saveSettings({ cs2Overlay: editing.style })
   send()
 }
 
-export function startCs2Overlay(): void {
-  handle('cs2:overlay-config', () => config())
-  handle('cs2:overlay-preview', () => preview())
-  handle('cs2:overlay-edit', (e, style: unknown, moment: unknown) => {
-    if (win && e.sender === win.webContents) throw new Error('Appel refusé.')
-    startEdit(style, moment)
-  })
-  handle('cs2:overlay-place', (e, key: unknown, value: unknown) => {
-    if (!fromEditor(e)) throw new Error('Appel refusé.')
-    place(key, value)
-  })
-  handle('cs2:overlay-edit-style', (e, style: unknown) => {
-    if (!fromEditor(e)) throw new Error('Appel refusé.')
-    editStyle(style)
-  })
-  handle('cs2:overlay-edit-end', (e) => {
-    if (!fromEditor(e)) throw new Error('Appel refusé.')
-    endEdit()
-  })
-  handle('cs2:overlay-hotkey-check', (_e, accel: unknown) => checkHotkey(accel))
-  handle('cs2:overlay-ready', (e) => {
-    if (!win || win.isDestroyed() || e.sender !== win.webContents || win.isVisible()) return
-    // Réglage : la fenêtre passe au premier plan pour prendre la souris et le clavier ; sinon elle ne vole jamais le focus.
+export const overlayConfig = (): Cs2OverlayConfig => config()
+export const previewOverlay = (): void => preview()
+export const checkOverlayHotkey = (accel: unknown): string | null => checkHotkey(accel)
+
+export function editOverlay(e: IpcMainInvokeEvent, style: unknown, moment: unknown): void {
+  if (win && e.sender === win.webContents) throw new UserError('Appel refusé.')
+  startEdit(style, moment)
+}
+
+export function placeOverlay(e: IpcMainInvokeEvent, key: unknown, value: unknown): void {
+  if (!fromEditor(e)) throw new UserError('Appel refusé.')
+  place(key, value)
+}
+
+export function editOverlayStyle(e: IpcMainInvokeEvent, style: unknown): void {
+  if (!fromEditor(e)) throw new UserError('Appel refusé.')
+  editStyle(style)
+}
+
+export function endOverlayEdit(e: IpcMainInvokeEvent): void {
+  if (!fromEditor(e)) throw new UserError('Appel refusé.')
+  endEdit()
+}
+
+export function overlayReady(e: IpcMainInvokeEvent): void {
+  if (!win || win.isDestroyed() || e.sender !== win.webContents || win.isVisible()) return
+  // Réglage : la fenêtre passe au premier plan pour prendre la souris et le clavier ; sinon elle ne vole jamais le focus.
+  if (editing) {
+    win.show()
+    win.focus()
+  } else win.showInactive()
+}
+
+/** Échap dans la fenêtre de Player X ferme l'aperçu (ou le réglage) sans jamais bloquer Échap dans les autres applis Windows. */
+function attachLocalEsc(w: BrowserWindow): void {
+  if (w.isDestroyed() || isOverlay(w) || isAuxiliary(w)) return
+  w.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown' || input.key !== 'Escape') return
     if (editing) {
-      win.show()
-      win.focus()
-    } else win.showInactive()
+      e.preventDefault()
+      endEdit()
+    } else if (previewAt !== undefined) {
+      e.preventDefault()
+      endPreview()
+    }
+  })
+}
+
+export function startCs2Overlay(): void {
+  for (const w of appWindows()) attachLocalEsc(w)
+  app.on('browser-window-created', (_e, w) => {
+    setImmediate(() => attachLocalEsc(w))
   })
   // Player X au premier plan (fenêtre principale) : l'overlay ne la couvre pas. Il revient quand on retourne au jeu.
   app.on('browser-window-focus', (_e, w) => {
-    if (isOverlay(w) || appFocused) return
+    if (isOverlay(w) || isAuxiliary(w) || appFocused) return
     appFocused = true
     send()
   })
@@ -337,6 +341,7 @@ export function startCs2Overlay(): void {
     if (now) hidden = false
     syncCs2Overlay()
   })
+  onPlaytimeChange(() => syncCs2Overlay())
   app.on('will-quit', () => globalShortcut.unregisterAll())
   syncCs2Overlay()
 }
@@ -350,5 +355,4 @@ export function closeCs2Overlay(): void {
   destroy()
   syncHotkey()
   syncExitWatch()
-  syncEsc()
 }

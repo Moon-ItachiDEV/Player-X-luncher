@@ -6,7 +6,7 @@ import { app, screen } from 'electron'
 import { rateBetween } from '@shared/clipPace'
 import { CS2_GAME_ID } from '@shared/cs2'
 import { getKv, setKv } from '../db'
-import { QUALITY } from './clipsPlan'
+import { QUALITY, restartDelayMs } from './clipsPlan'
 import { emitChanged, thumbPath } from './clipsIndex'
 import { errText, log } from './clipsLog'
 import { clipSettings } from './clipsSettings'
@@ -210,6 +210,16 @@ function engineExited(c: Capture, rec: Recorder, code: number | null): void {
   const attempt = rec.engine!.attempt
   if (rec.restartNow) {
     startEngine(c)
+    return
+  }
+  if (rec.diskError) {
+    if (Date.now() - rec.startedAt > 30_000 && rec.seq > 0) c.attempts = 0
+    const delay = restartDelayMs(c.attempts++)
+    c.failure = `Capture interrompue (${rec.diskError}) : nouvel essai dans ${Math.max(1, Math.round(delay / 1000))} s.`
+    log(c.failure)
+    c.engTimer = setTimeout(() => startEngine(c), delay)
+    recordersChanged()
+    emitState()
     return
   }
   if (!rec.init) {

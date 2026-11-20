@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app, globalShortcut, ipcMain, powerMonitor, protocol, screen, session, type IpcMainEvent } from 'electron'
 import { CS2_GAME_ID } from '@shared/cs2'
@@ -6,17 +6,17 @@ import { cleanName, isBf6Name } from '@shared/text'
 import type { ClipDisplay, ClipSettings, Game } from '@shared/types'
 import { hotkeyRefusal } from '../hotkeys'
 import { hotkeyText } from '@shared/hotkey'
-import { handle } from '../ipc'
+import { UserError } from '../errors'
 import { appWindows } from '../windows'
 import { CLIP_ID, cleanClipSettings, QUALITY } from './clipsPlan'
-import { copyFile, lastTestCopy, shareClip } from './clipsCopy'
-import { applyRetention, clipById, clipIndex, deleteClip, emitChanged, FILMS_DIR, listClips, loadClipIndex, openFolder, pinClip, renameClip, thumbPath, trimClip } from './clipsIndex'
-import { errText, log, logFlushed, logTail } from './clipsLog'
+import { lastTestCopy } from './clipsCopy'
+import { applyRetention, clipById, clipIndex, emitChanged, FILMS_DIR, loadClipIndex, thumbPath } from './clipsIndex'
+import { errText, log, logFlushed } from './clipsLog'
 import { registerClipProtocol, SCHEME } from './clipsProtocol'
 import { filesBusy, filesDone, forgetFiles, serial } from './clipsQueue'
-import { chooseFolder, clipSettings, folderOf, loadClipSettings, resolved, storeClipSettings, usableFolder } from './clipsSettings'
+import { clipSettings, folderOf, loadClipSettings, resolved, storeClipSettings, usableFolder } from './clipsSettings'
 import { cleanShareCopies } from './clipsShare'
-import { bufferRoot, capture, emitState, frags, libraryRunning, loadLastGame, noteGamePace, pendings, recorders, setCapture, setHotkeyError, setLastProblem, setLibraryRunning, setTestRunning, sleep, stateNow, testRunning, thumbAllowed, type Capture, type Recorder, type RunningGame } from './clipsState'
+import { bufferRoot, capture, emitState, frags, libraryRunning, loadLastGame, noteGamePace, pendings, recorders, setCapture, setHotkeyError, setLastProblem, setLibraryRunning, setTestRunning, sleep, testRunning, thumbAllowed, type Capture, type Recorder, type RunningGame } from './clipsState'
 import { fromRecorder, launchRecorder, onRecordersChanged, onRecorderStopped, onVideoHeader, openWindow, recorderLost, send, targetDisplayId } from './clipsWindow'
 import { clearBuffer, pruneBuffer } from './clipsBuffer'
 import { decideEngine, onChunk } from './clipsEngine'
@@ -76,6 +76,11 @@ export function gameRunning(): boolean {
   return capture !== null || libraryRunning.length > 0 || cs2IsRunning()
 }
 
+/** Vrai tant qu'un clip attend d'être fermé ou est en cours d'écriture sur le disque. */
+export function clipsBusy(): boolean {
+  return filesBusy() || pendings.size > 0
+}
+
 // ---------- pour la fabrication des films (services/editFilm.ts) ----------
 
 /** Les clips qui entrent dans un film, l'endroit où écrire un film et son rangement dans la liste : ces fonctions sont dans clipsIndex.ts. */
@@ -86,7 +91,7 @@ export function clipAfterSetting(): number {
   return clipSettings().after
 }
 
-function displays(): ClipDisplay[] {
+export function clipDisplays(): ClipDisplay[] {
   const primary = screen.getPrimaryDisplay().id
   return screen.getAllDisplays().map((d, i) => ({
     id: d.id,
@@ -144,7 +149,7 @@ function hotkeyHint(rec: Recorder): void {
 
 function checkHotkey(accel: unknown): void {
   const refusal = hotkeyRefusal(accel, hotkeyNow, [getSettings().overlayHotkey])
-  if (refusal) throw new Error(refusal)
+  if (refusal) throw new UserError(refusal)
 }
 
 function restartRecorder(reason: string): void {
@@ -167,7 +172,7 @@ function restartRecorder(reason: string): void {
   send(c, { type: 'stop', recId: rec.id })
 }
 
-function saveClipSettings(patch: unknown): ClipSettings {
+export function saveClipSettings(patch: unknown): ClipSettings {
   const before = clipSettings()
   const p: Record<string, unknown> = patch && typeof patch === 'object' && !Array.isArray(patch) ? { ...(patch as Record<string, unknown>) } : {}
   // Le dossier vient de la fenêtre native (clipsChooseFolder) ; la page peut seulement revenir à celui par défaut.
@@ -392,23 +397,6 @@ function registerRecorderIpc(): void {
 
 // ---------- branchements ----------
 
-function registerApi(): void {
-  handle('clips:list', () => listClips())
-  handle('clips:delete', (_e, id: unknown) => deleteClip(id))
-  handle('clips:rename', (_e, id: unknown, name: unknown) => renameClip(id, name))
-  handle('clips:pin', (_e, id: unknown, on: unknown) => pinClip(id, on))
-  handle('clips:open-folder', (_e, id: unknown) => openFolder(id))
-  handle('clips:copy-file', (_e, id: unknown) => copyFile(id))
-  handle('clips:share', (_e, id: unknown) => shareClip(id))
-  handle('clips:trim', (_e, id: unknown, startS: unknown, endS: unknown) => trimClip(id, startS, endS))
-  handle('clips:state', () => stateNow())
-  handle('clips:settings-get', () => resolved(clipSettings()))
-  handle('clips:settings-save', (_e, patch: unknown) => saveClipSettings(patch))
-  handle('clips:choose-folder', () => chooseFolder())
-  handle('clips:displays', () => displays())
-  handle('clips:log-tail', () => logTail())
-}
-
 /** Fichiers laissés par une fermeture brutale : le tampon et les clips à moitié écrits. */
 async function cleanLeftovers(): Promise<void> {
   await rm(bufferRoot(), { recursive: true, force: true }).catch(() => {})
@@ -438,7 +426,6 @@ export function startClips(): void {
     return c ? { video: c.file, thumb: thumbPath(c.id) } : undefined
   }, (e) => log(`pxclip : ${errText(e)}`), musicServe)
   registerRecorderIpc()
-  registerApi()
   void cleanLeftovers()
   started = true
 
@@ -469,8 +456,13 @@ export function startClips(): void {
       if (windowsGone) sync()
     })
     if (windowsGone) {
-      windowsGone = false
-      setImmediate(sync)
+      // Attendre le tick suivant : markOverlay / markAuxiliary est appelé juste après new BrowserWindow().
+      setImmediate(() => {
+        if (appWindows().length > 0) {
+          windowsGone = false
+          sync()
+        }
+      })
     }
   })
   // L'appli ne quitte qu'une fois les derniers clips écrits (8 s au plus).

@@ -355,22 +355,37 @@ export const psQuote = (s: string): string => `'${s.replace(/['‘’‚‛]/g, 
 export const NVIDIA_SETUP_ARGS = ['-s', '-noreboot', '-noeula', '-nofinish', '-passive']
 
 /**
- * Le script du processus administrateur (une seule demande de Windows). Il revérifie la signature, crée le point de
- * restauration (ou s'arrête s'il échoue, sauf si on a choisi de s'en passer), lance l'installeur et attend sa fin. Il écrit
- * son résultat en JSON dans `resultFile`. Aucun chemin ni texte ne vient de la page : tout est fabriqué ici.
+ * Le script du processus administrateur (une seule demande de Windows). Il signale son démarrage (`startFile`), copie
+ * l'installeur dans un dossier neuf sous ProgramData accessible aux seuls administrateurs et à SYSTEM (aucun remplacement
+ * possible pendant le point de restauration), revérifie la signature complète (O et CN NVIDIA Corporation) sur cette copie,
+ * crée le point de restauration (ou s'arrête s'il échoue, sauf si on a choisi de s'en passer), lance la copie verrouillée
+ * et nettoie le dossier temporaire à la fin. Il écrit son résultat en JSON dans `resultFile`. Aucun chemin ni texte ne vient
+ * de la page : tout est fabriqué ici.
  */
-export function installScript(o: { exe: string; resultFile: string; version: string; restorePoint: boolean }): string {
+export function installScript(o: { exe: string; resultFile: string; version: string; restorePoint: boolean; startFile?: string }): string {
   const args = NVIDIA_SETUP_ARGS.map(psQuote).join(',')
   return [
     "$ErrorActionPreference='Stop'",
-    `$exe=${psQuote(o.exe)}`,
+    "$ProgressPreference='SilentlyContinue'",
+    `$src=${psQuote(o.exe)}`,
     `$res=${psQuote(o.resultFile)}`,
-    "function Fin($h){ $h | ConvertTo-Json -Compress | Set-Content -LiteralPath $res -Encoding UTF8; exit 0 }",
+    ...(o.startFile ? [`$started=${psQuote(o.startFile)}`] : []),
+    '$safeDir=$null',
+    "function Fin($h){ if($safeDir -and (Test-Path -LiteralPath $safeDir)){ Remove-Item -LiteralPath $safeDir -Recurse -Force -ErrorAction SilentlyContinue }; $h | ConvertTo-Json -Compress | Set-Content -LiteralPath $res -Encoding UTF8; exit 0 }",
     "$r=@{ step='signature' }",
     'try {',
+    ...(o.startFile ? ["  Set-Content -LiteralPath $started -Value '1' -Encoding ASCII -ErrorAction SilentlyContinue"] : []),
+    "  $safeDir=Join-Path $env:ProgramData ('PlayerX-NVIDIA-' + [guid]::NewGuid().ToString('N'))",
+    '  New-Item -ItemType Directory -Path $safeDir -Force | Out-Null',
+    '  $acl=New-Object Security.AccessControl.DirectorySecurity',
+    '  $acl.SetAccessRuleProtection($true,$false)',
+    "  foreach($sid in 'S-1-5-18','S-1-5-32-544'){ $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))) }",
+    '  Set-Acl -LiteralPath $safeDir -AclObject $acl',
+    '  $exe=Join-Path $safeDir ([IO.Path]::GetFileName($src))',
+    '  Copy-Item -LiteralPath $src -Destination $exe -Force',
     '  $s=Get-AuthenticodeSignature -LiteralPath $exe',
     "  $sub=''; if($s.SignerCertificate){ $sub=$s.SignerCertificate.Subject }",
-    "  if([string]$s.Status -ne 'Valid' -or $sub -notmatch '(^|, )O=NVIDIA Corporation(,|$)'){ $r.error='signature'; Fin $r }",
+    "  if([string]$s.Status -ne 'Valid' -or $sub -notmatch '(^|,\\s*)O=NVIDIA Corporation(,|$)' -or $sub -notmatch '(^|,\\s*)CN=NVIDIA Corporation(,|$)'){ $r.error='signature'; Fin $r }",
     "  $r.restore='skipped'",
     ...(o.restorePoint
       ? [
@@ -393,6 +408,7 @@ export function installScript(o: { exe: string; resultFile: string; version: str
 /** Le script du processus ordinaire : il demande l'élévation (fenêtre de Windows) et attend. Le script administrateur arrive par PX_ELEV. */
 export const ELEVATE_SCRIPT = [
   "$ErrorActionPreference='Stop'",
+  "$ProgressPreference='SilentlyContinue'",
   'try {',
   "  $ps=Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'",
   "  $p=Start-Process -FilePath $ps -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$env:PX_ELEV",

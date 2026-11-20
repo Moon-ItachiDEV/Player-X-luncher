@@ -21,6 +21,7 @@ const MAX_OUT = 256 * 1024
 const PS_SCRIPT = String.raw`
 [Console]::OutputEncoding=[Text.Encoding]::UTF8
 $ErrorActionPreference='SilentlyContinue'
+$ProgressPreference='SilentlyContinue'
 $g=@(Get-CimInstance Win32_VideoController | ForEach-Object { [pscustomobject]@{ name=$_.Name; ver=$_.DriverVersion; date=$(if($_.DriverDate){$_.DriverDate.ToString('yyyy-MM-dd')}else{$null}); pnp=$_.PNPDeviceID; maker=$_.AdapterCompatibility } })
 $r=@(Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}' | ForEach-Object { $p=Get-ItemProperty $_.PSPath; if($p.RadeonSoftwareVersion -and $p.MatchingDeviceId){ [pscustomobject]@{ match=[string]$p.MatchingDeviceId; radeon=[string]$p.RadeonSoftwareVersion } } })
 $c=@((Get-CimInstance Win32_SystemEnclosure).ChassisTypes)
@@ -100,6 +101,7 @@ function readWindows(): Promise<WinRead | null> {
     p.stdout?.on('data', (c: string) => {
       if (out.length < MAX_OUT) out += c
     })
+    p.stderr?.resume()
     p.on('error', finish)
     p.on('close', finish)
     p.stdin?.on('error', () => {})

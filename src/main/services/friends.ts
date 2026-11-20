@@ -72,7 +72,7 @@ export async function getSteamProfiles(key: string, ids: string[]): Promise<Stea
   const players: SteamPlayer[] = []
   for (let i = 0; i < ids.length; i += 100) {
     const url = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${encodeURIComponent(key)}&steamids=${ids.slice(i, i + 100).join(',')}`
-    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) })
+    const res = await net.fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT) })
     if (!res.ok) throw new Error(`Steam API ${res.status}`)
     const list = ((await res.json()) as { response?: { players?: unknown } }).response?.players
     for (const p of Array.isArray(list) ? (list as Record<string, unknown>[]) : []) {
@@ -101,7 +101,8 @@ function refreshOwnSteamProfile(account: Account, me: SteamPlayer | undefined): 
 }
 
 async function steamFriends(account: Account, key: string): Promise<Friend[]> {
-  const res = await fetch(`https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=${encodeURIComponent(key)}&steamid=${account.id}&relationship=friend`, {
+  const res = await net.fetch(`https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=${encodeURIComponent(key)}&steamid=${account.id}&relationship=friend`, {
+    cache: 'no-store',
     signal: AbortSignal.timeout(TIMEOUT)
   })
   if (res.status === 401) {
@@ -160,15 +161,23 @@ async function steamFriends(account: Account, key: string): Promise<Friend[]> {
 const PROFILE_TTL = 5 * 60_000
 const profiles = new Map<string, { at: number; p: SteamFriendProfile }>()
 
-async function steamJson(url: string, field = 'response'): Promise<Record<string, unknown> | undefined> {
+interface SteamJsonResult {
+  /** Vrai si Steam a répondu normalement (y compris 401/403 pour un champ privé) ; faux en cas de panne réseau, délai ou 429/5xx. */
+  ok: boolean
+  status?: number
+  data?: Record<string, unknown>
+}
+
+async function steamJson(url: string, field = 'response'): Promise<SteamJsonResult> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) })
-    if (!res.ok) return undefined
+    const res = await net.fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT) })
+    if (res.status === 429 || res.status >= 500) return { ok: false, status: res.status }
+    if (!res.ok) return { ok: true, status: res.status }
     const body = (await res.json()) as Record<string, unknown>
     const v = body?.[field]
-    return v && typeof v === 'object' ? (v as Record<string, unknown>) : undefined
+    return { ok: true, status: res.status, data: v && typeof v === 'object' ? (v as Record<string, unknown>) : undefined }
   } catch {
-    return undefined
+    return { ok: false }
   }
 }
 
@@ -179,7 +188,7 @@ export async function steamFriendProfile(key: string, friendId: string): Promise
   if (hit && Date.now() - hit.at < PROFILE_TTL) return hit.p
   const k = encodeURIComponent(key)
   const base = 'https://api.steampowered.com/IPlayerService'
-  const [level, owned, recent, equipped, badges, summaries, friends] = await Promise.all([
+  const results = await Promise.all([
     steamJson(`${base}/GetSteamLevel/v1/?key=${k}&steamid=${steamId}`),
     steamJson(`${base}/GetOwnedGames/v1/?key=${k}&steamid=${steamId}&include_appinfo=1&include_played_free_games=1`),
     steamJson(`${base}/GetRecentlyPlayedGames/v1/?key=${k}&steamid=${steamId}&count=10`),
@@ -188,9 +197,15 @@ export async function steamFriendProfile(key: string, friendId: string): Promise
     steamJson(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${k}&steamids=${steamId}`),
     steamJson(`https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=${k}&steamid=${steamId}&relationship=friend`, 'friendslist')
   ])
-  const summary = Array.isArray(summaries?.players) ? (summaries.players as Record<string, unknown>[]).find((x) => x?.steamid === steamId) : undefined
-  const p = buildFriendProfile(steamId, level, owned, recent, equipped, { badges, summary, friends: friends?.friends })
-  profiles.set(steamId, { at: Date.now(), p })
+  if (results.every((r) => !r.ok)) {
+    throw new UserError(results.some((r) => r.status === 429) ? 'Steam limite les requêtes : réessaie dans une minute.' : NETWORK_ERROR)
+  }
+  const [level, owned, recent, equipped, badges, summaries, friends] = results
+  const summary = Array.isArray(summaries.data?.players) ? (summaries.data.players as Record<string, unknown>[]).find((x) => x?.steamid === steamId) : undefined
+  const p = buildFriendProfile(steamId, level.data, owned.data, recent.data, equipped.data, { badges: badges.data, summary, friends: friends.data?.friends })
+  // Si la lecture des jeux a échoué (réseau, 429, 5xx), on n'affirme pas que le profil est privé et on ne garde rien en cache.
+  if (!owned.ok) delete p.gamesHidden
+  if (owned.ok && summaries.ok) profiles.set(steamId, { at: Date.now(), p })
   return p
 }
 
@@ -331,13 +346,29 @@ async function psnAuth(npsso: string): Promise<{ accessToken: string }> {
   return keep(tokens)
 }
 
+const PSN_CONCURRENCY = 4
+
+function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    p,
+    new Promise<T>((_, no) => {
+      timer = setTimeout(() => no(new UserError(msg)), ms)
+    })
+  ]).finally(() => clearTimeout(timer))
+}
+
+const isRateLimit = (e: unknown): boolean =>
+  (typeof (e as { status?: unknown })?.status === 'number' && (e as { status: number }).status === 429) ||
+  (typeof (e as { statusCode?: unknown })?.statusCode === 'number' && (e as { statusCode: number }).statusCode === 429) ||
+  (e instanceof Error && /\b429\b|too many requests|rate.?limit/i.test(e.message))
+
 export async function connectPsn(): Promise<Account> {
   const { psnNpsso } = getSettings()
   if (!psnNpsso) throw new Error('Colle ton jeton NPSSO PlayStation dans Paramètres.')
   resetPsn()
   // Sony peut ne jamais répondre : sans limite, le bouton « Connecter » restait sans rien faire
-  const limit = <T>(p: Promise<T>): Promise<T> =>
-    Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error('PlayStation ne répond pas. Vérifie ta connexion, puis réessaie.')), 20_000))])
+  const limit = <T>(p: Promise<T>): Promise<T> => withTimeout(p, 20_000, 'PlayStation ne répond pas. Vérifie ta connexion, puis réessaie.')
   try {
     const auth = await limit(psnAuth(psnNpsso))
     const me = await limit(getProfileFromAccountId(auth, 'me'))
@@ -351,22 +382,37 @@ export async function connectPsn(): Promise<Account> {
 
 /** Amis PlayStation en 30 s au plus : sinon la page Amis attendait Sony indéfiniment. */
 function psnFriends(npsso: string): Promise<Friend[]> {
-  return Promise.race([
-    psnFriendsNow(npsso),
-    new Promise<Friend[]>((_, no) => setTimeout(() => no(new Error('PlayStation ne répond pas. Réessaie plus tard.')), 30_000))
-  ])
+  return withTimeout(psnFriendsNow(npsso), 30_000, 'PlayStation ne répond pas. Réessaie plus tard.')
 }
 
 async function psnFriendsNow(npsso: string): Promise<Friend[]> {
   const auth = await psnAuth(npsso)
   const { friends } = await getUserFriendsAccountIds(auth, 'me', { limit: 50 })
-  return Promise.all(
-    friends.map(async (accountId): Promise<Friend> => {
-      const [profile, presence] = await Promise.all([getProfileFromAccountId(auth, accountId), getBasicPresence(auth, accountId).catch(() => null)])
+  const out: (Friend | null)[] = new Array(friends.length).fill(null)
+  let next = 0
+  let rateLimited = false
+  // Au plus 4 amis en parallèle (8 requêtes au lieu de 100 d'un coup) : une erreur sur un ami n'efface pas toute la liste,
+  // et un 429 coupe tout de suite le reste du lot.
+  const worker = async (): Promise<void> => {
+    while (!rateLimited) {
+      const idx = next++
+      if (idx >= friends.length) return
+      const accountId = friends[idx]
+      const [profile, presence] = await Promise.all([
+        getProfileFromAccountId(auth, accountId).catch((e) => {
+          if (isRateLimit(e)) rateLimited = true
+          return null
+        }),
+        getBasicPresence(auth, accountId).catch((e) => {
+          if (isRateLimit(e)) rateLimited = true
+          return null
+        })
+      ])
+      if (!profile) continue
       const p = presence?.basicPresence
       const game = text(p?.gameTitleInfoList?.[0]?.titleName)
       const online = p?.primaryPlatformInfo?.onlineStatus === 'online'
-      return {
+      out[idx] = {
         id: `psn:${accountId}`,
         platform: 'psn',
         name: text(profile.onlineId) ?? 'Joueur PlayStation',
@@ -376,8 +422,12 @@ async function psnFriendsNow(npsso: string): Promise<Friend[]> {
         device: text(p?.primaryPlatformInfo?.platform, 32),
         ...(presence ? {} : { presenceUnknown: true })
       }
-    })
-  )
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(PSN_CONCURRENCY, friends.length) }, worker))
+  const list = out.filter((f): f is Friend => f !== null)
+  if (friends.length > 0 && !list.length && rateLimited) throw new UserError('PlayStation limite les requêtes : réessaie dans quelques minutes.')
+  return list
 }
 
 // ---------- Agrégation ----------

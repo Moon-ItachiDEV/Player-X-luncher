@@ -128,7 +128,7 @@ const Atelier = (() => {
     dirty = false; S.atelier = false; S.loWeapon = b.w; sc.scrollTop = 0
     toast(`${ic('check')} Loadout « ${esc(b.name)} » enregistré${known ? '' : `, ${esc(b.w)} retenue dans Mes armes`}`, { ms: 3000 })
     StatsPage.render()
-    const box = $(`.lc-box[data-id="${b.id}"]`, sc)
+    const box = $(`.lc-box[data-id="${CSS.escape(b.id)}"]`, sc)
     if (box) { box.classList.add('is-new'); box.scrollIntoView({ block: 'nearest' }); $('[data-a=edit]', box)?.focus({ preventScroll: true }); setTimeout(() => box.classList.remove('is-new'), 1400) }
   }
 
@@ -206,11 +206,11 @@ const Atelier = (() => {
     })
     pop.addEventListener('pointerdown', (e) => {
       e.preventDefault()
-      const x = e.target.closest('.at-o'); if (!x) return
+      const x = e.target instanceof Element ? /** @type {HTMLElement | null} */ (e.target.closest('.at-o')) : null; if (!x) return
       if (x.classList.contains('at-empty')) { o.onClear(); close(); return }
       o.onPick(items[+x.dataset.i]); typed = false; close()
     })
-    pop.addEventListener('pointermove', (e) => { const x = e.target.closest('[role=option]'); if (x && +x.dataset.i !== act) { act = +x.dataset.i; mark(false) } })
+    pop.addEventListener('pointermove', (e) => { const x = e.target instanceof Element ? /** @type {HTMLElement | null} */ (e.target.closest('[role=option]')) : null; if (x && +x.dataset.i !== act) { act = +x.dataset.i; mark(false) } })
   }
   // Groupe de boutons exclusifs : un seul arrêt de tabulation, les flèches changent le choix
   function bindRadios(box, fn) {
@@ -293,7 +293,7 @@ const Atelier = (() => {
     })
   }
   const isApplied = (r) => !!r && Loadouts.SLOTS.every((s) => (r.parts[s]?.[0] || '') === (form.parts[s]?.n.trim() || ''))
-  const fill = (id, v) => { const e = document.getElementById(id); if (e && e.value !== v) e.value = v }
+  const fill = (id, v) => { const e = /** @type {HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null} */ (document.getElementById(id)); if (e && e.value !== v) e.value = v }
   function fillAll() {
     fill('atW', form.w); fill('atName', form.name); fill('atCtx', form.ctx); fill('atCat', form.cat); fill('atNotes', form.notes)
     Loadouts.SLOTS.forEach((s) => { fill('atP-' + s, form.parts[s]?.n || ''); fill('atN-' + s, form.parts[s]?.p || '') })
@@ -378,7 +378,7 @@ const Atelier = (() => {
     bindCombo(w, { label: 'Arme principale', get: weaponOptions, onType: (v) => { setWeapon(v); changed() }, onPick: (o) => { w.value = o.v; setWeapon(o.v); changed() } })
     w.addEventListener('blur', () => { touched.add('w'); paintErrors() }); w.addEventListener('focus', () => { if (keepErr) return; touched.delete('w'); paintErrors() })
     Loadouts.SLOTS.forEach((s) => {
-      const nm = document.getElementById('atP-' + s), pt = document.getElementById('atN-' + s)
+      const nm = $('#atP-' + s, root), pt = $('#atN-' + s, root)
       const clear = () => { setPart(s, { n: '', p: '' }); nm.value = ''; pt.value = ''; touched.delete('pts-' + s); changed() }
       bindCombo(nm, {
         label: SLOT[s], get: () => partOptions(s),

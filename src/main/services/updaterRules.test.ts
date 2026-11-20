@@ -8,7 +8,7 @@ import { join } from 'node:path'
 // @ts-ignore TS5097
 import { afterAttempt, chooseNotes, compareVersions, decideInstall, DOWNLOAD_PREFIX, etaSeconds, isNewer, markerBlocks, parseAttempt, parseMarker, parseManifest, parseNotes, reviewNotes, verifySignature, type InstallFacts, type NoteEntry } from './updaterRules.ts'
 // @ts-ignore TS5097 TS7016
-import { appendPublicKey, buildManifest, findSetup, githubRelease, readNotes, readPublicKeys, releaseBody, signBytes } from '../../../scripts/publier-maj.mjs'
+import { appendPublicKey, buildManifest, findInstaller, findSetup, githubRelease, isPrerelease, readNotes, readPublicKeys, releaseBody, signBytes } from '../../../scripts/publier-maj.mjs'
 // @ts-ignore TS5097
 import { cleanPatch, defaults } from './settingsRules.ts'
 
@@ -347,4 +347,42 @@ test('publication : la Release est créée en brouillon, les 3 fichiers envoyés
   assert.equal(await githubRelease({ token: 't', version: '0.7.7', files, body: 'b', http: http4, repo: 'o/r' }), 'https://x/vide')
   assert.deepEqual(seen4, ['GET', 'POST', 'POST', 'POST'])
   assert.equal(releaseBody({ items: [{ kind: 'corrige', title: 'A', text: 'B.' }] }), '- **Corrigé** · A : B.')
+})
+
+test('publication : installeur sur mesure détecté si présent, préversion jamais publiée en latest', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'maj-pre-'))
+  assert.equal(findInstaller(tmp, '0.8.0-beta.1'), null)
+  const inst = join(tmp, 'Player-X-Installer-0.8.0-beta.1.exe')
+  writeFileSync(inst, Buffer.alloc(8, 2))
+  assert.equal(findInstaller(tmp, '0.8.0-beta.1'), inst)
+  assert.equal(isPrerelease('0.8.0-beta.1'), true)
+  assert.equal(isPrerelease('0.8.0'), false)
+  assert.equal(isPrerelease('0.8.0+build1'), false)
+  const files = ['Player-X-Setup-0.8.0-beta.1.exe', 'Player-X-Installer-0.8.0-beta.1.exe', 'maj.json.sig', 'maj.json'].map((n) => {
+    const p = join(tmp, n)
+    writeFileSync(p, Buffer.alloc(8, 3))
+    return p
+  })
+  const payloads: Record<string, unknown>[] = []
+  const reply = (status: number, json: unknown = {}) => ({ status, json: async () => json, text: async () => JSON.stringify(json) })
+  const http = async (url: string, o: { method?: string; body?: unknown }) => {
+    const m = o.method || 'GET'
+    if (m === 'GET') return reply(404)
+    if (m === 'POST' && url.includes('/assets?')) return reply(201)
+    if (m === 'POST') {
+      payloads.push(JSON.parse(String(o.body)))
+      return reply(201, { id: 12 })
+    }
+    if (m === 'PATCH') {
+      payloads.push(JSON.parse(String(o.body)))
+      return reply(200, { html_url: 'https://x/v0.8.0-beta.1' })
+    }
+    return reply(500)
+  }
+  const url = await githubRelease({ token: 't', version: '0.8.0-beta.1', files, body: 'b', http, repo: 'o/r', targetCommitish: 'beta' })
+  assert.equal(url, 'https://x/v0.8.0-beta.1')
+  assert.equal(payloads[0].prerelease, true)
+  assert.equal(payloads[0].target_commitish, 'beta')
+  assert.equal(payloads[1].prerelease, true)
+  assert.equal(payloads[1].make_latest, 'false')
 })

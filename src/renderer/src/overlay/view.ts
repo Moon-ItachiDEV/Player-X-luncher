@@ -161,17 +161,18 @@ export function buyAdvice(money: number, side: 'CT' | 'T'): BuyAdvice {
   return { kind: 'eco', title: 'Éco', detail: 'garde ton argent pour le round suivant' }
 }
 
-/** Les rounds 12 et 24 finissent une mi-temps : l'argent repart de zéro, pas de « round suivant » à annoncer. */
-const LAST_OF_HALF = 12
+/** Nombre de rounds par mi-temps : 8 en Wingman (2v2, MR8), 12 ailleurs (Compétitif, Premier, MR12). */
+export const halfLengthOf = (mode?: string): number => (mode === 'scrimcomp2v2' ? 8 : 12)
 
 /**
  * Le bonus de défaite le plus bas possible au prochain round, si celui-ci est perdu : 1 400 $, plus 500 $ par défaite
  * d'affilée juste avant (jusqu'à 3 400 $). CS2 ne remet pas son compteur à zéro après une victoire (il le baisse d'un cran),
  * donc compter seulement la série en cours donne toujours un minimum. Rien en fin de mi-temps ni en prolongation.
  */
-export function lossBonusMin(rounds: Cs2Round[], round: number): number | null {
-  if (round % LAST_OF_HALF === 0 || round > 2 * LAST_OF_HALF) return null
-  const halfStart = round > LAST_OF_HALF ? LAST_OF_HALF + 1 : 1
+export function lossBonusMin(rounds: Cs2Round[], round: number, mode?: string): number | null {
+  const half = halfLengthOf(mode)
+  if (round % half === 0 || round > 2 * half) return null
+  const halfStart = round > half ? half + 1 : 1
   let streak = 0
   for (let i = rounds.length - 1; i >= 0; i--) {
     const r = rounds[i]

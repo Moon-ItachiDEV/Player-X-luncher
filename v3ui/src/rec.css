@@ -1,6 +1,6 @@
 /* 0.6.2 : la page Clips, deux styles. « Viseur » (par défaut) : un écran de caméra, les réglages écrits dessus. « Régie » : les réglages à gauche,
    les clips à droite. Le choix est dans Paramètres > Enregistrement (clé pxv3-clips-style). Tout est préfixé cx- : aucune classe de l'appli n'est touchée.
-   Les lignes sont écrites sans préfixe : les sélecteurs portent « .cx » à la main (build.py met seulement bout à bout les fichiers de src/*.css). */
+   Les lignes sont écrites sans préfixe : les sélecteurs portent « .cx » à la main (build.mjs met seulement bout à bout les fichiers de src/*.css). */
 #clipScroll.cx-sc-b{padding:64px 40px 120px}
 #clipScroll.cx-sc-full{overflow:hidden}
 #clipScroll.cx-sc-a{padding:0;overflow:hidden}

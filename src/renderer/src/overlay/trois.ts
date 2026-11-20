@@ -4,7 +4,7 @@
 // le même (argent pendant les achats, compte à rebours du bilan, mort en plein round). Styles : trois.css.
 import { formatKd, killDeath, mapLabel, modeLabel, RESULT_LABEL } from '@shared/cs2'
 import type { Cs2Live, Cs2Recap, Cs2Round, Cs2Side } from '@shared/types'
-import { buyAdvice, FORCE_MIN, FULL_BUY, lossBonusMin } from './view'
+import { buyAdvice, FORCE_MIN, FULL_BUY, halfLengthOf, lossBonusMin } from './view'
 
 export type ThreeStyle = 'etendard' | 'viseur' | 'regie'
 export const THREE: Record<ThreeStyle, string> = { etendard: 'te', viseur: 'tv', regie: 'tr' }
@@ -40,10 +40,11 @@ const MULTI: Record<number, [string, string]> = { 3: ['Triplé', 'TRIPLÉ'], 4: 
 const multiName = (k: number): [string, string] | undefined => MULTI[Math.min(5, k)]
 const plural = (n: number, one: string, many: string): string => `${n}${NB}${n > 1 ? many : one}`
 
-/** Les rounds de la mi-temps en cours (douze au plus) : la frise ne déborde jamais. */
-function halfRounds(rounds: Cs2Round[], round: number): Cs2Round[] {
-  const start = round > 24 ? 25 : round > 12 ? 13 : 1
-  return rounds.filter((r) => r.n >= start).slice(-12)
+/** Les rounds de la mi-temps en cours (huit en Wingman, douze ailleurs) : la frise ne déborde jamais. */
+function halfRounds(rounds: Cs2Round[], round: number, mode?: string): Cs2Round[] {
+  const half = halfLengthOf(mode)
+  const start = round > 2 * half ? 2 * half + 1 : round > half ? half + 1 : 1
+  return rounds.filter((r) => r.n >= start).slice(-half)
 }
 /** Premier round joué dans l'autre camp (marqué d'un petit écart dans les frises). */
 function swapAt(rounds: Cs2Round[]): number {
@@ -66,7 +67,7 @@ function eco(live: Cs2Live, budget?: number) {
   const cash = live.money
   const base = budget ?? cash
   const adv = side && base !== undefined ? buyAdvice(base, side) : undefined
-  const bonus = cash !== undefined ? lossBonusMin(live.rounds, live.round) : null
+  const bonus = cash !== undefined ? lossBonusMin(live.rounds, live.round, live.mode) : null
   const next = bonus !== null && cash !== undefined ? cash + bonus : undefined
   const nextAdv = next !== undefined && side ? buyAdvice(next, side) : undefined
   return { side, cash, adv, next, nextAdv }
@@ -134,7 +135,7 @@ const viseur = {
     return `<div class="blk in" style="left:24px;top:calc(340px * var(--p,1));width:470px">${vBr}
 <div style="display:flex;align-items:center;gap:10px"><span class="mark">${logo()}</span><div class="k"><b>R${two(live.round)}</b> · ACHAT · ${esc(mapLabel(live.map).toUpperCase())}</div></div>
 ${sc ? `<div class="score"><span class="${sideCls(e.side)}">${two(live.score!.us)}</span><span class="dash"></span><span class="${sideCls(other(e.side!))}">${two(live.score!.them)}</span><small>${e.side} · ${other(e.side!)}</small></div>` : ''}
-${vTicks(halfRounds(live.rounds, live.round), true)}
+${vTicks(halfRounds(live.rounds, live.round, live.mode), true)}
 ${e.cash !== undefined ? `<div class="money"><small>$</small>${esc(int.format(e.cash))}</div><div class="budget"><i style="width:${bar(e.cash)}%"></i><em style="left:${bar(FORCE_MIN)}%"><span>FORCE</span></em><em style="left:${bar(full)}%"><span>COMPLET</span></em></div>` : ''}
 ${e.adv ? `<div class="adv"><b>›</b> ${esc(e.adv.title.toUpperCase())} · ${esc(e.adv.detail)}</div>` : ''}
 ${e.next !== undefined ? `<div class="nxt">R${two(live.round + 1)} SI PERDU : ≥${NB}${esc(money(e.next))}${e.nextAdv ? ` · ${esc(e.nextAdv.title.toUpperCase())}` : ''}</div>` : ''}
@@ -150,7 +151,7 @@ ${m ? `<div class="flash">${k >= 5 ? '<b>ACE</b>' : `<b>${k}</b>K`}</div>` : ''}
     const { played, sc, lead } = halfInfo(live)
     return `<div class="blk in" style="left:50%;top:calc(118px * var(--p,1));translate:-50% 0;display:grid;justify-items:center;gap:16px">
 <div class="band"><span>MI-TEMPS</span>${sc ? `<span class="${sideCls(played)}">${two(sc.us)}</span><span style="opacity:.6">–</span><span class="${played ? sideCls(other(played)) : ''}">${two(sc.them)}</span>` : ''}<span style="color:var(--a)">${esc(lead.toUpperCase())}</span></div>
-${live.rounds.length ? vKills(halfRounds(live.rounds, live.rounds.at(-1)!.n)) : ''}
+${live.rounds.length ? vKills(halfRounds(live.rounds, live.rounds.at(-1)!.n, live.mode)) : ''}
 <div class="k" style="font-size:19px">${played ? `TU PASSES <b class="${sideCls(other(played))}">${other(played)}</b> · ` : ''}K/D/A ${kda(live)} · K/D ${formatKd(killDeath(live))} · ADR ${adrOf(live)} · HS ${pct(live.hsPct)}</div></div>`
   },
   end(r: Cs2Recap, x: Extra): string {
@@ -201,7 +202,7 @@ const etendard = {
     const flags = [
       fl(
         0,
-        `<div class="col"><span class="ey">Round ${live.round} · achat</span>${eRounds(halfRounds(live.rounds, live.round), true)}</div>${
+        `<div class="col"><span class="ey">Round ${live.round} · achat</span>${eRounds(halfRounds(live.rounds, live.round, live.mode), true)}</div>${
           sc ? `<div class="sc"><small>${e.side}</small>${live.score!.us}<span class="d">–</span><span class="them">${live.score!.them}</span><small>${other(e.side!)}</small></div>` : ''
         }`,
         'r'
@@ -225,7 +226,7 @@ const etendard = {
     const flags = [
       fl(0, `<div class="col"><span class="ey">${esc(mapLabel(live.map))} · mi-temps</span><span class="word">${esc(lead)}</span></div>${sc ? `<div class="sc">${sc.us}<span class="d">–</span><span class="them">${sc.them}</span></div>` : ''}`, 'r'),
       live.rounds.length || played
-        ? fl(1, `${live.rounds.length ? eRounds(halfRounds(live.rounds, live.rounds.at(-1)!.n), false) : ''}${played ? `<span class="ln">Tu passes <b class="${sideCls(other(played))}">${other(played)}</b> pour la suite</span>` : ''}`)
+        ? fl(1, `${live.rounds.length ? eRounds(halfRounds(live.rounds, live.rounds.at(-1)!.n, live.mode), false) : ''}${played ? `<span class="ln">Tu passes <b class="${sideCls(other(played))}">${other(played)}</b> pour la suite</span>` : ''}`)
         : '',
       fl(2, `<div class="st"><div><span>K/D/A</span><b>${kda(live)}</b></div><div><span>K/D</span><b>${formatKd(killDeath(live))}</b></div><div><span>ADR</span><b>${adrOf(live)}</b></div><div><span>HS</span><b>${pct(live.hsPct)}</b></div></div>`)
     ]
@@ -257,7 +258,7 @@ const etendard = {
 // ---------- Régie : bandeaux de retransmission, coupés en biais ----------
 
 /** La courbe de l'écart au score, round après round (rounds au camp inconnu : la courbe reste à plat). */
-function momentum(rs: Cs2Round[]): string {
+function momentum(rs: Cs2Round[], mode?: string): string {
   let d = 0
   const pts: [number, number][] = [[0, 0]]
   rs.forEach((r, i) => {
@@ -271,7 +272,7 @@ function momentum(rs: Cs2Round[]): string {
   const P = pts.map(([x, y]) => `${(x * sx).toFixed(1)},${(y0 - y * sy).toFixed(1)}`).join(' ')
   const lab = (x: number, y: number, t: string, anchor = 'start'): string =>
     `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="rgba(255,255,255,.6)" font-family="Inter" font-size="15" font-weight="700">${t}</text>`
-  const half = rs.findIndex((r) => r.n === 13)
+  const half = rs.findIndex((r) => r.n === halfLengthOf(mode) + 1)
   return `<svg viewBox="-30 0 ${w + 40} ${h + 24}" aria-hidden="true">
 <line x1="0" x2="${w}" y1="${y0}" y2="${y0}" stroke="rgba(255,255,255,.3)" stroke-width="2"/>
 ${half > 0 ? `<line x1="${half * sx}" x2="${half * sx}" y1="6" y2="${h}" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-dasharray="6 6"/>${lab(half * sx + 8, h, 'MI-TEMPS')}` : ''}
@@ -308,7 +309,7 @@ ${e.next !== undefined ? `<div class="row"><span class="sl tick" style="--i:5"><
   },
   half(live: Cs2Live): string {
     const { played, sc, lead } = halfInfo(live)
-    const rs = live.rounds.length ? halfRounds(live.rounds, live.rounds.at(-1)!.n) : []
+    const rs = live.rounds.length ? halfRounds(live.rounds, live.rounds.at(-1)!.n, live.mode) : []
     return `<div class="band">
 <div class="hd"><span class="t">Mi-temps · ${esc(mapLabel(live.map))}</span>${sc ? `<span class="n">${sc.us}–${sc.them}</span>` : ''}<span class="s">${esc(lead)}${played ? ` · tu passes <span class="${sideCls(other(played))}">${other(played)}</span>` : ''}</span></div>
 ${rs.length ? `<div class="bars"><span class="cap">TES ÉLIM. PAR ROUND · ROUGE = ROUND GAGNÉ</span><div class="g">${rs.map((r, i) => `<div><span>${r.kills ?? '–'}</span><i class="${won(r) ? 'w' : ''}" style="--i:${i};height:${8 + Math.min(5, r.kills ?? 0) * 20}px"></i><em>${r.n}</em></div>`).join('')}</div></div>` : ''}
@@ -321,7 +322,7 @@ ${rs.length ? `<div class="bars"><span class="cap">TES ÉLIM. PAR ROUND · ROUGE
     return `<div class="panel">
 <div class="ph" style="--i:0;display:flex;align-items:center;gap:14px"><span class="mark" style="width:34px;height:40px;filter:none">${logo()}</span>Bilan du match · ${esc(mapLabel(r.map))}${r.sample ? ' · exemple' : ''}</div>
 <div class="pr" style="--i:1"><span class="w">${esc(RESULT_LABEL[r.result])}</span>${r.score && r.result !== 'left' ? `<span class="s">${r.score.us}–${r.score.them}</span>` : ''}</div>
-${curve ? `<div class="pb" style="--i:2"><div class="cap"><span>L’écart au score</span><span>${left}</span></div>${momentum(r.rounds.slice(-30))}</div>` : ''}
+${curve ? `<div class="pb" style="--i:2"><div class="cap"><span>L’écart au score</span><span>${left}</span></div>${momentum(r.rounds.slice(-30), r.mode)}</div>` : ''}
 <div class="pb" style="--i:3"><div class="ps"><div><span>K/D</span><b>${formatKd(killDeath(r))}</b></div><div><span>K/D/A</span><b>${kda(r)}</b></div><div><span>ADR</span><b>${recapAdr(r)}</b></div><div><span>HS</span><b>${recapHs(r)}</b></div></div></div>
 <div class="pm" style="--i:4">${strong}${curve ? '' : ` · ${left}`}</div></div>`
   }

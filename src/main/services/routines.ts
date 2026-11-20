@@ -15,7 +15,7 @@ import { getSettings } from './settings'
 export type { Routine, RoutineStatus, RoutineStep } from '@shared/routines'
 
 const KEY = 'v3Routines'
-const HOTKEYS = ['Control+Alt+F1', 'Control+Alt+F2', 'Control+Alt+F3']
+const HOTKEYS = ['Ctrl+Alt+F1', 'Ctrl+Alt+F2', 'Ctrl+Alt+F3']
 
 /** Applis choisies avec le sélecteur natif pendant cette session. */
 const picked = new Set<string>()

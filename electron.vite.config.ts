@@ -21,7 +21,7 @@ export default defineConfig({
   },
   renderer: {
     // Page de l'overlay CS2 (index.html, JS sans framework) ; public/ apporte la V3 et la page de capture des clips.
-    resolve: { alias: { '@shared': resolve('src/shared') } },
+    resolve: { alias: { '@shared': resolve('src/shared'), '@fonts': resolve('v3ui/fonts') } },
     // electron-vite ne compresse pas l'interface par défaut.
     build: { minify: true }
   }

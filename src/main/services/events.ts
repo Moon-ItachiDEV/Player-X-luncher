@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { parseStoreEvents } from '@shared/gameEvents'
 import { cleanName } from '@shared/text'
 import type { Game, GameEvent, GameEventStarted, GameEvents } from '@shared/types'
-import { getKv, setKv } from '../db'
+import { getKv, setKv, type KvKey } from '../db'
 import { focusedAppWindow, sendTo, showMainAndSend } from '../windows'
 import { steamAppIds } from './artwork'
 import { storeEvents } from './news'
@@ -27,7 +27,7 @@ const MAX_REMINDERS = 50
 const lastRead = new Map<string, GameEvent[]>()
 
 /** Comme le reste du mode démo, ses rappels vivent à part. */
-function key(): string {
+function key(): KvKey {
   return getSettings().demoMode ? 'demoEventReminders' : 'eventReminders'
 }
 

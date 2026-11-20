@@ -11,7 +11,7 @@ import { errText, log } from './clipsLog'
 import { BEAT_RATE, detectBeats } from './editBeats'
 import { scrub } from './editEngineRules'
 import { filmEngine } from './editFfmpeg'
-import { AUDIO_EXT, MUSIC_ID, musicMime } from './editMusicRules'
+import { AUDIO_EXT, extOf, MUSIC_ID, musicMime } from './editMusicRules'
 
 // Les musiques des films : le joueur choisit un fichier de son PC dans une fenêtre de Windows (Player X n'en fournit pas).
 // Le moteur vidéo le décode une fois (10 premières minutes, mono, passe-bas : le kick) pour trouver ses temps (editBeats.ts).
@@ -132,8 +132,8 @@ export async function pickMusic(): Promise<EditMusic | null> {
     if (res.canceled || !res.filePaths[0]) return null
     file = res.filePaths[0]
   }
-  const ext = (file.split('.').pop() || '').toLowerCase()
-  if (!AUDIO_EXT.includes(ext)) throw new UserError('Ce fichier n’est pas une musique. Choisis un MP3, WAV, FLAC, OGG, M4A ou AAC.')
+  const ext = extOf(file)
+  if (!AUDIO_EXT.includes(ext)) throw new UserError('Ce fichier n’est pas une musique. Choisis un MP3, WAV, FLAC, OGG, OPUS, M4A ou AAC.')
   const st = await stat(file).catch(() => null)
   if (!st?.isFile()) throw new UserError('Ce fichier n’a pas pu être lu.')
   if (st.size > MAX_BYTES) throw new UserError('Ce fichier est trop gros pour une musique (300 Mo au plus).')

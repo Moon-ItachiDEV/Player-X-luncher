@@ -52,13 +52,16 @@ test('tickLine : au plus 64 noms par jeu', () => {
   assert.equal(q.w.at(-1), 'other')
 })
 
-test('tickLine : appids invalides écartés', () => {
+test('tickLine : appids invalides écartés et numéro de requête i transmis', () => {
   assert.deepEqual(JSON.parse(tickLine({ s: ['730', '730', 'abc', '', '12345678901', '1;rm', '1245620'] })), { s: ['730', '1245620'] })
+  assert.deepEqual(JSON.parse(tickLine({ id: 7, s: ['730'] })), { i: 7, s: ['730'] })
+  assert.equal(tickLine({ id: 0 }), '{}')
 })
 
-test('parseSample : programmes, fenêtres, Steam et coût', () => {
-  const s = parseSample('﻿S\t4:System\t8812:cs2\t9001:Élan Jeu\tW:8812\tR:730\tU:730:1\tU:570:0\tC:1234:56789012\r')
+test('parseSample : programmes, fenêtres, Steam, coût et numéro de requête', () => {
+  const s = parseSample('\ufeffS\tI:42\t4:System\t8812:cs2\t9001:Élan Jeu\tW:8812\tR:730\tU:730:1\tU:570:0\tC:1234:56789012\r')
   assert.ok(s)
+  assert.equal(s.id, 42)
   assert.deepEqual(s.procs, [
     { pid: 4, name: 'System' },
     { pid: 8812, name: 'cs2' },
@@ -77,6 +80,7 @@ test('parseSample : programmes, fenêtres, Steam et coût', () => {
 test('parseSample : Steam sans jeu en cours (0 ou vide)', () => {
   assert.equal(parseSample('S\t4:System\tR:0')!.runningAppId, null)
   assert.equal(parseSample('S\t4:System\tR:')!.runningAppId, null)
+  assert.equal(parseSample('S\t4:System')!.id, null)
 })
 
 test('parseSample : relevé vide, morceaux inconnus ignorés', () => {

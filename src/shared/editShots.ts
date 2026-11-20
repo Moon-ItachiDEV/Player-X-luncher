@@ -58,7 +58,7 @@ const r4 = (x: number): number => Math.round(x * 10000) / 10000
  */
 export function fitShot(s: ShotSpec, clipDurationS: number, unit: number): ShotSpec {
   const d = clipDurationS
-  const k = Math.min(Math.max(0, s.anchorS), d)
+  let k = Math.min(Math.max(0, s.anchorS), d)
   const lim = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, Math.round(Number.isFinite(n) ? n : 0)))
   let lead = lim(s.lead, LIMITS.leadMin, LIMITS.leadMax)
   let tail = lim(s.tail, LIMITS.tailMin, LIMITS.tailMax)
@@ -67,10 +67,20 @@ export function fitShot(s: ShotSpec, clipDurationS: number, unit: number): ShotS
   const pad = slow ? h : 0
   while (lead > 0 && k - pad - lead * unit < -1e-6) lead--
   while (tail > 0 && k + pad + tail * unit > d + 1e-6) tail--
-  // Un plan sans rien : on garde au moins un pas, d'un côté ou de l'autre.
+  // Un plan sans rien : on garde au moins un pas, d'un côté ou de l'autre (si le clip contient un pas mais que le kill est
+  // près du milieu d'un clip court, on décale l'ancre juste ce qu'il faut plutôt que de rendre un plan de durée nulle).
   if (!slow && lead === 0 && tail === 0) {
     if (k - unit >= -1e-6) lead = 1
     else if (k + unit <= d + 1e-6) tail = 1
+    else if (d >= unit - 1e-6) {
+      if (unit - k <= k - (d - unit)) {
+        k = Math.min(d, unit)
+        lead = 1
+      } else {
+        k = Math.max(0, d - unit)
+        tail = 1
+      }
+    }
   }
   return { clipId: s.clipId, anchorS: r4(k), lead, tail, slow }
 }

@@ -89,7 +89,17 @@ async function fileStatus(): Promise<EditEngine['status']> {
   if (devFile()) return 'ready'
   if (s.size !== pin.exeSize) return 'damaged'
   const key = `${file}:${s.size}:${s.mtimeMs}`
-  if (verified?.key !== key) verified = { key, ok: sha256(file).then((h) => h === pin.exeSha256, () => false) }
+  if (verified?.key !== key) {
+    // Une erreur de lecture temporaire (antivirus, verrou) n'est pas gardée en cache : l'appel suivant réessaie.
+    const ok = sha256(file).then(
+      (h) => h === pin.exeSha256,
+      () => {
+        if (verified?.ok === ok) verified = null
+        return false
+      }
+    )
+    verified = { key, ok }
+  }
   return (await verified.ok) ? 'ready' : 'damaged'
 }
 
@@ -107,9 +117,25 @@ export interface EngineRun {
 /** Un seul ffmpeg à la fois. */
 let child: ChildProcess | null = null
 let quitHooked = false
+let quitting = false
+
+function hookQuit(): void {
+  if (quitHooked) return
+  quitHooked = true
+  app.on('will-quit', () => {
+    quitting = true
+    stopAsked = true
+    child?.kill()
+  })
+}
 
 function run(args: string[], cwd: string, timeoutMs: number, onOut?: (chunk: string) => void, priority: 'low' | 'normal' = 'low'): Promise<EngineRun> {
   return new Promise((resolve) => {
+    hookQuit()
+    if (quitting) {
+      resolve({ code: null, seconds: 0, out: '', err: 'fermeture de l’appli', timedOut: false })
+      return
+    }
     const t0 = performance.now()
     let out = ''
     let err = ''
@@ -134,10 +160,6 @@ function run(args: string[], cwd: string, timeoutMs: number, onOut?: (chunk: str
       return
     }
     child = p
-    if (!quitHooked) {
-      quitHooked = true
-      app.on('will-quit', () => child?.kill())
-    }
     const timer = setTimeout(() => {
       timedOut = true
       p.kill()
@@ -225,11 +247,11 @@ export function testEngine(onStep: (s: EditEngineStep) => void): Promise<EditEng
   return testing
 }
 
-/** Arrête l'essai en cours (bouton « Arrêter ») : rien n'est enregistré. */
+/** Arrête l'essai en cours (bouton « Arrêter ») : rien n'est enregistré. Ne tue jamais un film ou une copie en cours. */
 export function stopEngineTest(): void {
   if (!testing) return
   stopAsked = true
-  child?.kill()
+  if (!holder) child?.kill()
 }
 
 async function doTest(onStep: (s: EditEngineStep) => void): Promise<void> {
@@ -243,7 +265,7 @@ async function doTest(onStep: (s: EditEngineStep) => void): Promise<void> {
   const work = await mkdtemp(join(app.getPath('temp'), 'px-moteur-'))
   const hide = [work, app.getPath('temp'), app.getPath('home')]
   const stopped = (): void => {
-    if (stopAsked) throw new UserError('Essai arrêté.')
+    if (stopAsked || quitting) throw new UserError('Essai arrêté.')
   }
   try {
     const results: EditEncoderResult[] = []
@@ -328,7 +350,7 @@ const FILM_ENCODER_KEY = 'editFilmEncoder'
 export const filmEngine = {
   status: (): Promise<EditEngine['status']> => fileStatus(),
   begin(who: 'film' | 'share' = 'film'): boolean {
-    if (testing || holder) return false
+    if (testing || holder || quitting) return false
     holder = who
     return true
   },
@@ -336,6 +358,7 @@ export const filmEngine = {
     holder = null
   },
   heldBy: (): 'film' | 'share' | null => holder,
+  quitting: (): boolean => quitting,
   run: (args: string[], cwd: string, timeoutMs: number, onOut?: (chunk: string) => void, priority: 'low' | 'normal' = 'low'): Promise<EngineRun> => run(args, cwd, timeoutMs, onOut, priority),
   /** Coupe le film en cours. Jamais une copie pour Discord : elle ne dure que quelques secondes. */
   stop(): void {
@@ -371,6 +394,8 @@ export async function openEngineFolder(): Promise<void> {
  * commun), en priorité normale. null : le moteur ne peut pas être lancé ici (programme Windows ailleurs que sous Windows).
  */
 export function spawnCaptureEngine(args: string[], cwd: string): ChildProcess | null {
+  hookQuit()
+  if (quitting) return null
   const file = engineFile()
   if (process.platform !== 'win32' && /\.exe$/i.test(file)) return null
   const env = { ...process.env }

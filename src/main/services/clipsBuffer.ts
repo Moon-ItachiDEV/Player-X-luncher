@@ -1,6 +1,6 @@
 import { rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { keepFrom } from './clipsPlan'
+import { keepFrom, updateAnchor } from './clipsPlan'
 import { errText, log } from './clipsLog'
 import { clipSettings } from './clipsSettings'
 import { bufferRoot, capture, emitState, frags, pendings, recorders, setFrags, writing, type Recorder } from './clipsState'
@@ -18,34 +18,43 @@ const MAX_QUEUED_BYTES = 256 * 1024 * 1024
 export function storeFragment(rec: Recorder, data: Buffer, info: FragmentInfo): void {
   const seq = rec.seq++
   const file = join(rec.dir, `${String(seq).padStart(6, '0')}.m4s`)
-  // Le fragment vient de finir : le flux ne peut pas être en avance sur l'horloge. S'il l'est, le temps 0 était plus tôt.
-  const lag = Date.now() - (rec.anchor + info.endS * 1000)
-  if (lag < 0) rec.anchor += lag
+  const now = Date.now()
+  // Premier fragment du moteur : si FFmpeg a mis plus de ENGINE_LATE_MS à démarrer ou à recevoir la 1re image (démarrage à
+  // froid, écran de chargement), rec.anchor serait resté figé dans le passé pour toute la partie, décalant le son PCM et les kills.
+  rec.anchor = updateAnchor(rec.anchor, now, info.endS, seq === 0 && !!rec.engine)
   const startWall = rec.anchor + info.startS * 1000
   const endWall = rec.anchor + info.endS * 1000
-  rec.queued += data.length
-  if (rec.queued > MAX_QUEUED_BYTES) {
+  if (rec.queued + data.length > MAX_QUEUED_BYTES) {
     log('Le disque ne suit pas : enregistreur arrêté.')
     if (capture?.rec === rec) {
       send(capture, { type: 'abort', recId: rec.id, reason: 'disque trop lent' })
       recorderLost(rec, 'disque trop lent')
+    } else if (capture?.eng === rec && !rec.ended) {
+      rec.ended = true
+      rec.diskError = 'disque trop lent'
+      rec.engine?.proc.kill()
     }
     return
   }
+  rec.queued += data.length
   rec.writes = rec.writes
     .then(async () => {
       await writeFile(file, data)
-      rec.queued -= data.length
+      rec.queued = Math.max(0, rec.queued - data.length)
       frags.push({ recId: rec.id, startWall, endWall, key: info.key, file, info })
       pruneBuffer()
       emitState()
     })
     .catch((e) => {
-      rec.queued -= data.length
+      rec.queued = Math.max(0, rec.queued - data.length)
       log(`Écriture du tampon impossible : ${errText(e)}`)
       if (capture?.rec === rec) {
         send(capture, { type: 'abort', recId: rec.id, reason: 'écriture impossible' })
         recorderLost(rec, 'écriture du tampon impossible')
+      } else if (capture?.eng === rec && !rec.ended) {
+        rec.ended = true
+        rec.diskError = 'écriture du tampon impossible'
+        rec.engine?.proc.kill()
       }
     })
 }
@@ -62,15 +71,16 @@ export function pruneBuffer(): void {
     if (i) r.pcm.splice(0, i)
   }
   const gone = frags.filter((f) => f.endWall < from)
-  if (!gone.length) return
-  setFrags(frags.filter((f) => f.endWall >= from))
-  for (const f of gone) void unlink(f.file).catch(() => {})
+  if (gone.length) {
+    setFrags(frags.filter((f) => f.endWall >= from))
+    for (const f of gone) void unlink(f.file).catch(() => {})
+  }
   dropEmptyRecorders()
 }
 
 function dropEmptyRecorders(): void {
   for (const [id, rec] of recorders) {
-    if (capture?.rec === rec || capture?.eng === rec || rec.pcm?.length || frags.some((f) => f.recId === id)) continue
+    if (capture?.rec === rec || capture?.eng === rec || rec.queued > 0 || rec.pcm?.length || frags.some((f) => f.recId === id)) continue
     recorders.delete(id)
     void rm(rec.dir, { recursive: true, force: true }).catch(() => {})
   }

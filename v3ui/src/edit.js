@@ -725,7 +725,8 @@ const Editor = (() => {
   // Le panneau de droite : la musique (ou la correction du tempo), puis le plan choisi. À 1280 × 720, deux onglets.
   function paintSide() {
     const side = $('#edSide', root); if (!side) return
-    const had = document.activeElement && side.contains(document.activeElement) ? document.activeElement.dataset.fk || document.activeElement.id : null
+    const ae = /** @type {HTMLElement | null} */ (document.activeElement)
+    const had = ae && side.contains(ae) ? ae.dataset.fk || ae.id : null
     const s = cur(), c = s && clipOf(s.clipId), u = unit(), m = st.music, n = st.project.shots.length, i = st.sel
     const gone = s && !c, k = s ? kw(s) : 'le kill'
     const step = (id, label, v, lo, hi) => `<div class="ed-row"><span>${label}</span><div class="ed-step" role="group" aria-label="${label}">
@@ -791,7 +792,7 @@ const Editor = (() => {
     $('#edLeft', side)?.addEventListener('click', () => move(-1))
     $('#edRight', side)?.addEventListener('click', () => move(1))
     $('#edDel', side)?.addEventListener('click', remove)
-    if (had) { const el = $('#' + had, side) || $(`[data-fk="${had}"]`, side); el?.focus({ preventScroll: true }) }
+    if (had) { const el = $('#' + CSS.escape(had), side) || $(`[data-fk="${CSS.escape(had)}"]`, side); el?.focus({ preventScroll: true }) }
   }
 
   // ---------- glisser à la souris ----------
@@ -930,7 +931,7 @@ const Editor = (() => {
           const n = clamp(lr, -s.lead, s.tail)
           if (n) change(() => { st.project.shots[st.sel] = fit({ ...s, anchorS: s.anchorS + n * unit(), lead: s.lead + n, tail: s.tail - n, fixed: true }) })
         }
-        ;(document.querySelector(`.ed-shot.is-sel [data-h="${side}"]`))?.focus({ preventScroll: true })
+        $(`.ed-shot.is-sel [data-h="${side}"]`)?.focus({ preventScroll: true })
         return
       }
       if (t.closest?.('.ed-track')) {

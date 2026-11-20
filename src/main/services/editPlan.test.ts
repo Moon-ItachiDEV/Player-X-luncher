@@ -141,3 +141,30 @@ test('projet propre : plans revus contre leur clip, musique calée sur sa grille
   assert.throws(() => cleanProject({ v: 1, shots: [] }, clips, musics), /refusé/)
   assert.throws(() => cleanProject({ v: 2, shots: new Array(49).fill({ clipId: 'a', anchorS: 2, lead: 1, tail: 1, slow: false }), music: null, gameVolume: 1 }, clips, musics), /48 plans/)
 })
+
+test('projet : un clip plus court qu’un pas ne produit pas de plan fantôme', () => {
+  // Tempo lent (40 BPM -> pas 1,5 s) : le clip de 0,8 s est écarté, celui de 2 s est gardé.
+  const shots = planProject([clip('tiny', 1, 0.8, [kill(0.4)]), clip('ok', 2, 2, [kill(1)])], { after: 5, unit: 1.5 })
+  assert.deepEqual(shots.map((s) => s.clipId), ['ok'])
+  const clips = new Map([['tiny', { durationS: 0.8 }], ['ok', { durationS: 2 }]])
+  const musics = new Map([['slow', { bpm: 40, grid: [0, 1.5, 3, 4.5], durationS: 30 }]])
+  const p = cleanProject(
+    {
+      v: 2,
+      shots: [
+        { clipId: 'tiny', anchorS: 0.4, lead: 1, tail: 1, slow: false },
+        { clipId: 'ok', anchorS: 1, lead: 1, tail: 1, slow: false }
+      ],
+      music: { id: 'slow', startS: 0, volume: 1 },
+      gameVolume: 1
+    },
+    clips,
+    musics
+  )
+  assert.deepEqual(p.shots.map((s) => s.clipId), ['ok'])
+  assert.throws(
+    () => cleanProject({ v: 2, shots: [{ clipId: 'tiny', anchorS: 0.4, lead: 1, tail: 1, slow: false }], music: { id: 'slow', startS: 0, volume: 1 }, gameVolume: 1 }, clips, musics),
+    /aucun plan/
+  )
+})
+

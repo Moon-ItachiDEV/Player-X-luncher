@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": true,
+    "strict": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [],
+    "paths": { "@shared/*": ["./src/shared/*"] }
+  },
+  "include": [
+    "v3ui/types.d.ts",
+    "v3ui/constants.js",
+    "v3ui/src/*.js",
+    "src/renderer/public/clips-recorder.js"
+  ]
+}

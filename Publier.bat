@@ -35,9 +35,10 @@ pause
 exit /b 0
 :manuel
 for %%f in (dist\Player-X-*Setup-%VERSION%.exe) do copy /y "%%f" dist\maj\ >nul
+for %%f in (dist\Player-X-*Installer-%VERSION%.exe) do copy /y "%%f" dist\maj\ >nul
 explorer "%~dp0dist\maj"
 start "" "https://github.com/Moon-ItachiDEV/player-x-luncher/releases/new?tag=v%VERSION%&title=Player%%20X%%20%VERSION%"
 echo.
-echo   Pas de jeton GitHub : glisse les 3 fichiers du dossier ouvert dans la page GitHub, puis « Publish release ».
+echo   Pas de jeton GitHub : glisse les fichiers du dossier ouvert dans la page GitHub, puis « Publish release ».
 echo.
 pause

@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildFlat, parseFlat, type ClipTrack, type Sample } from './fmp4'
-import { freeName, readMoov, shareSource, videoSizeOf, writePlan } from './clipsFiles'
+import { freeName, readMoov, renameWithRetry, shareSource, videoSizeOf, writePlan } from './clipsFiles'
 
 const VIDEO_TS = 30000
 const AUDIO_TS = 48000
@@ -158,3 +158,34 @@ test('freeName : le premier nom libre, jamais celui d’un clip en cours d’éc
   await writeFile(join(folder, 'Jeu 2026-11-15 (2).mp4.part'), '')
   assert.equal(freeName(folder, 'Jeu 2026-11-15'), join(folder, 'Jeu 2026-11-15 (3).mp4'))
 })
+
+test('renameWithRetry : réessaie sur EPERM/EBUSY/EACCES puis renomme le fichier', async () => {
+  for (const code of ['EPERM', 'EBUSY', 'EACCES']) {
+    let n = 0
+    const waits: number[] = []
+    await renameWithRetry('a.part', 'a.mp4', {
+      attempts: 5,
+      delayMs: 120,
+      wait: async (ms) => { waits.push(ms) },
+      doRename: async () => {
+        if (++n < 3) throw Object.assign(new Error('verrou antivirus'), { code })
+      }
+    })
+    assert.equal(n, 3)
+    assert.deepEqual(waits, [120, 120])
+  }
+  let n = 0
+  await assert.rejects(
+    renameWithRetry('a.part', 'a.mp4', {
+      attempts: 4,
+      wait: async () => {},
+      doRename: async () => {
+        n++
+        throw Object.assign(new Error('absent'), { code: 'ENOENT' })
+      }
+    }),
+    { code: 'ENOENT' }
+  )
+  assert.equal(n, 1)
+})
+

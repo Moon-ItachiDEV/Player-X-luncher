@@ -153,7 +153,7 @@ const Play = (() => {
   // Qui est là, autour du jeu affiché : amis, ou membres du serveur quand il n'y a qu'eux
   function paintFriends() {
     const b = $('#hmFr', el), g = focused(), res = Real.st.friendsRes; if (!b) return
-    const a = res && (g?.raw ? Shared.around.whoIsAround(g.raw, res.friends) : Shared.around.whoIsAround({ name: '' }, res.friends))
+    const a = res && Shared.around.whoIsAround(g?.raw || { id: '', store: 'steam', storeId: '', name: '' }, res.friends)
     b.hidden = !a
     if (!a) return
     const n = a.people.length, ing = a.people.filter((p) => p.status === 'in-game').length

@@ -5,8 +5,8 @@ import type { GameCollection, Shelves } from './types'
 export const MAX_COLLECTIONS = 30
 export const MAX_NAME = 40
 const MAX_GAMES = 1000
-/** Identifiant de jeu de Player X : `steam:730`, `epic:Fortnite`, `ea:Origin.OFR.50.0005577`. */
-const GAME_ID = /^(steam|epic|ea):[\w.:-]{1,200}$/
+/** Identifiant de jeu de Player X : `steam:730`, `epic:Fortnite`, `ea:Origin.OFR.50.0005577`, `ea:nom du dossier`, `gog:1207664663`. */
+const GAME_ID = /^(steam|epic|ea|gog):(?!\s)(?!.*\s$)(?!.*[\\/])[^\0-\x1f"'<>]{1,200}$/
 const COLLECTION_ID = /^c[a-z0-9]{4,24}$/
 
 export const isGameId = (v: unknown): v is string => typeof v === 'string' && GAME_ID.test(v)

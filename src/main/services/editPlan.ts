@@ -1,6 +1,6 @@
 import { mapLabel } from '@shared/cs2'
 import type { Clip, EditProject, EditProjectShot, EditShot } from '@shared/types'
-import { fitShot, snapToGrid, timeline, unitOf, FILM_LIMITS } from '@shared/editShots'
+import { fitShot, shotLength, snapToGrid, timeline, unitOf, FILM_LIMITS } from '@shared/editShots'
 
 // Règles du montage, sans Electron ni fichier (testées par editPlan.test.ts) : d'une liste de clips à une liste de plans.
 // Première règle, « bout à bout » : chaque kill garde ce qui l'amène et ce qui le suit ; deux kills proches font un seul plan ;
@@ -143,7 +143,7 @@ export function planProject(clips: readonly PlanClip[], opts: { after: number; u
   let all = clips
     .filter((c) => c.kind !== 'film' && Number.isFinite(c.durationS) && c.durationS > 0)
     .sort((a, b) => a.at - b.at)
-    .flatMap((c) => specOf(c, opts.after, opts.unit).map((s) => ({ s, w: WEIGHT[c.kind] ?? 1 })))
+    .flatMap((c) => specOf(c, opts.after, opts.unit).filter((s) => shotLength(s, opts.unit) > 0).map((s) => ({ s, w: WEIGHT[c.kind] ?? 1 })))
   if (all.length > FILM_LIMITS.shots) {
     const keep = new Set([...all.keys()].sort((i, j) => all[j].w - all[i].w || i - j).slice(0, FILM_LIMITS.shots))
     all = all.filter((_, i) => keep.has(i))
@@ -185,7 +185,8 @@ export function cleanProject(
     const x = s as Record<string, unknown>
     const clip = typeof x.clipId === 'string' ? clips.get(x.clipId) : undefined
     if (!clip || !Number.isFinite(x.anchorS)) continue
-    shots.push(fitShot({ clipId: x.clipId as string, anchorS: x.anchorS as number, lead: Number(x.lead), tail: Number(x.tail), slow: x.slow === true }, clip.durationS, unit))
+    const fitted = fitShot({ clipId: x.clipId as string, anchorS: x.anchorS as number, lead: Number(x.lead), tail: Number(x.tail), slow: x.slow === true }, clip.durationS, unit)
+    if (shotLength(fitted, unit) > 0) shots.push(fitted)
   }
   if (!shots.length) throw new Error('Ce film n’a aucun plan.')
   const durationS = timeline(shots, unit).totalS

@@ -32,16 +32,17 @@ const Real = (() => {
   }
   // Une image distante qui ne charge pas ne laisse pas de trou : le nom du jeu sur sa teinte, ou rien
   document.addEventListener('error', (e) => {
+    if (!(e.target instanceof HTMLImageElement) || e.target.dataset.fb === 'done') return
     const im = e.target
-    if (im?.tagName !== 'IMG' || im.dataset.fb === 'done') return
     im.dataset.fb = 'done'
-    const name = im.closest('[data-name]')?.dataset.name || im.alt
+    const name = /** @type {HTMLElement | null} */ (im.closest('[data-name]'))?.dataset.name || im.alt
     im.src = name ? coverPh(name) : BLANK
   }, true)
 
   /* ---------- Jeux ---------- */
   // Jaquettes fournies avec l'appli (v3ui/assets) : elles passent avant celle de Steam.
   // The Witcher 3 (0.6.2) : l'image envoyée par Breezydev, toutes éditions et tous magasins.
+  /** @type {Array<[RegExp, string]>} */
   const OWN_COVERS = [[/^the\s*witcher\W*3\b/i, 'cover_witcher3']]
   const ownCover = (name) => OWN_COVERS.find(([re]) => re.test(name))?.[1] || null
   const shortOf = (name) => { if (name.length <= 14) return name; const head = name.split(/\s*:\s*/)[0], w = head.split(/\s+/); if (head.length <= 14) return head; for (let i = w.length - 1; i > 0; i--) { const x = w.slice(0, i).join(' '); if (x.length <= 14) return x } return w[0] }
@@ -92,7 +93,7 @@ const Real = (() => {
   function swapPlaceholders() {
     const real = new Map(GAMES.filter((g) => g.raw?.coverUrl || g.ownCover).map((g) => [coverPh(g.name), A(g.cover)]))
     if (!real.size) return
-    document.querySelectorAll('img[src^="data:image/svg+xml"]').forEach((im) => { const url = im.dataset.fb === 'done' ? null : real.get(im.getAttribute('src')); if (url) im.src = url })
+    $$('img[src^="data:image/svg+xml"]').forEach((im) => { const url = im.dataset.fb === 'done' ? null : real.get(im.getAttribute('src')); if (url) im.src = url })
   }
   async function loadGames(refresh = false) {
     const [list, lib] = await Promise.all([API.getGames(refresh), API.getSteamLibrary(false).catch(() => null)])

@@ -39,7 +39,48 @@ export function parseProcLines(stdout: string): RunningProcess[] {
   return procs
 }
 
+/**
+ * Sortie de `tasklist /FO CSV /NH` : « "nom.exe","PID",... ». Bien plus léger que PowerShell au repos, sans chemins
+ * complets (qui ne sont demandés à PowerShell que si un jeu candidat tourne).
+ */
+export function parseTasklistCsv(stdout: string): RunningProcess[] {
+  const procs: RunningProcess[] = []
+  for (const raw of stdout.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    const m = /^"([^"]+)","(\d+)"/.exec(raw.trim())
+    if (!m) continue
+    const name = m[1].trim().replace(/\.exe$/i, '')
+    if (!name) continue
+    procs.push({ name, pid: Number(m[2]), path: '' })
+  }
+  return procs
+}
+
 export type Matchable = Pick<Game, 'id' | 'installDir' | 'exePath'>
+
+/**
+ * Dit si un relevé rapide (`tasklist`, sans chemins) contient au moins un programme pouvant appartenir à un jeu installé
+ * (correspondance exacte, nom tronqué à 25 caractères par `tasklist`, ou exécutable non-ASCII pouvant être altéré par la
+ * page de code OEM). Quand c'est vrai, `playtime.ts` relit les chemins complets via PowerShell.
+ */
+export function hasCandidateProcess(procs: RunningProcess[], games: Matchable[], namesByGame: Map<string, Set<string>> = new Map()): boolean {
+  const names = new Set<string>()
+  for (const g of games) {
+    if (g.exePath) names.add(exeName(g.exePath))
+    for (const n of namesByGame.get(g.id) ?? []) names.add(n)
+  }
+  if (!names.size) return false
+  // Page de code OEM de tasklist : si un jeu connu porte un nom non-ASCII, on passe par PowerShell (UTF-8).
+  for (const n of names) if (/[^\x20-\x7e]/.test(n)) return true
+  for (const p of procs) {
+    const n = p.name.toLowerCase()
+    if (names.has(n)) return true
+    // tasklist peut couper les noms longs à 25 caractères (ex. « ...-Win64-Shipping.exe »).
+    if (n.length >= 24) {
+      for (const cand of names) if (cand.startsWith(n)) return true
+    }
+  }
+  return false
+}
 
 /**
  * Jeu → noms (minuscules) des programmes qui lui sont rattachés : par chemin d'abord, par nom d'exécutable quand le chemin

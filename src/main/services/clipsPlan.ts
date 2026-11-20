@@ -249,10 +249,28 @@ export interface BufferedFragment {
 
 /** Marge du tampon au-delà de before + after. */
 export const BUFFER_MARGIN_S = 10
+/**
+ * Marge avant le début d'un clip en attente ou en écriture (ms) : un clip part de la dernière image clé avant `start`
+ * (jusqu'à 2 s plus tôt) et garde aussi le fragment voisin (withNeighbours). Sans cette marge, un clip long (plusieurs kills
+ * fusionnés) ou qui attend son tour dans la file perdrait ses premiers fragments avant d'être écrit.
+ */
+export const IN_USE_LEAD_MS = 6_000
 
 /** Les fragments finis avant ce moment peuvent partir : ni un nouvel événement, ni un clip en cours n'en ont besoin. */
 export function keepFrom(now: number, w: Pick<WindowSettings, 'before' | 'after'>, inUseStarts: number[]): number {
-  return Math.min(now - (w.before + w.after + BUFFER_MARGIN_S) * 1000, ...inUseStarts)
+  return Math.min(now - (w.before + w.after + BUFFER_MARGIN_S) * 1000, ...inUseStarts.map((t) => t - IN_USE_LEAD_MS))
+}
+
+/**
+ * Recale l'horloge du flux (`anchor`, heure du temps 0) à l'arrivée d'un fragment terminé à `endS` secondes.
+ * Sur le tout premier fragment du moteur (`isFirstEngine`), on ancre directement sur `now - endS` pour éviter un décalage
+ * permanent si FFmpeg a mis plus de 3 s à démarrer ; ensuite, le flux ne peut pas devancer l'horloge (`lag < 0` recule
+ * l'ancre, jamais vers l'avant).
+ */
+export function updateAnchor(anchor: number, now: number, endS: number, isFirstEngine: boolean): number {
+  if (isFirstEngine) return now - endS * 1000
+  const lag = now - (anchor + endS * 1000)
+  return lag < 0 ? anchor + lag : anchor
 }
 
 /**

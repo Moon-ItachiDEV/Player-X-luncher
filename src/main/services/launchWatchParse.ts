@@ -9,7 +9,7 @@
  * Compatible PowerShell 5.1 (pas de ??, de ternaire ni de && entre commandes) ; sans guillemets doubles, qui ne passent pas
  * toujours intacts dans la ligne de commande de Windows.
  *
- * Réponse : `S`, puis tabulations : `pid:nom` par programme, `W:pid` (fenêtre principale, noms demandés seulement),
+ * Réponse : `S`, puis tabulations : `I:n` (numéro de requête si fourni), `pid:nom` par programme, `W:pid` (fenêtre principale, noms demandés seulement),
  * `R:appid` (jeu en cours d'après Steam), `U:appid:0|1` (mise à jour Steam), `C:ms:octets` (coût du script lui-même).
  */
 export const SCRIPT = String.raw`$ErrorActionPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8
@@ -17,6 +17,7 @@ $me=[Diagnostics.Process]::GetCurrentProcess(); $me.PriorityClass='BelowNormal';
 while ($null -ne ($l=[Console]::In.ReadLine())) {
   $q = if ($l.Length -gt 2) { $l | ConvertFrom-Json } else { $null }
   $ps=[Diagnostics.Process]::GetProcesses(); $o=New-Object Text.StringBuilder; [void]$o.Append('S')
+  if ($q -and $null -ne $q.i) { [void]$o.Append($t).Append('I:').Append($q.i) }
   foreach ($p in $ps) { [void]$o.Append($t).Append($p.Id).Append(':').Append($p.ProcessName) }
   if ($q -and $q.w) { foreach ($p in $ps) { if ($q.w -contains $p.ProcessName -and $p.MainWindowHandle -ne 0) { [void]$o.Append($t).Append('W:').Append($p.Id) } } }
   if ($q -and $q.s) {
@@ -33,6 +34,8 @@ export const MAX_NAMES = 64
 export const MIN_PROCS = 20
 
 export interface Query {
+  /** Numéro de requête renvoyé en `I:<n>` pour écarter les réponses tardives sans décaler la suite. */
+  id?: number
   /** Noms d'exécutables d'un jeu (un ensemble par jeu suivi) : leur fenêtre principale est signalée. */
   w?: Iterable<string>[]
   /** Jeux Steam suivis (appid) : jeu en cours d'après Steam et mise à jour en cours. */
@@ -40,6 +43,8 @@ export interface Query {
 }
 
 export interface Sample {
+  /** Numéro de requête renvoyé par le script (`I:<n>`), ou null/absent s'il n'était pas demandé. */
+  id?: number | null
   procs: { pid: number; name: string }[]
   /** PID qui ont une fenêtre principale (parmi les noms demandés). */
   windows: Set<number>
@@ -53,7 +58,7 @@ export interface Sample {
 }
 
 /** Ligne de requête : JSON en ASCII seul (PowerShell 5.1 lit l'entrée dans la page de code de la console ; les \uXXXX passent partout). */
-export function tickLine({ w = [], s = [] }: Query): string {
+export function tickLine({ id, w = [], s = [] }: Query): string {
   const names = new Set<string>()
   for (const list of w) {
     let kept = 0
@@ -66,20 +71,22 @@ export function tickLine({ w = [], s = [] }: Query): string {
     }
   }
   const ids = [...new Set([...s].filter((a) => /^\d{1,10}$/.test(a)))]
-  const q: { w?: string[]; s?: string[] } = {}
+  const q: { i?: number; w?: string[]; s?: string[] } = {}
+  if (typeof id === 'number' && Number.isSafeInteger(id) && id > 0) q.i = id
   if (names.size) q.w = [...names]
   if (ids.length) q.s = ids
-  return JSON.stringify(q).replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))
+  return JSON.stringify(q).replace(/[\u007f-\uffff]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))
 }
 
 /** Réponse du script ; null si ce n'en est pas une. */
 export function parseSample(line: string): Sample | null {
-  const parts = line.replace(/^﻿/, '').replace(/\r$/, '').split('\t')
+  const parts = line.replace(/^\ufeff/, '').replace(/\r$/, '').split('\t')
   if (parts[0] !== 'S') return null
-  const sample: Sample = { procs: [], windows: new Set(), runningAppId: null, updating: new Map(), cpuMs: null, ws: null }
+  const sample: Sample = { id: null, procs: [], windows: new Set(), runningAppId: null, updating: new Map(), cpuMs: null, ws: null }
   for (const part of parts.slice(1)) {
     let m: RegExpExecArray | null
     if ((m = /^(\d+):(.+)$/.exec(part))) sample.procs.push({ pid: Number(m[1]), name: m[2] })
+    else if ((m = /^I:(\d+)$/.exec(part))) sample.id = Number(m[1])
     else if ((m = /^W:(\d+)$/.exec(part))) sample.windows.add(Number(m[1]))
     // Steam écrit 0 quand aucun jeu ne tourne.
     else if ((m = /^R:(\d*)$/.exec(part))) sample.runningAppId = m[1] && m[1] !== '0' ? m[1] : null

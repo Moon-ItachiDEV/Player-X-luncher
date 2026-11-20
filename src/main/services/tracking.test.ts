@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 // Node exige l'extension ; TypeScript ne la permet que via allowImportingTsExtensions, absent du tsconfig de l'appli.
 // @ts-ignore TS5097
-import { coalesce, exeName, GENERIC_EXE, matchGames, memoAsync, parseProcLines, runningGameIds, usableDir, watchNames } from './tracking.ts'
+import { coalesce, exeName, GENERIC_EXE, hasCandidateProcess, matchGames, memoAsync, parseProcLines, parseTasklistCsv, runningGameIds, usableDir, watchNames } from './tracking.ts'
 
 const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
@@ -21,6 +21,43 @@ test('parseProcLines : noms et chemins accentués, BOM, lignes sans id ignorées
     { name: 'Élan', pid: 42, path: 'D:\\Jeux\\Élan Studio\\Élan.exe' },
     { name: 'System Idle Process', pid: 0, path: '' }
   ])
+})
+
+test('parseTasklistCsv : lit nom (sans .exe) et PID, gère Player X et les lignes invalides', () => {
+  const csv = [
+    '\uFEFF"System Idle Process","0","Services","0","8 Ko"',
+    '"steam.exe","1204","Console","1","123 456 Ko"',
+    '"Player X.exe","4321","Console","1","90 000 Ko"',
+    '"HogwartsLegacy-Win64-Ship","9912","Console","1","2 000 000 Ko"',
+    'INFO: aucune tâche en cours',
+    '"","10","Console","1","1 Ko"'
+  ].join('\r\n')
+  assert.deepEqual(parseTasklistCsv(csv), [
+    { name: 'System Idle Process', pid: 0, path: '' },
+    { name: 'steam', pid: 1204, path: '' },
+    { name: 'Player X', pid: 4321, path: '' },
+    { name: 'HogwartsLegacy-Win64-Ship', pid: 9912, path: '' }
+  ])
+})
+
+test('hasCandidateProcess : détecte correspondance exacte, nom tronqué à 25 car., et exécutable non-ASCII', () => {
+  const games = [
+    { id: 'steam:730', installDir: 'C:\\Steam\\steamapps\\common\\CS2' },
+    { id: 'ea:bf6', installDir: 'C:\\EA\\BF6', exePath: 'C:\\EA\\BF6\\bf6.exe' }
+  ]
+  const names = new Map([['steam:730', new Set(['cs2', 'hogwartslegacy-win64-shipping'])]])
+  // Au repos : aucun jeu candidat → pas besoin de PowerShell.
+  assert.equal(hasCandidateProcess([{ name: 'steam', pid: 1, path: '' }, { name: 'explorer', pid: 2, path: '' }], games, names), false)
+  // Exécutable exact présent → escalade PowerShell.
+  assert.equal(hasCandidateProcess([{ name: 'BF6', pid: 10, path: '' }], games, names), true)
+  assert.equal(hasCandidateProcess([{ name: 'cs2', pid: 11, path: '' }], games, names), true)
+  // Nom tronqué par tasklist à 25 caractères → préfixe reconnu → escalade PowerShell.
+  assert.equal(hasCandidateProcess([{ name: 'HogwartsLegacy-Win64-Ship', pid: 12, path: '' }], games, names), true)
+  // Jeu avec nom non-ASCII → escalade systématique vers PowerShell UTF-8.
+  assert.equal(
+    hasCandidateProcess([{ name: 'explorer', pid: 2, path: '' }], [{ id: 'g:1', exePath: 'D:\\Jeux\\Élan.exe' }], new Map()),
+    true
+  )
 })
 
 const GAMES = [

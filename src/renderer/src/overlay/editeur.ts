@@ -108,12 +108,26 @@ export function startEditor(host: EditorHost, rootOf: () => Element | null): () 
     pending = p
     host.show(p)
   }
+  const flush = (): void => {
+    if (saveTimer !== undefined) {
+      clearTimeout(saveTimer)
+      saveTimer = undefined
+    }
+    if (pending) {
+      const p = pending
+      pending = null
+      host.keep(p)
+    }
+  }
   const keepSoon = (p: Cs2OverlayPlace): void => {
     showP(p)
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
-      host.keep(p)
+      saveTimer = undefined
+      if (!pending) return
+      const next = pending
       pending = null
+      host.keep(next)
     }, 300)
   }
   const cur = (): Cs2OverlayPlace => pending ?? host.now().place
@@ -150,10 +164,7 @@ export function startEditor(host: EditorHost, rootOf: () => Element | null): () 
     if (!gesture) return
     gesture = null
     frame.classList.remove('moving', 'sizing')
-    if (pending) {
-      host.keep(pending)
-      pending = null
-    }
+    flush()
   }
   frame.addEventListener('pointerup', up)
   frame.addEventListener('pointercancel', up)
@@ -166,24 +177,34 @@ export function startEditor(host: EditorHost, rootOf: () => Element | null): () 
   bar.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('button')
     if (!b || b.disabled) return
-    if (b.dataset.s) host.setStyle(b.dataset.s as Cs2OverlayThree)
-    else if (b.dataset.m) host.setMoment(b.dataset.m as Cs2OverlayMoment)
-    else if (b.dataset.k) scaleBy(b.dataset.k === '+' ? 1.05 : 1 / 1.05)
+    if (b.dataset.s) {
+      flush()
+      host.setStyle(b.dataset.s as Cs2OverlayThree)
+    } else if (b.dataset.m) {
+      flush()
+      host.setMoment(b.dataset.m as Cs2OverlayMoment)
+    } else if (b.dataset.k) scaleBy(b.dataset.k === '+' ? 1.05 : 1 / 1.05)
     else if (b.hasAttribute('data-reset')) {
       clearTimeout(saveTimer)
+      saveTimer = undefined
       pending = null
       host.keep(null)
-    } else if (b.hasAttribute('data-done')) host.end()
+    } else if (b.hasAttribute('data-done')) {
+      flush()
+      host.end()
+    }
   })
 
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' || (e.key === 'Enter' && document.activeElement === frame)) {
       e.preventDefault()
+      flush()
       host.end()
       return
     }
     const n = Number(e.key)
     if (n >= 1 && n <= 4 && !e.ctrlKey && !e.altKey) {
+      flush()
       host.setMoment(ED_MOMENTS[n - 1][0])
       return
     }
@@ -229,8 +250,7 @@ export function startEditor(host: EditorHost, rootOf: () => Element | null): () 
 
   return () => {
     cancelAnimationFrame(raf)
-    clearTimeout(saveTimer)
-    if (pending) host.keep(pending)
+    flush()
     window.removeEventListener('keydown', onKey)
     window.removeEventListener('wheel', onWheel)
     frame.remove()

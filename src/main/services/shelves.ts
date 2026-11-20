@@ -3,10 +3,10 @@
 import { randomBytes } from 'node:crypto'
 import { cleanShelves, withGameIn, withHidden, withNewCollection, withoutCollection, withRenamed } from '@shared/shelves'
 import type { Shelves } from '@shared/types'
-import { getKv, setKv } from '../db'
+import { getKv, setKv, type KvKey } from '../db'
 import { getSettings } from './settings'
 
-const key = (): string => (getSettings().demoMode ? 'demoShelves' : 'shelves')
+const key = (): KvKey => (getSettings().demoMode ? 'demoShelves' : 'shelves')
 
 export function getShelves(): Shelves {
   return cleanShelves(getKv<unknown>(key(), {}))

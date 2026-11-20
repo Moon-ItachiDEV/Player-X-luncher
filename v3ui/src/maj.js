@@ -24,7 +24,7 @@ const Maj = (() => {
   const left = (s) => (s < 90 ? `${s} s` : `${Math.ceil(s / 60)} min`)
   const dateFr = (d) => {
     const t = new Date(d + 'T12:00:00'), n = new Date()
-    if (isNaN(t)) return ''
+    if (isNaN(t.getTime())) return ''
     if (t.toDateString() === n.toDateString()) return 'aujourd’hui'
     return t.toLocaleDateString('fr-FR', t.getFullYear() === n.getFullYear() ? { day: 'numeric', month: 'long' } : { day: 'numeric', month: 'long', year: 'numeric' })
   }
