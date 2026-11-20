@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.7.7",
+    "date": "2026-11-20",
+    "items": [
+      {
+        "kind": "corrige",
+        "title": "Clips et montage plus fiables",
+        "text": "Correction de bugs sur la découpe, le tampon et l’assemblage qui pouvaient tronquer ou abîmer un clip.",
+        "page": "clips"
+      },
+      {
+        "kind": "ameliore",
+        "title": "Plus léger en arrière-plan et au démarrage",
+        "text": "Moins de consommation quand aucun jeu ne tourne, base plus rapide et interface allégée.",
+        "page": "play"
+      },
+      {
+        "kind": "corrige",
+        "title": "Amis et stats plus fiables hors ligne",
+        "text": "Une coupure réseau ne marque plus tes amis en profil privé et limite les requêtes répétées.",
+        "page": "friends"
+      },
+      {
+        "kind": "ameliore",
+        "title": "Sécurité renforcée",
+        "text": "Mise à jour du pilote NVIDIA, mises à jour de l’appli, raccourcis et fermeture mieux protégés.",
+        "page": "set-pc"
+      }
+    ]
+  },
+  {
     "version": "0.7.6",
     "date": "2026-11-17",
     "items": [
