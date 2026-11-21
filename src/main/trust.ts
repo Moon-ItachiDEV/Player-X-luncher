@@ -1,5 +1,5 @@
 // Sans Electron : testé par trust.test.ts.
-import { resolve, win32 } from 'node:path'
+import { posix, resolve, win32 } from 'node:path'
 
 function normFilePath(p: string): string {
   const slash = p.replace(/\\/g, '/')
@@ -31,7 +31,11 @@ export function trustedUrl(frameUrl: string, devServer?: string, appRoot?: strin
     if (decoded.includes('\0') || /(^|[\\/])\.\.([\\/]|$)/.test(decoded)) return false
     const filePath = normFilePath(decoded)
     if (appRoot) {
-      const rootPath = /^[A-Za-z]:[\\/]/.test(appRoot) ? win32.normalize(appRoot) : resolve(appRoot)
+      const rootPath = /^[A-Za-z]:[\\/]/.test(appRoot)
+        ? win32.normalize(appRoot)
+        : appRoot.startsWith('/')
+          ? posix.normalize(appRoot)
+          : resolve(appRoot)
       const root = normFilePath(rootPath).replace(/\/+$/, '')
       return filePath.startsWith(`${root}/`)
     }
