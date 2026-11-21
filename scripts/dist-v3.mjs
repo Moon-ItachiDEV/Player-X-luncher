@@ -12,8 +12,6 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const out = resolve(root, process.argv[2] || 'dist')
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 // Mises à jour dans l'appli : pas de fabrication sans la clé publique de Breezydev dans updaterKey.ts. Un Setup sans elle,
 // une fois publié, ne pourrait plus jamais se mettre à jour chez personne. PX_MAJ_SANS_CLE=1 : seulement pour un essai jetable.
 const MAJ_CLE = 'MCowBQYDK2VwAyEAsE9FqykThj3fwaJo0YmYxqJD6adOmSOpM32JSX0Ugiw='
@@ -24,18 +22,23 @@ if (process.env.PX_MAJ_SANS_CLE !== '1') {
     process.exit(1)
   }
 }
-const run = (title, cmd, args) => {
-  console.log(`\n▶ ${title}`)
-  execFileSync(cmd, args, { cwd: root, stdio: 'inherit' })
+// Tout passe directement par Node (process.execPath) au lieu de npm.cmd/npx.cmd : Node ≥ 20/24 sous Windows refuse
+// execFileSync sur les .cmd avec EINVAL sans shell.
+const runNode = (title, script, args = []) => {
+  if (title) console.log(`\n▶ ${title}`)
+  execFileSync(process.execPath, [join(root, script), ...args], { cwd: root, stdio: 'inherit' })
 }
 
 // Le moteur vidéo d'abord : sans lui (ou avec une autre empreinte que celle de src/shared/ffmpegPin.json), rien n'est fabriqué.
-run('Moteur vidéo', process.execPath, [join(root, 'scripts/fetch-ffmpeg.mjs')])
-run('Interface V3', process.execPath, [join(root, 'v3ui/build.mjs')])
-run('Types', npm, ['run', 'typecheck'])
-run('Tests', npm, ['test'])
-run('electron-vite', npx, ['electron-vite', 'build'])
-run('electron-builder (NSIS)', npx, ['electron-builder', '--win', '--x64', '--publish', 'never', `--config.directories.output=${out}`])
+runNode('Moteur vidéo', 'scripts/fetch-ffmpeg.mjs')
+runNode('Interface V3', 'v3ui/build.mjs')
+console.log('\n▶ Types')
+for (const cfg of ['tsconfig.node.json', 'tsconfig.web.json', 'tsconfig.scripts.json', 'tsconfig.v3ui.json']) {
+  runNode(null, 'node_modules/typescript/bin/tsc', ['--noEmit', '-p', cfg])
+}
+runNode('Tests', 'scripts/test-all.mjs')
+runNode('electron-vite', 'node_modules/electron-vite/bin/electron-vite.js', ['build'])
+runNode('electron-builder (NSIS)', 'node_modules/electron-builder/cli.js', ['--win', '--x64', '--publish', 'never', `--config.directories.output=${out}`])
 const setup = join(out, `Player-X-Setup-${pkg.version}.exe`)
-run('Installeur sur mesure', process.execPath, [join(root, 'scripts/build-installer-v3test.mjs'), setup, join(out, 'win-unpacked'), join(out, `Player-X-Installer-${pkg.version}.exe`)])
+runNode('Installeur sur mesure', 'scripts/build-installer-v3test.mjs', [setup, join(out, 'win-unpacked'), join(out, `Player-X-Installer-${pkg.version}.exe`)])
 console.log(`\nFini : ${out}`)

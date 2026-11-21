@@ -187,7 +187,8 @@ END
   console.warn('llvm-rc ou llvm-cvtres absent : l’exe garde l’icône et le manifeste de installer/ (ceux de Player X).')
 }
 
-const go = process.env.GO || (which('go') ? 'go' : '/usr/local/go/bin/go')
+const defaultGo = process.platform === 'win32' ? 'C:\\Program Files\\Go\\bin\\go.exe' : '/usr/local/go/bin/go'
+const go = process.env.GO || (which('go') ? 'go' : defaultGo)
 execFileSync(go, ['build', '-mod=vendor', '-trimpath', '-ldflags', '-H windowsgui -s -w', '-o', resolve(out), '.'], {
   cwd: work,
   stdio: 'inherit',
